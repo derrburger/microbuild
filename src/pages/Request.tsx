@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import type { BuyerRequest, MicroBuildCategory } from '../types';
+import type { BuyerRequest, MicroBuildCategory, MicroBuildListing } from '../types';
 import { mockListings } from '../data/mockListings';
+import { fetchTemplateBySlug } from '../lib/templates';
+import { insertBuyerRequest } from '../lib/supabase';
+import type { SupabaseInsertError } from '../lib/supabase';
 import './Request.css';
 
 const buildTypes: Array<MicroBuildCategory | 'Not sure'> = [
@@ -44,16 +47,62 @@ const initialForm: BuyerRequest = {
   styleNotes: '',
 };
 
+/** User-facing message for a Supabase insert error (no internals exposed). */
+function friendlyErrorMessage(err: SupabaseInsertError): string {
+  if (err.code === '42501') {
+    return (
+      'Submission is temporarily unavailable — our database policies are still being configured. ' +
+      'Please email us directly and we will get back to you within 24 hours. ' +
+      '(Check the browser console for technical details.)'
+    );
+  }
+  return (
+    'There was a problem submitting your request. Please try again or email us directly. ' +
+    '(Check the browser console for technical details.)'
+  );
+}
+
 export default function Request() {
   const [searchParams] = useSearchParams();
   const prefillSlug = searchParams.get('build');
-  const prefillListing = prefillSlug ? mockListings.find((l) => l.slug === prefillSlug) : null;
+
+  // Synchronous mock fallback for instant UI (builds the form label immediately)
+  const mockPrefill: MicroBuildListing | null = prefillSlug
+    ? (mockListings.find((l) => l.slug === prefillSlug) ?? null)
+    : null;
+
+  const [prefillListing, setPrefillListing] = useState<MicroBuildListing | null>(mockPrefill);
+  // UUID of the template from Supabase (null when not available or using mock fallback)
+  const [templateDbId, setTemplateDbId] = useState<string | null>(null);
 
   const [form, setForm] = useState<BuyerRequest>({
     ...initialForm,
-    buildType: prefillListing ? prefillListing.category : '',
+    buildType: mockPrefill?.category ?? '',
   });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Fetch the real template from Supabase when slug is present so we can:
+  //   1. Store the actual UUID for the template_id FK
+  //   2. Keep the sidebar listing in sync with live data
+  useEffect(() => {
+    if (!prefillSlug) return;
+    fetchTemplateBySlug(prefillSlug).then(({ listing, fromSupabase }) => {
+      if (listing) {
+        setPrefillListing(listing);
+        // Only use the ID as a FK if this came from the real database
+        setTemplateDbId(fromSupabase ? listing.id : null);
+        // Keep buildType in sync (only override if user hasn't changed it yet)
+        setForm((prev) =>
+          prev.buildType === '' || prev.buildType === (mockPrefill?.category ?? '')
+            ? { ...prev, buildType: listing.category }
+            : prev
+        );
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillSlug]);
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -62,9 +111,39 @@ export default function Request() {
     setForm((prev) => ({ ...prev, [name]: value }));
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    console.log('Buyer request (mock):', form);
+    setSubmitting(true);
+    setSubmitError(null);
+
+    const { error } = await insertBuyerRequest({
+      full_name:          form.fullName,
+      email:              form.email,
+      phone:              form.phone      || null,
+      business_name:      form.businessName,
+      industry:           form.industry,
+      website_social:     form.websiteSocial || null,
+      build_type:         form.buildType  || 'Not sure',
+      main_goal:          form.mainGoal,
+      current_problem:    form.currentProblem,
+      budget:             form.budget     || null,
+      deadline:           form.deadline   || null,
+      style_notes:        form.styleNotes || null,
+      // FK columns — all null for guest submissions without auth
+      user_id:             null,
+      business_profile_id: null,
+      // Use the real Supabase UUID when available; null is fine and accepted by schema
+      template_id:         templateDbId,
+      status:             'new',
+    });
+
+    setSubmitting(false);
+
+    if (error) {
+      setSubmitError(friendlyErrorMessage(error));
+      return;
+    }
+
     setSubmitted(true);
   }
 
@@ -284,8 +363,18 @@ export default function Request() {
               </div>
             </fieldset>
 
-            <button type="submit" className="btn btn-primary btn-lg form-submit">
-              Submit Request →
+            {submitError && (
+              <div className="form-error-banner">
+                {submitError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary btn-lg form-submit"
+              disabled={submitting}
+            >
+              {submitting ? 'Submitting…' : 'Submit Request →'}
             </button>
             <p className="form-disclaimer">
               No payment required at this stage. We'll review your request and follow up within 1–2 business days.

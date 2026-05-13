@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { mockListings } from '../data/mockListings';
+import { fetchTemplateBySlug } from '../lib/templates';
 import StatusBadge from '../components/StatusBadge';
 import CTASection from '../components/CTASection';
+import type { MicroBuildListing } from '../types';
 import './BuildDetail.css';
 
 const categoryIcons: Record<string, string> = {
@@ -12,11 +14,36 @@ const categoryIcons: Record<string, string> = {
   'Package Selector': '🎯',
 };
 
+// Three-state pattern: undefined = loading, null = not found, object = loaded
+type LoadState = MicroBuildListing | null | undefined;
+
 export default function BuildDetail() {
   const { slug } = useParams<{ slug: string }>();
-  const listing = mockListings.find((l) => l.slug === slug);
+  const [listing, setListing] = useState<LoadState>(undefined);
 
-  if (!listing) {
+  useEffect(() => {
+    if (!slug) {
+      setListing(null);
+      return;
+    }
+    setListing(undefined); // reset to loading on slug change
+    fetchTemplateBySlug(slug).then(({ listing: data }) => setListing(data));
+  }, [slug]);
+
+  // Loading state
+  if (listing === undefined) {
+    return (
+      <div className="detail-loading">
+        <div className="container detail-loading-inner">
+          <div className="detail-skeleton-header" />
+          <div className="detail-skeleton-body" />
+        </div>
+      </div>
+    );
+  }
+
+  // Not found state
+  if (listing === null) {
     return (
       <div className="detail-not-found">
         <div className="container detail-not-found-inner">
@@ -33,6 +60,7 @@ export default function BuildDetail() {
     );
   }
 
+  // Loaded state
   return (
     <div className="detail-page">
       <div className="detail-hero">
@@ -78,9 +106,7 @@ export default function BuildDetail() {
 
             <section className="detail-section">
               <h2>Setup Requirements</h2>
-              <p className="setup-intro">
-                To get started, you'll need to provide:
-              </p>
+              <p className="setup-intro">To get started, you'll need to provide:</p>
               <ul className="setup-list">
                 {listing.setupRequirements.map((req) => (
                   <li key={req}>
@@ -123,7 +149,10 @@ export default function BuildDetail() {
 
             <div className="sidebar-note">
               <strong>Not exactly what you need?</strong>
-              <p>Submit a custom request and describe what you're looking for. We'll match you with the right builder.</p>
+              <p>
+                Submit a custom request and describe what you're looking for. We'll match you with
+                the right builder.
+              </p>
               <Link to="/request" className="btn btn-ghost btn-sm">
                 Submit Custom Request
               </Link>

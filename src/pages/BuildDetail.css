@@ -2,6 +2,41 @@
   min-height: 60vh;
 }
 
+/* Loading skeleton */
+.detail-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: flex-start;
+}
+
+.detail-loading-inner {
+  padding: 3rem 1.5rem;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.detail-skeleton-header {
+  height: 120px;
+  background: var(--surface);
+  border-radius: 10px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.detail-skeleton-body {
+  height: 360px;
+  background: var(--surface);
+  border-radius: 10px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  animation-delay: 0.1s;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
 .detail-not-found {
   min-height: 50vh;
   display: flex;

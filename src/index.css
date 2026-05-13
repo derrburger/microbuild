@@ -229,6 +229,22 @@ a:hover {
   text-align: center;
 }
 
+.form-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-error-banner {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 7px;
+  color: #f87171;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
 .form-disclaimer {
   font-size: 0.8rem;
   color: var(--text-muted);

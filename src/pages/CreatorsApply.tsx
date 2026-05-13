@@ -1,7 +1,23 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { CreatorApplication } from '../types';
+import { insertCreatorApplication } from '../lib/supabase';
+import type { SupabaseInsertError } from '../lib/supabase';
 import './CreatorsApply.css';
+
+function friendlyErrorMessage(err: SupabaseInsertError): string {
+  if (err.code === '42501') {
+    return (
+      'Submission is temporarily unavailable — our database policies are still being configured. ' +
+      'Please email us directly and we will get back to you within 24 hours. ' +
+      '(Check the browser console for technical details.)'
+    );
+  }
+  return (
+    'There was a problem submitting your application. Please try again or email us directly. ' +
+    '(Check the browser console for technical details.)'
+  );
+}
 
 const toolOptions = [
   'Webflow',
@@ -51,6 +67,8 @@ const initialForm: CreatorApplication = {
 export default function CreatorsApply() {
   const [form, setForm] = useState<CreatorApplication>(initialForm);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -77,9 +95,31 @@ export default function CreatorsApply() {
     }));
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    console.log('Creator application (mock):', form);
+    setSubmitting(true);
+    setSubmitError(null);
+
+    const { error } = await insertCreatorApplication({
+      full_name: form.fullName,
+      email: form.email,
+      tools: form.tools,
+      portfolio_url: form.portfolioUrl || null,
+      portfolio_url_2: form.portfolioUrl2 || null,
+      niches: form.niches,
+      experience: form.experience,
+      available_hours: form.availableHours,
+      message: form.message || null,
+      status: 'new',
+    });
+
+    setSubmitting(false);
+
+    if (error) {
+      setSubmitError(friendlyErrorMessage(error));
+      return;
+    }
+
     setSubmitted(true);
   }
 
@@ -270,8 +310,18 @@ export default function CreatorsApply() {
               </div>
             </fieldset>
 
-            <button type="submit" className="btn btn-primary btn-lg form-submit">
-              Submit Application →
+            {submitError && (
+              <div className="form-error-banner">
+                {submitError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary btn-lg form-submit"
+              disabled={submitting}
+            >
+              {submitting ? 'Submitting…' : 'Submit Application →'}
             </button>
             <p className="form-disclaimer">
               Applications are reviewed manually. We'll respond within 3–5 business days.

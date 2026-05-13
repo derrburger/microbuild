@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import MicroBuildCard from '../components/MicroBuildCard';
-import { mockListings } from '../data/mockListings';
-import type { MicroBuildCategory } from '../types';
+import { fetchTemplates } from '../lib/templates';
+import type { MicroBuildListing, MicroBuildCategory } from '../types';
 import './Browse.css';
 
 const allCategories: MicroBuildCategory[] = [
@@ -22,9 +22,14 @@ export default function Browse() {
       ? (categoryParam as MicroBuildCategory)
       : 'All';
 
-  const [activeCategory, setActiveCategory] = useState<MicroBuildCategory | 'All'>(initialCategory);
+  const [activeCategory, setActiveCategory] =
+    useState<MicroBuildCategory | 'All'>(initialCategory);
   const [search, setSearch] = useState('');
+  const [listings, setListings] = useState<MicroBuildListing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [usingMock, setUsingMock] = useState(false);
 
+  // Sync category filter with URL params
   useEffect(() => {
     if (categoryParam && (allCategories as string[]).includes(categoryParam)) {
       setActiveCategory(categoryParam as MicroBuildCategory);
@@ -33,13 +38,29 @@ export default function Browse() {
     }
   }, [categoryParam]);
 
-  const filtered = mockListings.filter((l) => {
-    const matchesCategory = activeCategory === 'All' || l.category === activeCategory;
+  // Fetch templates on mount
+  useEffect(() => {
+    setLoading(true);
+    fetchTemplates()
+      .then(({ listings: data, fromSupabase }) => {
+        setListings(data);
+        setUsingMock(!fromSupabase);
+      })
+      .catch(() => {
+        setUsingMock(true);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = listings.filter((l) => {
+    const matchesCategory =
+      activeCategory === 'All' || l.category === activeCategory;
+    const q = search.toLowerCase();
     const matchesSearch =
-      search === '' ||
-      l.title.toLowerCase().includes(search.toLowerCase()) ||
-      l.targetIndustry.toLowerCase().includes(search.toLowerCase()) ||
-      l.description.toLowerCase().includes(search.toLowerCase());
+      q === '' ||
+      l.title.toLowerCase().includes(q) ||
+      l.targetIndustry.toLowerCase().includes(q) ||
+      l.description.toLowerCase().includes(q);
     return matchesCategory && matchesSearch;
   });
 
@@ -55,6 +76,12 @@ export default function Browse() {
       </div>
 
       <div className="container browse-body">
+        {usingMock && !loading && (
+          <div className="browse-mock-notice">
+            Showing sample listings — live data unavailable. Check your Supabase connection and RLS policies.
+          </div>
+        )}
+
         <div className="browse-controls">
           <div className="browse-filters">
             <button
@@ -82,7 +109,15 @@ export default function Browse() {
           />
         </div>
 
-        {filtered.length > 0 ? (
+        {loading ? (
+          <div className="browse-loading">
+            <div className="cards-grid">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="card-skeleton" />
+              ))}
+            </div>
+          </div>
+        ) : filtered.length > 0 ? (
           <div className="cards-grid">
             {filtered.map((listing) => (
               <MicroBuildCard key={listing.id} listing={listing} />
@@ -91,7 +126,13 @@ export default function Browse() {
         ) : (
           <div className="browse-empty">
             <p>No MicroBuilds match your search. Try a different keyword or filter.</p>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setActiveCategory('All'); setSearch(''); }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setActiveCategory('All');
+                setSearch('');
+              }}
+            >
               Clear filters
             </button>
           </div>

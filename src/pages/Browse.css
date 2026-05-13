@@ -87,6 +87,30 @@
   border-color: var(--accent);
 }
 
+.browse-mock-notice {
+  font-size: 0.78rem;
+  color: #f9b032;
+  background: rgba(249, 176, 50, 0.07);
+  border: 1px solid rgba(249, 176, 50, 0.2);
+  border-radius: 6px;
+  padding: 0.5rem 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Loading skeleton */
+.card-skeleton {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  height: 280px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
 .browse-empty {
   text-align: center;
   padding: 4rem 1rem;
