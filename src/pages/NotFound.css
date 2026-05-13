@@ -1,0 +1,41 @@
+.notfound-page {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+}
+
+.notfound-inner {
+  text-align: center;
+  padding: 6rem 1.5rem;
+  max-width: 480px;
+}
+
+.notfound-code {
+  font-size: 5rem;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  color: var(--border);
+  line-height: 1;
+  margin-bottom: 1rem;
+}
+
+.notfound-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.notfound-sub {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1.65;
+  margin-bottom: 2rem;
+}
+
+.notfound-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}

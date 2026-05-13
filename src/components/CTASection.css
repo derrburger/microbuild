@@ -1,0 +1,57 @@
+.cta-section {
+  padding: 5rem 1.5rem;
+  text-align: center;
+}
+
+.cta-section--dark {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.cta-section--accent {
+  background: linear-gradient(135deg, var(--accent) 0%, #00e8a0 100%);
+}
+
+.cta-section--accent .cta-title,
+.cta-section--accent .cta-subtitle {
+  color: #000;
+}
+
+.cta-section--accent .btn-primary {
+  background: #000;
+  color: #fff;
+}
+
+.cta-section--accent .btn-ghost {
+  border-color: rgba(0, 0, 0, 0.3);
+  color: #000;
+}
+
+.cta-inner {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.cta-title {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.cta-subtitle {
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 2rem;
+}
+
+.cta-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
