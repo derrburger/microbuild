@@ -1,8 +1,19 @@
 # MicroBuild — Database Schema
 
-**Status:** Schema designed and SQL written. Not yet deployed to a Supabase project.
-**Source files:** `supabase/schema.sql` (DDL) · `supabase/seed.sql` (initial data)
+**Status:** Deployed. Schema, seed data, and RLS policies are live in the Supabase project.
+**Source files:**
+| File | Purpose | Run order |
+|------|---------|-----------|
+| `supabase/schema.sql` | DDL — creates all tables, indexes, and triggers | 1st |
+| `supabase/seed.sql` | DML — inserts categories and template listings | 2nd |
+| `supabase/policies.sql` | RLS — enables row-level security and creates access policies | 3rd |
+
 **TypeScript types:** `src/types/database.ts`
+
+> **Setup order matters.** Always run `schema.sql` first (tables must exist before seeding),
+> `seed.sql` second (categories must exist before templates), and `policies.sql` third
+> (tables must exist before policies can be attached). `policies.sql` is safe to rerun —
+> it drops and recreates each policy, so a second run is always a no-op.
 
 ---
 
@@ -18,7 +29,7 @@ buyer submits request
         → buyer approves + leaves review
 ```
 
-All tables use UUID primary keys (`gen_random_uuid()`). Row-level security (RLS) is enabled on every table but policies are deferred to Phase 1 when Supabase Auth is wired.
+All tables use UUID primary keys (`gen_random_uuid()`). Row-level security (RLS) is enabled on every table. MVP policies (public reads + anonymous inserts) are defined in `supabase/policies.sql`. Authenticated and admin policies are deferred to Phase 2 when Supabase Auth is wired.
 
 ---
 
@@ -316,4 +327,4 @@ All tables use UUID primary keys (`gen_random_uuid()`). Row-level security (RLS)
 - **No custom Postgres ENUM types** — status fields use `text + CHECK` constraints so they can be extended without `ALTER TYPE` migrations.
 - **`updated_at` trigger** — applied to `business_profiles`, `microbuild_templates`, `buyer_requests`, and `orders`. Maintained automatically by `handle_updated_at()` function.
 - **Circular FK** (`orders.build_packet_id` ↔ `build_packets.order_id`) — resolved by adding the `orders` FK constraint after both tables are created.
-- **RLS enabled but no policies yet** — every table has `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`. Until policies are added, only the service role key can access the tables. The anon key used by the frontend will need explicit `GRANT` or `SELECT` policies for public tables.
+- **RLS policies** — defined in `supabase/policies.sql` (run after `schema.sql` and `seed.sql`). MVP policies grant anonymous SELECT on categories and active templates, and anonymous INSERT on `buyer_requests` and `creator_applications`. The `business_profiles` policies (owner INSERT + SELECT) are stubbed out for Phase 2 and require Supabase Auth. All other tables remain locked to the service-role key until Phase 2.
