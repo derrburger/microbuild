@@ -169,6 +169,176 @@
   font-weight: 600;
 }
 
+/* Auth warning */
+.admin-auth-warning {
+  background: rgba(249, 176, 50, 0.07);
+  border-bottom: 1px solid rgba(249, 176, 50, 0.2);
+  padding: 0.65rem 1.5rem;
+  font-size: 0.82rem;
+  color: #f9b032;
+  line-height: 1.6;
+}
+.admin-auth-warning code {
+  font-family: monospace;
+  background: rgba(249, 176, 50, 0.12);
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+/* Per-section grid overrides */
+.admin-req-cols,
+.admin-app-cols,
+.admin-tpl-cols {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.8rem;
+}
+
+.admin-req-cols { grid-template-columns: 1.2fr 1.5fr 1fr 0.8fr 1fr 1fr; }
+.admin-app-cols { grid-template-columns: 1.2fr 1.6fr 1.4fr 1.4fr 1fr 0.9fr; }
+.admin-tpl-cols { grid-template-columns: 2fr 1fr 1.2fr 0.7fr 1fr 0.8fr; }
+
+/* Overriding old generic admin-table-head/row rules */
+.admin-table-head.admin-req-cols,
+.admin-table-head.admin-app-cols,
+.admin-table-head.admin-tpl-cols {
+  grid-template-columns: inherit;
+}
+
+/* Expandable row wrapper for buyer requests */
+.admin-table-row-wrap {
+  border-bottom: 1px solid var(--border);
+}
+.admin-table-row-wrap:last-child {
+  border-bottom: none;
+}
+.admin-table-row-wrap .admin-table-row {
+  border-bottom: none;
+}
+
+/* Row detail (goal/problem + packet preview) */
+.admin-row-detail {
+  padding: 0.75rem 1.5rem 1rem;
+  border-top: 1px dashed var(--border);
+  background: rgba(255,255,255,0.02);
+}
+.admin-row-goals {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin-bottom: 0.75rem;
+}
+.admin-meta-label {
+  font-weight: 700;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 0.25rem;
+}
+.admin-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Status / state rows */
+.admin-state-row {
+  padding: 1.5rem;
+  font-size: 0.875rem;
+}
+.admin-loading { color: var(--text-muted); font-style: italic; }
+.admin-error   { color: #ef4444; }
+.admin-empty   { color: var(--text-muted); font-style: italic; }
+
+/* Chip tags (tools/niches) */
+.admin-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: flex-start;
+}
+.admin-chip {
+  display: inline-block;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Build Packet Preview */
+.packet-preview {
+  margin-top: 0.5rem;
+}
+.packet-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.packet-toggle:hover {
+  background: rgba(56, 189, 130, 0.07);
+}
+.packet-body {
+  margin-top: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.packet-disclaimer {
+  font-size: 0.75rem;
+  color: #f9b032;
+  background: rgba(249, 176, 50, 0.06);
+  border: 1px solid rgba(249, 176, 50, 0.18);
+  border-radius: 5px;
+  padding: 0.5rem 0.75rem;
+}
+.packet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.packet-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+}
+.packet-section p {
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin: 0;
+}
+.packet-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.packet-list li {
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 /* Placeholder */
 .admin-placeholder {
   padding: 2rem 1.5rem;
@@ -177,9 +347,22 @@
   font-style: italic;
 }
 
+@media (max-width: 1024px) {
+  .admin-req-cols { grid-template-columns: 1.2fr 1.2fr 1fr 0.7fr 0.9fr 0.9fr; }
+  .admin-app-cols { grid-template-columns: 1fr 1.4fr 1.2fr 1.2fr 0.9fr 0.8fr; }
+  .admin-tpl-cols { grid-template-columns: 2fr 1fr 1.2fr 0.7fr 1fr 0.8fr; }
+}
+
 @media (max-width: 900px) {
   .admin-stats {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .admin-req-cols,
+  .admin-app-cols,
+  .admin-tpl-cols {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
   }
 
   .admin-table-head,

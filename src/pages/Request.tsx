@@ -5,6 +5,8 @@ import { mockListings } from '../data/mockListings';
 import { fetchTemplateBySlug } from '../lib/templates';
 import { insertBuyerRequest } from '../lib/supabase';
 import type { SupabaseInsertError } from '../lib/supabase';
+import { generateBuildPacket } from '../lib/buildPacket';
+import type { GeneratedBuildPacket } from '../lib/buildPacket';
 import './Request.css';
 
 const buildTypes: Array<MicroBuildCategory | 'Not sure'> = [
@@ -82,6 +84,8 @@ export default function Request() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [packet, setPacket] = useState<GeneratedBuildPacket | null>(null);
+  const [packetOpen, setPacketOpen] = useState(false);
 
   // Fetch the real template from Supabase when slug is present so we can:
   //   1. Store the actual UUID for the template_id FK
@@ -144,6 +148,7 @@ export default function Request() {
       return;
     }
 
+    setPacket(generateBuildPacket(form, prefillListing?.title));
     setSubmitted(true);
   }
 
@@ -164,6 +169,56 @@ export default function Request() {
           <Link to="/browse" className="btn btn-ghost btn-sm">
             Browse More MicroBuilds
           </Link>
+
+          {packet && (
+            <div className="success-packet">
+              <button
+                className="success-packet-toggle"
+                onClick={() => setPacketOpen((v) => !v)}
+                aria-expanded={packetOpen}
+              >
+                {packetOpen ? '▲ Hide Build Packet Preview' : '▼ Preview Your Build Packet'}
+              </button>
+
+              {packetOpen && (
+                <div className="success-packet-body">
+                  <p className="success-packet-disclaimer">
+                    ⚡ This is a template-generated preview — your real packet will be
+                    crafted manually and reviewed with you before build begins.
+                  </p>
+
+                  <div className="success-packet-section">
+                    <div className="success-packet-label">Business Summary</div>
+                    <p>{packet.businessSummary}</p>
+                  </div>
+                  <div className="success-packet-section">
+                    <div className="success-packet-label">Recommended Build</div>
+                    <p>{packet.recommendedBuild}</p>
+                  </div>
+                  <div className="success-packet-section">
+                    <div className="success-packet-label">Suggested Copy Direction</div>
+                    <p>{packet.suggestedCopyDirection}</p>
+                  </div>
+                  <div className="success-packet-section">
+                    <div className="success-packet-label">Design Direction</div>
+                    <p>{packet.designDirection}</p>
+                  </div>
+                  <div className="success-packet-section">
+                    <div className="success-packet-label">Suggested Form Fields</div>
+                    <ul className="success-packet-list">
+                      {packet.formFields.map((f) => <li key={f}>{f}</li>)}
+                    </ul>
+                  </div>
+                  <div className="success-packet-section">
+                    <div className="success-packet-label">Quality Checklist</div>
+                    <ul className="success-packet-list">
+                      {packet.qualityChecklist.map((item) => <li key={item}>☐ {item}</li>)}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );

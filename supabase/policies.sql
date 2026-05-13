@@ -99,6 +99,34 @@ CREATE POLICY "business_profiles_owner_select"
   USING (auth.uid() = user_id);
 
 
+-- ─── DEVELOPMENT ONLY — Admin page read access ───────────────────────────────
+-- These policies let the anon key SELECT from buyer_requests and
+-- creator_applications, which makes the /admin page show real submissions.
+--
+-- ⚠️  SECURITY WARNING: These make ALL submissions readable to anyone who
+--     knows the Supabase project URL and anon key.
+--     REMOVE or REPLACE with auth.uid()-scoped policies before going public.
+--     Phase 2 will replace these with admin role checks.
+--
+-- Uncomment BOTH blocks below to enable the /admin page data reads.
+
+-- ALTER TABLE public.buyer_requests ENABLE ROW LEVEL SECURITY;
+-- DROP POLICY IF EXISTS "buyer_requests_dev_admin_read" ON public.buyer_requests;
+-- CREATE POLICY "buyer_requests_dev_admin_read"
+--   ON public.buyer_requests
+--   FOR SELECT
+--   TO anon, authenticated
+--   USING (true);
+
+-- ALTER TABLE public.creator_applications ENABLE ROW LEVEL SECURITY;
+-- DROP POLICY IF EXISTS "creator_applications_dev_admin_read" ON public.creator_applications;
+-- CREATE POLICY "creator_applications_dev_admin_read"
+--   ON public.creator_applications
+--   FOR SELECT
+--   TO anon, authenticated
+--   USING (true);
+
+
 -- ─── Verification query (uncomment to check active policies) ─────────────────
 -- SELECT tablename, policyname, permissive, roles, cmd
 -- FROM   pg_policies

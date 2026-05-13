@@ -1,10 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchTemplateBySlug } from '../lib/templates';
+import templateDetails from '../data/templateDetails';
 import StatusBadge from '../components/StatusBadge';
 import CTASection from '../components/CTASection';
 import type { MicroBuildListing } from '../types';
 import './BuildDetail.css';
+
+function FaqItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`faq-item${open ? ' faq-item--open' : ''}`}>
+      <button className="faq-question" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span>{q}</span>
+        <span className="faq-toggle">{open ? '−' : '+'}</span>
+      </button>
+      {open && <div className="faq-answer"><p>{a}</p></div>}
+    </div>
+  );
+}
 
 const categoryIcons: Record<string, string> = {
   'Quote Funnel': '⚡',
@@ -116,6 +130,57 @@ export default function BuildDetail() {
                 ))}
               </ul>
             </section>
+
+            {/* Extended sections from static detail data */}
+            {templateDetails[listing.slug] && (() => {
+              const detail = templateDetails[listing.slug];
+              return (
+                <>
+                  <section className="detail-section">
+                    <h2>Customer Flow</h2>
+                    <p className="setup-intro">Here's exactly what your customers experience:</p>
+                    <ol className="detail-flow-list">
+                      {detail.customerFlow.map((step, i) => (
+                        <li key={i} className="detail-flow-item">
+                          <span className="detail-flow-num">{i + 1}</span>
+                          <span>{step}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+
+                  <section className="detail-section">
+                    <h2>What the Business Receives</h2>
+                    <ul className="feature-list">
+                      {detail.businessReceives.map((item) => (
+                        <li key={item}>
+                          <span className="feature-check">✓</span>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section className="detail-section">
+                    <h2>Best Fit Industries</h2>
+                    <div className="detail-industries">
+                      {detail.bestFitIndustries.map((ind) => (
+                        <span key={ind} className="detail-industry-tag">{ind}</span>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="detail-section detail-faq">
+                    <h2>Frequently Asked Questions</h2>
+                    <div className="faq-list">
+                      {detail.faq.map((item, i) => (
+                        <FaqItem key={i} q={item.q} a={item.a} />
+                      ))}
+                    </div>
+                  </section>
+                </>
+              );
+            })()}
           </div>
 
           <aside className="detail-sidebar">
