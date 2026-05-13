@@ -1,9 +1,0 @@
-warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/database-schema.md', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'package-lock.json', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
- .gitignore              |   5 [32m+[m
- docs/database-schema.md | 256 [32m+++++++++++++++++++++++++++++++++[m[31m---------------[m
- package-lock.json       |  98 [32m+++++++++++++++++[m[31m-[m
- package.json            |   1 [32m+[m
- 4 files changed, 278 insertions(+), 82 deletions(-)
