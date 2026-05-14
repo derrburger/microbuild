@@ -793,27 +793,19 @@
   color: var(--text-muted);
 }
 
-/* ─── Status dropdown ───────────────────────────────────────────────────────── */
-.status-dropdown-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
+/* ─── Status badge (replaces dropdown) ──────────────────────────────────────── */
+.creator-status-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  cursor: default;
+  white-space: nowrap;
 }
-.status-dropdown {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: pointer;
-  outline: none;
-  transition: border-color 0.12s;
-  min-width: 130px;
-}
-.status-dropdown:hover { border-color: var(--text-muted); }
-.status-dropdown:disabled { opacity: 0.6; cursor: not-allowed; }
-.status-dropdown--error .status-dropdown { border-color: #ef4444; }
 .status-saving {
   font-size: 0.68rem;
   color: var(--accent);
@@ -1123,13 +1115,45 @@
 }
 
 /* ─── Approval action row ───────────────────────────────────────────────────── */
-.approval-action-row {
+/* ─── Admin Approval Panel ──────────────────────────────────────────────────── */
+.admin-approval-panel {
+  border-top: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+  padding: 0.65rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.aap-current-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+}
+.aap-status-label { color: var(--text-muted); }
+.aap-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: #8a94a6;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.aap-badge--active              { color: #00d478; background: #00d47818; }
+.aap-badge--approved_pending_payment { color: #63b3ed; background: #63b3ed18; }
+.aap-badge--needs_more_info     { color: #f9b032; background: #f9b03218; }
+.aap-badge--rejected            { color: #ef4444; background: #ef444418; }
+.aap-badge--suspended           { color: #a78bfa; background: #a78bfa18; }
+.aap-badge--reviewing           { color: #63b3ed; background: #63b3ed12; }
+.aap-badge--new                 { color: #8a94a6; background: rgba(255,255,255,0.06); }
+.aap-saved { font-size: 0.68rem; color: #00d478; font-weight: 600; }
+
+.aap-btn-group {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  padding: 0.65rem 1rem;
-  border-top: 1px solid var(--border);
-  background: rgba(255,255,255,0.02);
 }
 .approval-btn {
   font-size: 0.72rem;
@@ -1138,23 +1162,79 @@
   border-radius: 4px;
   border: 1px solid;
   cursor: pointer;
-  transition: opacity 0.15s;
+  background: transparent;
+  transition: background 0.15s, opacity 0.15s;
+  line-height: 1.4;
 }
 .approval-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.approval-btn--approve {
-  color: #00d478; border-color: #00d47855; background: #00d47812;
-}
-.approval-btn--approve:hover:not(:disabled) { background: #00d47825; }
-.approval-btn--info {
-  color: #f9b032; border-color: #f9b03255; background: #f9b03212;
-}
-.approval-btn--review {
-  color: #63b3ed; border-color: #63b3ed55; background: #63b3ed12;
-}
-.approval-btn--reject {
-  color: #ef4444; border-color: #ef444455; background: #ef444412;
-}
+.approval-btn--approve  { color: #00d478; border-color: #00d47855; background: #00d47812; }
+.approval-btn--approve:hover:not(:disabled)  { background: #00d47825; }
+.approval-btn--info     { color: #f9b032; border-color: #f9b03255; background: #f9b03212; }
+.approval-btn--info:hover:not(:disabled)     { background: #f9b03225; }
+.approval-btn--review   { color: #63b3ed; border-color: #63b3ed55; background: #63b3ed12; }
+.approval-btn--review:hover:not(:disabled)   { background: #63b3ed25; }
+.approval-btn--reject   { color: #ef4444; border-color: #ef444455; background: #ef444412; }
+.approval-btn--reject:hover:not(:disabled)   { background: #ef444425; }
+.approval-btn--suspend  { color: #a78bfa; border-color: #a78bfa55; background: #a78bfa12; }
+.approval-btn--suspend:hover:not(:disabled)  { background: #a78bfa25; }
+.approval-btn--public   { color: #00d478; border-color: #00d47855; background: #00d47818; }
+.approval-btn--hidden   { color: #8a94a6; border-color: #505870; background: #1e2235; }
+.approval-btn--create   { color: var(--accent); border-color: var(--accent); }
+.approval-btn--create:hover:not(:disabled) { background: rgba(0,212,120,0.08); }
+.approval-btn--ghost    { color: var(--text-muted); border-color: var(--border); background: transparent; }
+.approval-btn--ghost:hover:not(:disabled)  { background: rgba(255,255,255,0.04); }
 .approval-saving { font-size: 0.72rem; color: var(--text-muted); align-self: center; }
+
+.aap-reason-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.aap-reason-input {
+  width: 100%;
+  min-height: 56px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  padding: 0.45rem 0.65rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.aap-reason-input:focus { outline: none; border-color: var(--accent); }
+.aap-reason-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+.aap-profile-section {
+  padding-top: 0.3rem;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.aap-profile-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.aap-profile-label { font-size: 0.7rem; color: var(--text-muted); }
+
+.aap-messages {
+  padding-top: 0.3rem;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.aap-msg-header { font-size: 0.68rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+.aap-msg-list { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.aap-msg-item { display: flex; align-items: center; gap: 0.35rem; }
+.aap-msg-label { font-size: 0.7rem; color: var(--text-secondary); }
+.aap-copy-btn {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.aap-copy-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
 
 /* ─── Create profile button ─────────────────────────────────────────────────── */
 .create-profile-row {

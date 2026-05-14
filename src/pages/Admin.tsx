@@ -70,7 +70,7 @@ interface CreatorApplicationRow {
   message: string | null;
   status: string;
   created_at: string;
-  // Tier fields (from migration: add_creator_tiers.sql)
+  // Tier fields
   tier: string;
   requested_plan_price: number;
   top_projects: string | null;
@@ -81,6 +81,14 @@ interface CreatorApplicationRow {
   certifications: string | null;
   credential_links: string[];
   case_studies: string | null;
+  // Approval workflow fields (account-approval-workflow.sql)
+  auth_user_id: string | null;
+  user_profile_id: string | null;
+  approval_status: string | null;
+  admin_notes: string | null;
+  rejected_reason: string | null;
+  needs_info_reason: string | null;
+  linked_creator_profile_id: string | null;
 }
 
 interface EnrichedRequest {
@@ -133,8 +141,16 @@ function normalizeCreatorApp(raw: Record<string, unknown>): CreatorApplicationRo
     github_url:           raw.github_url != null ? safeText(raw.github_url) : null,
     linkedin_url:         raw.linkedin_url != null ? safeText(raw.linkedin_url) : null,
     certifications:       raw.certifications != null ? safeText(raw.certifications) : null,
-    credential_links:     safeArray<string>(raw.credential_links),
-    case_studies:         raw.case_studies != null ? safeText(raw.case_studies) : null,
+    credential_links:          safeArray<string>(raw.credential_links),
+    case_studies:              raw.case_studies != null ? safeText(raw.case_studies) : null,
+    // Approval workflow fields
+    auth_user_id:              raw.auth_user_id != null ? safeText(raw.auth_user_id) : null,
+    user_profile_id:           raw.user_profile_id != null ? safeText(raw.user_profile_id) : null,
+    approval_status:           raw.approval_status != null ? safeText(raw.approval_status) : null,
+    admin_notes:               raw.admin_notes != null ? safeText(raw.admin_notes) : null,
+    rejected_reason:           raw.rejected_reason != null ? safeText(raw.rejected_reason) : null,
+    needs_info_reason:         raw.needs_info_reason != null ? safeText(raw.needs_info_reason) : null,
+    linked_creator_profile_id: raw.linked_creator_profile_id != null ? safeText(raw.linked_creator_profile_id) : null,
   };
 }
 
@@ -219,52 +235,151 @@ async function updateRequestStatus(id: string, status: string): Promise<boolean>
   return true;
 }
 
-async function updateApplicationStatus(id: string, status: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('creator_applications')
-    .update({ status })
-    .eq('id', id);
-  if (error) { console.error('[Admin] update application status:', error); return false; }
-  return true;
-}
-
-async function findExistingProfile(
-  applicationId: string,
-): Promise<{ id: string; slug: string | null; public_profile_status: string } | null> {
-  const { data, error } = await (supabase
-    .from('creator_profiles')
-    .select('id, slug, public_profile_status')
-    .eq('creator_application_id', applicationId)
-    .maybeSingle() as unknown as Promise<{
-      data: { id: string; slug: string | null; public_profile_status: string } | null;
-      error: unknown;
-    }>);
-  if (error) { console.error('[Admin] findExistingProfile:', error); return null; }
-  return data ?? null;
-}
-
-async function createCreatorProfile(
+/**
+ * Comprehensive approval workflow action.
+ * Updates creator_applications + cascades to user_profiles + creator_profiles.
+ */
+async function performApprovalAction(
   app: CreatorApplicationRow,
-  fitScore: number,
-): Promise<{ id: string; slug: string | null; public_profile_status: string } | null> {
-  // Prevent duplicate profiles for the same application
-  const existing = await findExistingProfile(app.id);
-  if (existing) return existing;
+  action: 'approve_free' | 'approve_professional' | 'approve_verified'
+        | 'needs_more_info' | 'reject' | 'suspend' | 'reviewing',
+  opts: { reason?: string; fitScore?: number } = {},
+): Promise<{ ok: boolean; profileId?: string }> {
+  type StatusMap = Record<typeof action, string>;
+  const statusMap: StatusMap = {
+    approve_free:         'active',
+    approve_professional: 'approved_pending_payment',
+    approve_verified:     'approved_pending_payment',
+    needs_more_info:      'needs_more_info',
+    reject:               'rejected',
+    suspend:              'suspended',
+    reviewing:            'reviewing',
+  };
+  const newStatus = statusMap[action];
 
-  const payload = buildCreatorProfileInsert(app as unknown as DBCreatorApplicationRow, fitScore);
-  const { data, error } = await (supabase
-    .from('creator_profiles')
-    .insert(payload as unknown as Record<string, unknown>)
-    .select('id, slug, public_profile_status')
-    .single() as unknown as Promise<{
-      data: { id: string; slug: string | null; public_profile_status: string } | null;
-      error: unknown;
-    }>);
-  if (error) { console.error('[Admin] create creator_profile:', error); return null; }
-  return data;
+  // 1. Update creator_applications
+  const appUpdate: Record<string, unknown> = {
+    status:            newStatus,
+    approval_status:   newStatus,
+    admin_decision_at: new Date().toISOString(),
+  };
+  if (action === 'reject' && opts.reason)       appUpdate.rejected_reason   = opts.reason;
+  if (action === 'needs_more_info' && opts.reason) appUpdate.needs_info_reason = opts.reason;
+
+  const { error: appErr } = await supabase
+    .from('creator_applications')
+    .update(appUpdate)
+    .eq('id', app.id);
+  if (appErr) { console.error('[Admin] performApprovalAction app update:', appErr); return { ok: false }; }
+
+  // 2. Cascade to user_profiles (find by auth_user_id or email)
+  const cascadeUserProfile = async (updates: Record<string, unknown>) => {
+    if (app.auth_user_id) {
+      await supabase.from('user_profiles').update(updates).eq('auth_user_id', app.auth_user_id);
+    } else {
+      await supabase.from('user_profiles').update(updates).eq('email', app.email);
+    }
+  };
+
+  // 3. Handle approval-specific logic
+  if (action === 'approve_free' || action === 'approve_professional' || action === 'approve_verified') {
+    const tierMap: Record<string, string> = {
+      approve_free:         'free',
+      approve_professional: 'professional',
+      approve_verified:     'verified',
+    };
+    const subMap: Record<string, string> = {
+      approve_free:         'not_required',
+      approve_professional: 'pending_payment',
+      approve_verified:     'pending_payment',
+    };
+    const tier = tierMap[action];
+    const subscription_status = subMap[action];
+    const verif = action === 'approve_verified' ? 'pending' : 'unverified';
+
+    // Update user_profiles
+    await cascadeUserProfile({
+      creator_application_status: newStatus,
+      approval_status:            newStatus,
+      account_type:               'creator',
+    });
+
+    // Upsert creator_profile (check existing first)
+    const { data: existingProfile } = await supabase
+      .from('creator_profiles')
+      .select('id, public_profile_status')
+      .eq('creator_application_id', app.id)
+      .maybeSingle();
+
+    if (existingProfile) {
+      // Update existing profile
+      await supabase
+        .from('creator_profiles')
+        .update({
+          tier,
+          approval_status: newStatus,
+          subscription_status,
+          verification_status: verif,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingProfile.id);
+
+      // Link back to application
+      await supabase
+        .from('creator_applications')
+        .update({ linked_creator_profile_id: existingProfile.id })
+        .eq('id', app.id);
+
+      return { ok: true, profileId: existingProfile.id };
+    } else {
+      // Create new creator_profile
+      const fitScore = opts.fitScore ?? 50;
+      const payload = buildCreatorProfileInsert(app as unknown as DBCreatorApplicationRow, fitScore);
+      const fullPayload = {
+        ...(payload as unknown as Record<string, unknown>),
+        tier,
+        approval_status:     newStatus,
+        subscription_status,
+        verification_status: verif,
+        public_profile_status: 'hidden',
+        auth_user_id: app.auth_user_id ?? null,
+      };
+      const { data: newProfile, error: cpErr } = await supabase
+        .from('creator_profiles')
+        .insert(fullPayload)
+        .select('id')
+        .single();
+
+      if (cpErr) {
+        console.error('[Admin] create creator_profile on approval:', cpErr);
+      } else if (newProfile) {
+        await supabase.from('creator_applications').update({ linked_creator_profile_id: newProfile.id }).eq('id', app.id);
+        await cascadeUserProfile({ creator_profile_id: newProfile.id });
+        return { ok: true, profileId: newProfile.id };
+      }
+    }
+  } else {
+    // For non-approval actions, still update user_profiles
+    await cascadeUserProfile({ creator_application_status: newStatus });
+
+    // For reject/suspend: hide creator_profile if it exists
+    if (action === 'reject' || action === 'suspend') {
+      if (app.linked_creator_profile_id) {
+        await supabase
+          .from('creator_profiles')
+          .update({
+            public_profile_status: 'hidden',
+            ...(action === 'suspend' ? { approval_status: 'suspended' } : {}),
+          })
+          .eq('id', app.linked_creator_profile_id);
+      }
+    }
+  }
+
+  return { ok: true };
 }
 
-async function setProfileVisibility(
+async function setProfileVisibility_v2(
   profileId: string,
   status: 'public' | 'hidden' | 'paused',
 ): Promise<boolean> {
@@ -275,6 +390,7 @@ async function setProfileVisibility(
   if (error) { console.error('[Admin] setProfileVisibility:', error); return false; }
   return true;
 }
+
 
 async function saveBuiltPacket(
   requestId: string,
@@ -981,172 +1097,317 @@ function AiOpsAssistant({
 
 // ─── Creator Application Card ─────────────────────────────────────────────────
 
-const APP_STATUS_OPTIONS: { status: string; label: string }[] = [
-  { status: 'new',                      label: 'New'                      },
-  { status: 'reviewing',                label: 'In Review'                },
-  { status: 'needs_portfolio_review',   label: 'Needs Portfolio'          },
-  { status: 'needs_more_info',          label: 'Needs More Info'          },
-  { status: 'approved_pending_payment', label: 'Approved — Pending Payment'},
-  { status: 'active',                   label: 'Active'                   },
-  { status: 'rejected',                 label: 'Rejected'                 },
-  { status: 'suspended',                label: 'Suspended'                },
-];
+// ─── Admin Approval Panel (replaces ApprovalActionRow + CreateProfileButton) ──
 
-// ─── Create Profile Button ────────────────────────────────────────────────────
+type ApprovalAction = 'approve_free' | 'approve_professional' | 'approve_verified'
+                    | 'needs_more_info' | 'reject' | 'suspend' | 'reviewing';
 
-function CreateProfileButton({
+function copyToClipboard(text: string) {
+  navigator.clipboard.writeText(text).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  });
+}
+
+function AdminApprovalPanel({
   app,
   fitScore,
+  onStatusChange,
 }: {
   app: CreatorApplicationRow;
   fitScore: number;
+  onStatusChange: (id: string, newStatus: string) => void;
 }) {
-  const [state, setState] = useState<'idle' | 'creating' | 'done' | 'error'>('idle');
-  const [profileId, setProfileId]   = useState<string | null>(null);
-  const [visibility, setVisibility] = useState<string>('hidden');
-  const [toggling, setToggling]     = useState(false);
-  const isApproved = ['approved_pending_payment', 'active'].includes(app.status);
+  const [loading, setLoading]               = useState(false);
+  const [lastAction, setLastAction]         = useState<string | null>(null);
+  const [profileId, setProfileId]           = useState<string | null>(app.linked_creator_profile_id ?? null);
+  const [profileVisibility, setProfileVis]  = useState<string>('hidden');
+  const [togglingVis, setTogglingVis]       = useState(false);
+  const [reasonInput, setReasonInput]       = useState('');
+  const [showReasonFor, setShowReasonFor]   = useState<'reject' | 'needs_more_info' | null>(null);
+  const [copied, setCopied]                 = useState<string | null>(null);
 
-  async function handleCreate() {
-    setState('creating');
-    const result = await createCreatorProfile(app, fitScore);
-    if (!result) {
-      setState('error');
-      setTimeout(() => setState('idle'), 4000);
-      return;
+  const s    = app.status;
+  const tier = safeText(app.tier, 'free');
+  const name = safeText(app.full_name, 'the applicant');
+
+  // Load existing linked profile visibility on mount
+  useState(() => {
+    if (app.linked_creator_profile_id) {
+      supabase
+        .from('creator_profiles')
+        .select('id, public_profile_status')
+        .eq('id', app.linked_creator_profile_id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setProfileId(data.id);
+            setProfileVis((data as { id: string; public_profile_status: string }).public_profile_status ?? 'hidden');
+          }
+        });
     }
-    setProfileId(result.id);
-    setVisibility(result.public_profile_status ?? 'hidden');
-    setState('done');
+  });
+
+  async function doAction(action: ApprovalAction, reason?: string) {
+    setLoading(true);
+    const result = await performApprovalAction(app, action, { reason, fitScore });
+    setLoading(false);
+    if (result.ok) {
+      const statusMap: Record<ApprovalAction, string> = {
+        approve_free: 'active', approve_professional: 'approved_pending_payment',
+        approve_verified: 'approved_pending_payment', needs_more_info: 'needs_more_info',
+        reject: 'rejected', suspend: 'suspended', reviewing: 'reviewing',
+      };
+      const newStatus = statusMap[action];
+      onStatusChange(app.id, newStatus);
+      setLastAction(action);
+      setShowReasonFor(null);
+      setReasonInput('');
+      if (result.profileId) {
+        setProfileId(result.profileId);
+        setProfileVis('hidden');
+      }
+    } else {
+      console.error('[Admin] doAction failed:', action);
+    }
   }
 
   async function handleToggleVisibility() {
     if (!profileId) return;
-    const next = visibility === 'public' ? 'hidden' : 'public';
-    setToggling(true);
-    const ok = await setProfileVisibility(profileId, next);
-    if (ok) setVisibility(next);
-    setToggling(false);
+    const next = profileVisibility === 'public' ? 'hidden' : 'public';
+    setTogglingVis(true);
+    const ok = await setProfileVisibility_v2(profileId, next);
+    if (ok) setProfileVis(next);
+    setTogglingVis(false);
   }
 
-  if (state === 'done' && profileId) {
-    const isPublic = visibility === 'public';
-    return (
-      <div className="create-profile-done">
-        <span>✓ Profile {isPublic ? 'live' : 'created (hidden)'}</span>
-        <div className="create-profile-actions">
+  function handleCopy(text: string, key: string) {
+    copyToClipboard(text);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  // ── Generated messages ──────────────────────────────────────────────────────
+  const tierPrice = tier === 'professional' ? '$15/mo' : tier === 'verified' ? '$25/mo' : 'Free';
+  const messages: Record<string, string> = {
+    approval_free:
+      `Hi ${name},\n\nGreat news — your Free Creator application has been approved! ` +
+      `Your MicroBuild creator account is now active. Log in to complete your profile and start receiving project matches.\n\nWelcome to MicroBuild!`,
+    approval_professional:
+      `Hi ${name},\n\nYour Professional Creator application has been approved! ` +
+      `To activate your Pro account, you'll need to set up your ${tierPrice} subscription. ` +
+      `We'll send you subscription instructions shortly. No charge today.\n\nWelcome to MicroBuild Pro!`,
+    approval_verified:
+      `Hi ${name},\n\nYour Verified Creator application has been conditionally approved. ` +
+      `To complete verification, your submitted credentials and portfolio will be reviewed in detail. ` +
+      `You'll also need to set up your ${tierPrice} subscription after verification is confirmed.\n\nWelcome to MicroBuild Verified!`,
+    needs_more_info:
+      `Hi ${name},\n\nThank you for applying to MicroBuild. We need a bit more information before we can make a decision:\n\n` +
+      `${reasonInput || '[Add specific info needed here]'}\n\nPlease reply to this message with the requested details and we'll continue your review.`,
+    rejection:
+      `Hi ${name},\n\nThank you for applying to MicroBuild. After reviewing your application, we're not able to approve it at this time.\n\n` +
+      `${reasonInput || '[Add reason/feedback here]'}\n\nYou're welcome to reapply in the future as your portfolio and experience grow.`,
+  };
+
+  const isApproved = ['active', 'approved_pending_payment'].includes(s);
+  const isTerminal = ['rejected', 'suspended'].includes(s);
+
+  return (
+    <div className="admin-approval-panel">
+      {/* Status indicator */}
+      <div className="aap-current-status">
+        <span className="aap-status-label">Status:</span>
+        <span className={`aap-badge aap-badge--${s}`}>{s.replace(/_/g, ' ')}</span>
+        {lastAction && <span className="aap-saved">✓ Saved</span>}
+      </div>
+
+      {/* Primary action buttons */}
+      <div className="aap-btn-group">
+        {/* Approve Free — only when tier is free */}
+        {tier === 'free' && s !== 'active' && (
           <button
-            className={`create-profile-visibility-btn${isPublic ? ' is-public' : ''}`}
-            onClick={handleToggleVisibility}
-            disabled={toggling}
-            title={isPublic ? 'Hide profile from public directory' : 'Make profile publicly visible'}
+            className="approval-btn approval-btn--approve"
+            onClick={() => doAction('approve_free')}
+            disabled={loading}
+            title="Approve — activates Free Creator account immediately, creates hidden creator profile"
           >
-            {toggling ? '…' : isPublic ? '🟢 Public — click to hide' : '⚫ Hidden — click to activate'}
+            ✓ Approve Free
           </button>
-          <a
-            className="create-profile-link"
-            href={`/creator/${profileId}`}
-            target="_blank"
-            rel="noopener noreferrer"
+        )}
+
+        {/* Approve Professional — only when tier is professional */}
+        {tier === 'professional' && s !== 'approved_pending_payment' && s !== 'active' && (
+          <button
+            className="approval-btn approval-btn--approve"
+            onClick={() => doAction('approve_professional')}
+            disabled={loading}
+            title="Approve — creates profile with pending_payment status, $15/mo required"
           >
-            Preview →
-          </a>
+            ✓ Approve Pro (Pending Payment)
+          </button>
+        )}
+
+        {/* Approve Verified — only when tier is verified */}
+        {tier === 'verified' && s !== 'approved_pending_payment' && s !== 'active' && (
+          <button
+            className="approval-btn approval-btn--approve"
+            onClick={() => doAction('approve_verified')}
+            disabled={loading}
+            title="Approve — sets verification_status=pending, $25/mo required"
+          >
+            ✓ Approve Verified (Pending Payment)
+          </button>
+        )}
+
+        {/* Reviewing */}
+        {s !== 'reviewing' && !isTerminal && (
+          <button
+            className="approval-btn approval-btn--review"
+            onClick={() => doAction('reviewing')}
+            disabled={loading}
+          >
+            Mark In Review
+          </button>
+        )}
+
+        {/* Needs More Info */}
+        {s !== 'needs_more_info' && !isTerminal && (
+          <button
+            className="approval-btn approval-btn--info"
+            onClick={() => setShowReasonFor(showReasonFor === 'needs_more_info' ? null : 'needs_more_info')}
+            disabled={loading}
+          >
+            ? Needs Info
+          </button>
+        )}
+
+        {/* Reject */}
+        {s !== 'rejected' && (
+          <button
+            className="approval-btn approval-btn--reject"
+            onClick={() => setShowReasonFor(showReasonFor === 'reject' ? null : 'reject')}
+            disabled={loading}
+          >
+            ✗ Reject
+          </button>
+        )}
+
+        {/* Suspend */}
+        {s !== 'suspended' && (
+          <button
+            className="approval-btn approval-btn--suspend"
+            onClick={() => doAction('suspend')}
+            disabled={loading}
+          >
+            ⊘ Suspend
+          </button>
+        )}
+
+        {loading && <span className="approval-saving">Saving…</span>}
+      </div>
+
+      {/* Reason input — shown when Needs Info or Reject is clicked */}
+      {showReasonFor && (
+        <div className="aap-reason-block">
+          <textarea
+            className="aap-reason-input"
+            placeholder={
+              showReasonFor === 'reject'
+                ? 'Rejection reason (optional — shown to creator)'
+                : 'What specific info is needed? (shown to creator in dashboard)'
+            }
+            value={reasonInput}
+            onChange={(e) => setReasonInput(e.target.value)}
+            rows={3}
+          />
+          <div className="aap-reason-actions">
+            <button
+              className={`approval-btn ${showReasonFor === 'reject' ? 'approval-btn--reject' : 'approval-btn--info'}`}
+              onClick={() => doAction(showReasonFor, reasonInput || undefined)}
+              disabled={loading}
+            >
+              Confirm {showReasonFor === 'reject' ? 'Rejection' : 'Needs Info'}
+            </button>
+            <button className="approval-btn approval-btn--ghost" onClick={() => { setShowReasonFor(null); setReasonInput(''); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Profile management — shown when approved */}
+      {isApproved && (
+        <div className="aap-profile-section">
+          {profileId ? (
+            <div className="aap-profile-controls">
+              <span className="aap-profile-label">Creator profile:</span>
+              <button
+                className={`approval-btn ${profileVisibility === 'public' ? 'approval-btn--public' : 'approval-btn--hidden'}`}
+                onClick={handleToggleVisibility}
+                disabled={togglingVis}
+                title={profileVisibility === 'public' ? 'Hide from public /creators directory' : 'Make visible in /creators directory'}
+              >
+                {togglingVis ? '…' : profileVisibility === 'public' ? '🟢 Public — click to hide' : '⚫ Hidden — click to publish'}
+              </button>
+              <a className="approval-btn approval-btn--ghost" href={`/creator/${profileId}`} target="_blank" rel="noopener noreferrer">
+                Preview →
+              </a>
+            </div>
+          ) : (
+            <button
+              className="approval-btn approval-btn--create"
+              onClick={() => doAction(tier === 'free' ? 'approve_free' : tier === 'professional' ? 'approve_professional' : 'approve_verified')}
+              disabled={loading}
+            >
+              + Create Creator Profile
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Copyable messages */}
+      <div className="aap-messages">
+        <div className="aap-msg-header">Copyable messages:</div>
+        <div className="aap-msg-list">
+          {tier === 'free' && (
+            <div className="aap-msg-item">
+              <span className="aap-msg-label">Approval (Free)</span>
+              <button className="aap-copy-btn" onClick={() => handleCopy(messages.approval_free, 'free')}>
+                {copied === 'free' ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+          )}
+          {tier === 'professional' && (
+            <div className="aap-msg-item">
+              <span className="aap-msg-label">Approval (Pro)</span>
+              <button className="aap-copy-btn" onClick={() => handleCopy(messages.approval_professional, 'pro')}>
+                {copied === 'pro' ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+          )}
+          {tier === 'verified' && (
+            <div className="aap-msg-item">
+              <span className="aap-msg-label">Approval (Verified)</span>
+              <button className="aap-copy-btn" onClick={() => handleCopy(messages.approval_verified, 'verified')}>
+                {copied === 'verified' ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+          )}
+          <div className="aap-msg-item">
+            <span className="aap-msg-label">Needs More Info</span>
+            <button className="aap-copy-btn" onClick={() => handleCopy(messages.needs_more_info, 'nmi')}>
+              {copied === 'nmi' ? '✓ Copied' : 'Copy'}
+            </button>
+          </div>
+          <div className="aap-msg-item">
+            <span className="aap-msg-label">Rejection</span>
+            <button className="aap-copy-btn" onClick={() => handleCopy(messages.rejection, 'rej')}>
+              {copied === 'rej' ? '✓ Copied' : 'Copy'}
+            </button>
+          </div>
         </div>
       </div>
-    );
-  }
-
-  if (!isApproved) {
-    return (
-      <button className="create-profile-btn create-profile-btn--disabled" disabled title="Set application status to approved_pending_payment or active first">
-        Create Profile <span className="create-profile-hint">(needs approval first)</span>
-      </button>
-    );
-  }
-
-  return (
-    <button
-      className={`create-profile-btn${state === 'error' ? ' create-profile-btn--error' : ''}`}
-      onClick={handleCreate}
-      disabled={state === 'creating'}
-    >
-      {state === 'creating' ? 'Creating…' : state === 'error' ? 'Failed — retry' : '+ Create Creator Profile'}
-    </button>
-  );
-}
-
-// ─── Approval Action Row ──────────────────────────────────────────────────────
-
-function ApprovalActionRow({
-  app,
-  onStatusChange,
-}: {
-  app: CreatorApplicationRow;
-  onStatusChange: (id: string, newStatus: string) => void;
-}) {
-  const [loading, setLoading] = useState(false);
-
-  async function applyStatus(next: string) {
-    setLoading(true);
-    const ok = await updateApplicationStatus(app.id, next);
-    setLoading(false);
-    if (ok) onStatusChange(app.id, next);
-    else console.error('[Admin] ApprovalActionRow failed to set status:', next);
-  }
-
-  const s = app.status;
-  const tier = safeText(app.tier, 'free');
-
-  return (
-    <div className="approval-action-row">
-      {s !== 'active' && tier === 'free' && (
-        <button
-          className="approval-btn approval-btn--approve"
-          onClick={() => applyStatus('active')}
-          disabled={loading}
-          title="Approve and activate this Free Creator account"
-        >
-          ✓ Approve Free
-        </button>
-      )}
-      {s !== 'approved_pending_payment' && tier !== 'free' && (
-        <button
-          className="approval-btn approval-btn--approve"
-          onClick={() => applyStatus('approved_pending_payment')}
-          disabled={loading}
-          title={`Approve — ${tier === 'professional' ? '$15/mo' : '$25/mo'} payment required before activation`}
-        >
-          ✓ Approve (Pending Payment)
-        </button>
-      )}
-      {s !== 'needs_more_info' && (
-        <button
-          className="approval-btn approval-btn--info"
-          onClick={() => applyStatus('needs_more_info')}
-          disabled={loading}
-        >
-          ? Needs Info
-        </button>
-      )}
-      {s !== 'needs_portfolio_review' && (
-        <button
-          className="approval-btn approval-btn--review"
-          onClick={() => applyStatus('needs_portfolio_review')}
-          disabled={loading}
-        >
-          Portfolio Review
-        </button>
-      )}
-      {s !== 'rejected' && (
-        <button
-          className="approval-btn approval-btn--reject"
-          onClick={() => applyStatus('rejected')}
-          disabled={loading}
-        >
-          ✗ Reject
-        </button>
-      )}
-      {loading && <span className="approval-saving">Saving…</span>}
     </div>
   );
 }
@@ -1231,8 +1492,6 @@ function CreatorCard({
   onStatusChange: (id: string, newStatus: string) => void;
 }) {
   const [status, setStatus]           = useState(app.status);
-  const [updating, setUpdating]       = useState(false);
-  const [updateError, setUpdateError] = useState(false);
   const [reviewOpen, setReviewOpen]   = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activeReviewTab, setActiveReviewTab] = useState<'review' | 'messages'>('review');
@@ -1281,26 +1540,14 @@ function CreatorCard({
   const reviewFitColor = fitColors[review.fitLabel] ?? '#8a94a6';
   const tColor         = tierColors[app.tier] ?? '#8a94a6';
 
-  async function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const next = e.target.value;
-    if (next === status) return;
-    const prev = status;
-    setStatus(next);
-    setUpdating(true);
-    setUpdateError(false);
-    const ok = await updateApplicationStatus(app.id, next);
-    setUpdating(false);
-    if (!ok) {
-      setStatus(prev);
-      setUpdateError(true);
-      setTimeout(() => setUpdateError(false), 3000);
-    } else {
-      onStatusChange(app.id, next);
-    }
+  // onStatusChange handler that also updates local state
+  function handleStatusUpdated(id: string, newStatus: string) {
+    setStatus(newStatus as typeof status);
+    onStatusChange(id, newStatus);
   }
 
   return (
-    <div className={`creator-card${updateError ? ' creator-card--error' : ''}`}>
+    <div className="creator-card">
 
       <div className="creator-card-header">
         <div className="creator-header-left">
@@ -1322,21 +1569,13 @@ function CreatorCard({
           >
             {review.fitLabel} · {review.candidateFitScore}/100
           </span>
-          <div className={`status-dropdown-wrap${updateError ? ' status-dropdown--error' : ''}`}>
-            <select
-              className="status-dropdown"
-              value={status}
-              onChange={handleStatusChange}
-              disabled={updating}
-              style={{ color: statusColors[status] ?? '#8a94a6' }}
-            >
-              {APP_STATUS_OPTIONS.map((o) => (
-                <option key={o.status} value={o.status}>{o.label}</option>
-              ))}
-            </select>
-            {updating && <span className="status-saving">Saving…</span>}
-            {updateError && <span className="status-error-label">Failed</span>}
-          </div>
+          <span
+            className="creator-status-badge"
+            style={{ color: statusColors[status] ?? '#8a94a6' }}
+            title="Use the action buttons below to change status"
+          >
+            {status.replace(/_/g, ' ')}
+          </span>
         </div>
       </div>
 
@@ -1378,8 +1617,8 @@ function CreatorCard({
       {/* Decision */}
       <div className="creator-decision">{review.recommendedDecision}</div>
 
-      {/* Approval actions */}
-      <ApprovalActionRow app={app} onStatusChange={onStatusChange} />
+      {/* Unified approval panel — buttons + profile management + copyable messages */}
+      <AdminApprovalPanel app={app} fitScore={review.candidateFitScore} onStatusChange={handleStatusUpdated} />
 
       {/* Expandable toggles */}
       <div className="creator-toggle-row">
@@ -1400,14 +1639,7 @@ function CreatorCard({
       </div>
 
       {/* Profile preview */}
-      {previewOpen && (
-        <>
-          <ProfilePreview app={app} review={review} />
-          <div className="create-profile-row">
-            <CreateProfileButton app={app} fitScore={review.candidateFitScore} />
-          </div>
-        </>
-      )}
+      {previewOpen && <ProfilePreview app={app} review={review} />}
 
       {/* AI Review panel */}
       {reviewOpen && (

@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { insertCreatorApplication } from '../lib/supabase';
 import type { SupabaseInsertError } from '../lib/supabase';
 import type { CreatorTier } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import './CreatorsApply.css';
 
 // ─── Static options ───────────────────────────────────────────────────────────
@@ -213,13 +215,66 @@ function ChipGroup({ label, hint, options, selected, onToggle }: {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function CreatorsApply() {
+  const { user } = useAuth();
+
   const [selectedTier, setSelectedTier] = useState<CreatorTier | null>(null);
   const [form, setForm]                 = useState<ApplyForm>(emptyForm);
   const [submitted, setSubmitted]       = useState(false);
   const [submitting, setSubmitting]     = useState(false);
   const [submitError, setSubmitError]   = useState<string | null>(null);
 
+  // Duplicate prevention: check for existing active application
+  const [existingApplication, setExistingApplication] = useState<{
+    id: string;
+    status: string;
+    tier: string;
+  } | null | 'checking'>('checking');
+
   const tierConfig = selectedTier ? TIERS.find((t) => t.id === selectedTier)! : null;
+
+  // Pre-fill email from logged-in user
+  useEffect(() => {
+    if (user?.email) {
+      setForm((prev) => prev.email ? prev : { ...prev, email: user.email! });
+    }
+  }, [user]);
+
+  // Check for existing application by auth_user_id or email
+  useEffect(() => {
+    async function checkExisting() {
+      const email = user?.email ?? form.email;
+      if (!email) { setExistingApplication(null); return; }
+
+      // Try auth_user_id first (if logged in)
+      if (user?.id) {
+        const { data: byAuth } = await supabase
+          .from('creator_applications')
+          .select('id, status, tier')
+          .eq('auth_user_id', user.id)
+          .not('status', 'in', '("rejected","suspended")')
+          .maybeSingle();
+        if (byAuth) { setExistingApplication(byAuth as { id: string; status: string; tier: string }); return; }
+      }
+
+      // Fallback: by email
+      if (email) {
+        const { data: byEmail } = await supabase
+          .from('creator_applications')
+          .select('id, status, tier')
+          .eq('email', email)
+          .not('status', 'in', '("rejected","suspended")')
+          .maybeSingle();
+        setExistingApplication(
+          (byEmail as { id: string; status: string; tier: string } | null) ?? null
+        );
+      } else {
+        setExistingApplication(null);
+      }
+    }
+
+    checkExisting();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.email]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value } = e.target;
@@ -238,6 +293,13 @@ export default function CreatorsApply() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedTier) return;
+
+    // Prevent duplicate submission
+    if (existingApplication && existingApplication !== 'checking') {
+      setSubmitError('You already have an active creator application. Check your dashboard for status.');
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
 
@@ -246,36 +308,67 @@ export default function CreatorsApply() {
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
+    // Fetch user_profile_id if logged in
+    let userProfileId: string | null = null;
+    if (user?.id) {
+      const { data: up } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+      userProfileId = (up as { id: string } | null)?.id ?? null;
+    }
+
     const { error } = await insertCreatorApplication({
       full_name:        form.fullName,
       email:            form.email,
       tools:            form.tools,
-      portfolio_url:    form.portfolioUrl || null,
+      portfolio_url:    form.portfolioUrl  || null,
       portfolio_url_2:  form.portfolioUrl2 || null,
       niches:           form.niches,
       experience:       form.experience,
       available_hours:  form.availableHours,
       message:          form.message || null,
       status:           'new',
+      approval_status:  'new',
       tier:             selectedTier,
       requested_plan_price: tierConfig?.planPrice ?? 0,
+      // Auth linking (set when logged in)
+      auth_user_id:     user?.id    ?? null,
+      user_profile_id:  userProfileId,
       // Professional+
-      top_projects:        form.topProjects        || null,
+      top_projects:         form.topProjects         || null,
       service_capabilities: form.serviceCapabilities,
-      fulfillment_speed:    form.fulfillmentSpeed  || null,
+      fulfillment_speed:    form.fulfillmentSpeed     || null,
       // Verified only
-      github_url:           form.githubUrl         || null,
-      linkedin_url:         form.linkedinUrl        || null,
-      certifications:       form.certifications     || null,
+      github_url:           form.githubUrl            || null,
+      linkedin_url:         form.linkedinUrl          || null,
+      certifications:       form.certifications       || null,
       credential_links:     credentialLinks,
-      case_studies:         form.caseStudies        || null,
+      case_studies:         form.caseStudies          || null,
     });
 
     setSubmitting(false);
 
     if (error) {
+      // Unique constraint violation = duplicate application
+      if (error.code === '23505') {
+        setSubmitError(
+          'You already have an active creator application with this email address. ' +
+          'Check your dashboard or contact us if you need to update it.'
+        );
+        return;
+      }
       setSubmitError(friendlyErrorMessage(error));
       return;
+    }
+
+    // Update user_profiles to reflect application submitted
+    if (user?.id) {
+      await supabase
+        .from('user_profiles')
+        .update({ creator_application_status: 'new', account_type: 'creator' })
+        .eq('auth_user_id', user.id);
     }
 
     setSubmitted(true);
@@ -345,6 +438,49 @@ export default function CreatorsApply() {
           <div className="success-actions">
             <Link to="/" className="btn btn-ghost btn-sm">Back to Home</Link>
             <Link to="/creators" className="btn btn-ghost btn-sm">Creator Directory</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Already-applied guard ─────────────────────────────────────────────────────
+  if (existingApplication && existingApplication !== 'checking') {
+    const statusLabels: Record<string, string> = {
+      new: 'New — awaiting review',
+      reviewing: 'In review',
+      needs_portfolio_review: 'Portfolio under review',
+      needs_more_info: 'Admin requested more info',
+      approved_pending_payment: 'Approved — payment setup pending',
+      active: 'Active creator',
+    };
+    const statusLabel = statusLabels[existingApplication.status] ?? existingApplication.status;
+    return (
+      <div className="creators-page">
+        <div className="container creators-body">
+          <div className="creators-already-applied">
+            <div className="caa-icon">📋</div>
+            <h2>You already have an active application</h2>
+            <p>
+              You submitted a{' '}
+              <strong>{existingApplication.tier?.charAt(0).toUpperCase() + (existingApplication.tier?.slice(1) ?? '')}</strong>{' '}
+              Creator application. Current status:{' '}
+              <strong>{statusLabel}</strong>
+            </p>
+            <p className="caa-sub">
+              Only one active application is allowed at a time. Once your current
+              application is reviewed, you can update your tier or reapply.
+            </p>
+            <div className="caa-actions">
+              <Link to="/dashboard" className="btn btn-primary btn-sm">
+                View Status in Dashboard →
+              </Link>
+              {user && (
+                <Link to="/dashboard/profile" className="btn btn-ghost btn-sm">
+                  Edit Profile
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       </div>

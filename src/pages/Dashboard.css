@@ -535,3 +535,29 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+
+/* ─── Creator Application Status Panel ──────────────────────────────────────── */
+.dash-application-status {
+  max-width: 560px;
+  margin: 3rem auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.75rem 1.5rem;
+  display: flex;
+  gap: 1.1rem;
+  align-items: flex-start;
+}
+.das-icon { font-size: 1.8rem; flex-shrink: 0; line-height: 1; margin-top: 0.1rem; }
+.das-body { display: flex; flex-direction: column; gap: 0.4rem; }
+.das-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.das-message {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.das-action { margin-top: 0.6rem; }

@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses — quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Platform v2 Foundation — Supabase Auth + GitHub sign-in, user profiles, creator/buyer dashboards, onboarding flow, profile editor, AI-style profile scoring, admin workflow templates. Build passes. Stripe deferred.
+**Status:** Account Approval Workflow v1 — consistent creator application lifecycle, cascading admin actions, duplicate prevention, real-status creator dashboard. Build passes. Stripe and GitHub OAuth deferred.
 
 ---
 
@@ -55,6 +55,8 @@ supabase/
     creator-tier-fields.sql                   # Adds tier columns to creator_applications
     profile-system-foundation.sql             # Expands creator_profiles + business_profiles
     admin-auth-notes.sql                      # Comments only — future RLS hardening guide
+    email-account-profile-fields.sql          # Adds github_url, avatar_url to user_profiles
+    account-approval-workflow.sql             # Approval workflow v1: auth linking, approval_status, duplicate prevention
 docs/
   database-schema.md
   mvp-roadmap.md
@@ -120,10 +122,73 @@ Run these SQL files **in order** in your Supabase Dashboard → SQL Editor:
 | 5 | `supabase/migrations/profile-system-foundation.sql` | Expands `creator_profiles` and `business_profiles` |
 | 6 | `supabase/migrations/account-profile-foundation.sql` | Creates `user_profiles` table, links auth, adds `creator_profiles` v2 columns, RLS policies |
 | 7 | `supabase/migrations/email-account-profile-fields.sql` | Adds `github_url` and `avatar_url` to `user_profiles` for email auth accounts |
+| 8 | `supabase/migrations/account-approval-workflow.sql` | **Run this.** Fixes status CHECK constraint, adds auth linking columns, approval tracking, duplicate-prevention indexes |
 
 Each file is safe to re-run: migrations use `ADD COLUMN IF NOT EXISTS`, policies use `DROP POLICY IF EXISTS`.
 
 > **Order matters.** Schema must exist before seed; policies file references tables that schema created; migrations must run after schema.
+
+---
+
+## Account Approval Workflow v1
+
+### Creator Application Lifecycle
+
+```
+Submit application → new → reviewing → [decision]
+                                        ├── active                  (Free tier approved)
+                                        ├── approved_pending_payment (Pro/Verified approved, payment pending)
+                                        ├── needs_more_info          (admin needs clarification)
+                                        ├── rejected                 (not approved)
+                                        └── suspended                (account suspended)
+```
+
+### Auth Linking
+When a logged-in user submits an application, it is linked via:
+1. `auth_user_id` (Supabase Auth UUID — primary)
+2. `user_profile_id` (user_profiles row — secondary)
+3. `email` (text fallback for pre-auth or guest applications)
+
+### Duplicate Prevention
+- A unique partial index prevents multiple active (non-rejected/suspended) applications per `auth_user_id`.
+- A unique partial index prevents multiple active applications per `lower(email)`.
+- A unique partial index prevents duplicate `creator_profiles` per `creator_application_id`.
+- A unique partial index prevents duplicate `creator_profiles` per `user_profile_id`.
+
+### Admin Approval Actions
+Each application card in `/admin` shows action buttons that **cascade updates** to three tables:
+
+| Action | creator_applications | user_profiles | creator_profiles |
+|--------|---------------------|---------------|-----------------|
+| Approve Free | status=`active` | creator_application_status=`active` | created with tier=`free`, hidden |
+| Approve Pro | status=`approved_pending_payment` | status updated | created with tier=`professional`, subscription=`pending_payment` |
+| Approve Verified | status=`approved_pending_payment` | status updated | created with tier=`verified`, verification_status=`pending` |
+| Needs More Info | status=`needs_more_info` | status updated | no change |
+| Reject | status=`rejected` | status=`rejected` | public_profile_status=`hidden` |
+| Suspend | status=`suspended` | status updated | approval_status=`suspended`, hidden |
+| Make Profile Public | — | — | public_profile_status=`public` |
+| Hide Profile | — | — | public_profile_status=`hidden` |
+
+### Admin AI Operations (rules-based, no external API)
+The admin overview panel includes copyable workflow messages:
+- Creator approval messages (Free / Pro / Verified)
+- Needs-more-info message with reason field
+- Rejection message with reason field
+
+### Creator Dashboard Status
+The creator dashboard shows real-time application status including:
+- No application submitted
+- Under review
+- Needs more info (with admin reason)
+- Approved — payment pending
+- Active
+- Rejected (with reason)
+- Suspended
+
+### Future
+- Stripe payment activation for Pro/Verified tiers (Phase 4)
+- GitHub OAuth sign-in once stable domain is configured
+- Production RLS: replace `USING (true)` policies with auth-based restrictions
 
 ---
 

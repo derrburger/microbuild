@@ -68,6 +68,12 @@ export interface UserProfileRow {
   account_type: AccountType;
   onboarding_status: OnboardingStatus;
   privacy_status: string;
+  // Account approval fields (account-approval-workflow.sql)
+  account_status: string | null;
+  creator_application_id: string | null;
+  creator_application_status: string | null;
+  creator_profile_id: string | null;
+  approval_status: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -252,7 +258,8 @@ export interface CreatorApplicationRow {
   message: string | null;
   status: ApplicationStatus;
   created_at: string;
-  // Tier fields (added by migration: add_creator_tiers.sql)
+  updated_at: string;
+  // Tier fields
   tier: CreatorTier;
   requested_plan_price: number;
   top_projects: string | null;
@@ -263,6 +270,15 @@ export interface CreatorApplicationRow {
   certifications: string | null;
   credential_links: string[];
   case_studies: string | null;
+  // Auth linking (account-approval-workflow.sql)
+  auth_user_id: string | null;
+  user_profile_id: string | null;
+  approval_status: ApplicationStatus | null;
+  admin_notes: string | null;
+  admin_decision_at: string | null;
+  rejected_reason: string | null;
+  needs_info_reason: string | null;
+  linked_creator_profile_id: string | null;
 }
 
 export interface OrderRow {
@@ -356,7 +372,7 @@ export interface CreatorApplicationInsert {
   message?: string | null;
   status?: ApplicationStatus;
   created_at?: string;
-  // Tier fields (optional — pre-migration rows will default to 'free')
+  // Tier fields
   tier?: CreatorTier;
   requested_plan_price?: number;
   top_projects?: string | null;
@@ -367,6 +383,10 @@ export interface CreatorApplicationInsert {
   certifications?: string | null;
   credential_links?: string[];
   case_studies?: string | null;
+  // Auth linking (set when logged-in user submits)
+  auth_user_id?: string | null;
+  user_profile_id?: string | null;
+  approval_status?: ApplicationStatus;
 }
 
 export interface OrderInsert {

@@ -1,10 +1,10 @@
 # MicroBuild — Profile & Account System Audit
 
 **Date:** May 2026  
-**Status:** Platform v2 Foundation complete — email/password auth, user profiles, dashboards, profile editor, AI scoring active. GitHub OAuth deferred.  
+**Status:** Account Approval Workflow v1 complete — consistent creator application lifecycle, cascading admin actions, duplicate prevention, real-status creator dashboard. GitHub OAuth deferred. Stripe deferred.  
 **App stack:** React / Vite / TypeScript + Supabase Auth (email/password) — no Stripe, no GitHub OAuth yet.
 
-> **Platform v2 update (May 2026):** Supabase Auth is live with email/password sign-up and sign-in. GitHub OAuth is intentionally deferred until MicroBuild has a stable production domain — GitHub URL is stored as a plain profile link field instead. `user_profiles` table added. Creator/buyer onboarding flow at `/onboarding`. Dashboard at `/dashboard` is role-aware. Creator profile editor at `/dashboard/profile` writes to `creator_profiles` where `user_id = auth.uid()`. `src/lib/profileAI.ts` provides rule-based profile scoring. Admin auth remains deferred — `/admin` loads directly without login in dev mode.
+> **Account Approval Workflow v1 (May 2026):** Creator applications are now linked to auth users via `auth_user_id`/`user_profile_id`/email. Admin approval buttons cascade updates to `creator_applications`, `user_profiles`, and `creator_profiles` consistently. Duplicate applications are prevented by unique partial indexes. Creator dashboard shows real-time application status. Admin panel has action buttons (Approve Free, Approve Pro, Approve Verified, Needs Info, Reject, Suspend) with integrated profile creation, visibility toggle, and copyable messages.
 
 ---
 
@@ -30,16 +30,20 @@
 - Pricing clearly shown before submission (no charge at apply time).
 - Row inserts into `creator_applications` via Supabase anon INSERT policy.
 - `tier`, `requested_plan_price`, `top_projects`, `service_capabilities`, `fulfillment_speed`, `github_url`, `linkedin_url`, `certifications`, `credential_links`, `case_studies` columns are all migrated and present (via `creator-tier-fields.sql`).
-- Application `status` CHECK constraint supports 8 values: `new`, `reviewing`, `needs_portfolio_review`, `needs_more_info`, `approved_pending_payment`, `active`, `rejected`, `suspended`.
+- **Auth linking:** When logged in, application stores `auth_user_id` and `user_profile_id`. Email is always stored as a fallback.
+- **Duplicate prevention:** Form checks for existing active application before showing the form. If one exists, shows status and links to dashboard instead of the form. Unique partial index enforced at DB level too.
+- Application `status` CHECK constraint fixed (was too narrow) — now supports: `new`, `reviewing`, `needs_portfolio_review`, `needs_more_info`, `approved_pending_payment`, `active`, `rejected`, `suspended`.
+- `approval_status` column added as admin-set mirror of `status` for clear semantic separation.
 - Success state explains tier-specific review/payment timeline to applicants.
 
 ### Admin Dashboard
 - Reads live `buyer_requests`, `creator_applications`, and `microbuild_templates` from Supabase.
-- Status dropdown writes updated status back to Supabase for both requests and applications.
-- Rule-based AI operations panel generates build packets, lead scores, and creator fit reviews.
-- `CreatorCard` shows tier badge, application detail, AI review, profile preview, and approval action buttons.
-- `ApprovalActionRow` buttons update application status in Supabase.
-- `CreateProfileButton` inserts a new row into `creator_profiles` based on the application data.
+- **Action buttons** (not dropdowns) for creator application decisions: Approve Free, Approve Professional, Approve Verified, Needs Info, Reject, Suspend.
+- Each action **cascades** to `creator_applications` (status + approval_status), `user_profiles` (creator_application_status), and `creator_profiles` (creates/updates on approval).
+- Profile visibility toggle (Public / Hidden) integrated into the approval panel.
+- Copyable messages for each decision type (approval, needs-info, rejection).
+- Status shown as a static badge (was a dropdown) — status changes via action buttons only.
+- `AdminApprovalPanel` component replaces the old `ApprovalActionRow` + `CreateProfileButton` combination.
 - Error boundary (`SectionErrorBoundary`) and per-row `try/catch` prevent a single bad row from blanking the page.
 - Defensive helpers (`safeArray`, `safeText`, `safeDate`, `safeNumber`, `normalizeBuyerRequest`, `normalizeCreatorApp`) protect against null/unexpected types from Supabase.
 
