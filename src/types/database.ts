@@ -12,6 +12,8 @@
 // ─── Enum-like string unions ────────────────────────────────────────────────
 
 export type UserRole = 'buyer' | 'creator' | 'admin';
+export type AccountType = 'buyer' | 'creator' | 'admin';
+export type OnboardingStatus = 'pending' | 'complete';
 
 export type TemplateStatus = 'available' | 'popular' | 'new' | 'coming-soon';
 
@@ -54,6 +56,31 @@ export interface UserRow {
   email: string;
   role: UserRole;
   created_at: string;
+}
+
+/** Row returned from the user_profiles table (created during onboarding). */
+export interface UserProfileRow {
+  id: string;
+  auth_user_id: string | null;
+  email: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  account_type: AccountType;
+  onboarding_status: OnboardingStatus;
+  privacy_status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserProfileInsert {
+  id?: string;
+  auth_user_id?: string | null;
+  email: string;
+  display_name?: string | null;
+  avatar_url?: string | null;
+  account_type?: AccountType;
+  onboarding_status?: OnboardingStatus;
+  privacy_status?: string;
 }
 
 export interface BusinessProfileRow {

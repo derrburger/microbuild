@@ -1535,6 +1535,92 @@ class SectionErrorBoundary extends React.Component<{ name: string; children: Rea
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+// ─── Workflow Templates ───────────────────────────────────────────────────────
+// Preset copyable message blocks for common admin workflows.
+
+const WORKFLOW_TEMPLATES = [
+  {
+    id: 'new-buyer-followup',
+    label: 'New Buyer Follow-up',
+    tag: 'Buyer',
+    text: `Hi [Name],\n\nThank you for your MicroBuild request! We've received your submission and our team is reviewing it now.\n\nWe'll be in touch within 1–2 business days with a proposal.\n\nBest,\nMicroBuild Team`,
+  },
+  {
+    id: 'missing-info',
+    label: 'Missing Info Request',
+    tag: 'Buyer',
+    text: `Hi [Name],\n\nThank you for your request for [Build Type]. To prepare your proposal, we need a bit more information:\n\n- [Missing field 1]\n- [Missing field 2]\n\nPlease reply with these details and we'll get your proposal out quickly.\n\nBest,\nMicroBuild Team`,
+  },
+  {
+    id: 'quote-proposal',
+    label: 'Quote Proposal Starter',
+    tag: 'Buyer',
+    text: `Hi [Name],\n\nHere's the proposal for your [Build Type] for [Business Name]:\n\nProject: [Build Type]\nScope: [Brief scope]\nTimeline: [X business days]\nPrice: $[Amount]\n\nThis includes:\n- [Feature 1]\n- [Feature 2]\n- [Feature 3]\n\nTo move forward, reply "Approved" and we'll assign your creator.\n\nBest,\nMicroBuild Team`,
+  },
+  {
+    id: 'creator-approval',
+    label: 'Creator Approval',
+    tag: 'Creator',
+    text: `Hi [Creator Name],\n\nWe're excited to let you know that your MicroBuild creator application has been approved!\n\nYour tier: [Free / Professional / Verified]\nNext step: [Sign in and complete your profile / Activate your subscription]\n\nWelcome to the MicroBuild creator network.\n\nBest,\nMicroBuild Team`,
+  },
+  {
+    id: 'creator-rejection',
+    label: 'Creator Rejection',
+    tag: 'Creator',
+    text: `Hi [Creator Name],\n\nThank you for applying to become a MicroBuild creator.\n\nAfter reviewing your application, we're unable to approve it at this time. [Reason if applicable.]\n\nYou're welcome to reapply in 60 days with additional portfolio examples.\n\nBest,\nMicroBuild Team`,
+  },
+  {
+    id: 'pro-payment-pending',
+    label: 'Pro Plan — Pending Payment',
+    tag: 'Creator',
+    text: `Hi [Creator Name],\n\nYour Professional Creator application has been approved!\n\nTo activate your account, please complete your $15/month subscription. Once payment is confirmed, your profile will go live on MicroBuild.\n\n[Payment link will be here when Stripe is integrated.]\n\nBest,\nMicroBuild Team`,
+  },
+  {
+    id: 'verified-proof-request',
+    label: 'Verified — Proof Request',
+    tag: 'Creator',
+    text: `Hi [Creator Name],\n\nThank you for applying for Verified Creator status.\n\nTo complete verification, please provide:\n- A link to your professional portfolio\n- Certifications or credentials\n- At least one case study with business outcomes\n- GitHub or LinkedIn profile\n\nSend these to [contact] and we'll complete your verification review.\n\nBest,\nMicroBuild Team`,
+  },
+] as const;
+
+function WorkflowTemplates() {
+  const [copiedId, setCopiedId] = React.useState<string | null>(null);
+
+  function copyTemplate(id: string, text: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(() => {});
+  }
+
+  return (
+    <section className="admin-section admin-section--dim">
+      <div className="admin-section-header">
+        <h2>Workflow Templates</h2>
+        <span className="admin-section-count">{WORKFLOW_TEMPLATES.length} templates</span>
+      </div>
+      <p className="wf-intro">Preset message blocks for common admin workflows. Click to copy.</p>
+      <div className="wf-grid">
+        {WORKFLOW_TEMPLATES.map((t) => (
+          <div key={t.id} className="wf-card">
+            <div className="wf-card-header">
+              <span className="wf-label">{t.label}</span>
+              <span className={`wf-tag wf-tag--${t.tag.toLowerCase()}`}>{t.tag}</span>
+            </div>
+            <pre className="wf-preview">{t.text.slice(0, 100)}…</pre>
+            <button
+              className={`wf-copy-btn${copiedId === t.id ? ' copied' : ''}`}
+              onClick={() => copyTemplate(t.id, t.text)}
+            >
+              {copiedId === t.id ? '✓ Copied' : 'Copy Message'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function Admin() {
   const [requests, setRequests]         = useState<BuyerRequestRow[]>([]);
   const [applications, setApplications] = useState<CreatorApplicationRow[]>([]);
@@ -1799,6 +1885,11 @@ export default function Admin() {
             </div>
           )}
         </section>
+
+        {/* ── Workflow Templates ────────────────────────────────────────────── */}
+        <SectionErrorBoundary name="Workflow Templates">
+          <WorkflowTemplates />
+        </SectionErrorBoundary>
 
         {/* ── Phase 2+ placeholders ─────────────────────────────────────────── */}
         <div className="admin-placeholders">

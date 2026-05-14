@@ -1,10 +1,10 @@
 # MicroBuild — Profile & Account System Audit
 
 **Date:** May 2026  
-**Status:** Pre-phase-2 audit — admin auth deferred, dev-mode dashboard active  
-**App stack:** React / Vite / TypeScript + Supabase (no auth active, no Stripe yet)
+**Status:** Platform v2 Foundation complete — email/password auth, user profiles, dashboards, profile editor, AI scoring active. GitHub OAuth deferred.  
+**App stack:** React / Vite / TypeScript + Supabase Auth (email/password) — no Stripe, no GitHub OAuth yet.
 
-> **Auth status update (May 2026):** Admin authentication infrastructure was built (`src/lib/admin.ts`, `src/components/AdminRouteGuard.tsx`, `src/pages/AdminLogin.tsx`) but intentionally disconnected. `/admin` loads directly without login in dev mode. The auth layer will be reconnected in the Admin Protection phase. See Section 9 for the recommended build order.
+> **Platform v2 update (May 2026):** Supabase Auth is live with email/password sign-up and sign-in. GitHub OAuth is intentionally deferred until MicroBuild has a stable production domain — GitHub URL is stored as a plain profile link field instead. `user_profiles` table added. Creator/buyer onboarding flow at `/onboarding`. Dashboard at `/dashboard` is role-aware. Creator profile editor at `/dashboard/profile` writes to `creator_profiles` where `user_id = auth.uid()`. `src/lib/profileAI.ts` provides rule-based profile scoring. Admin auth remains deferred — `/admin` loads directly without login in dev mode.
 
 ---
 
@@ -313,35 +313,40 @@ The `business_profiles` table still has a FK to `public.users`. The migration ma
 
 ```
 Phase 1 (Now — no auth needed):
-  ✅  Duplicate profile prevention (Fix 1 + Fix 2)
-  ✅  Explicit column selection on public queries (Fix 3)
-  ✅  Admin UI to set public_profile_status (Fix 4)
-  ✅  Fix approvalStatus dead-code branch (Fix 5)
-  ✅  Consolidate CreatorApplicationRow type (Fix 6)
+  ✅  Duplicate profile prevention
+  ✅  Explicit column selection on public queries
+  ✅  Admin UI to set public_profile_status
+  ✅  Fix approvalStatus dead-code branch
+  ✅  Consolidate CreatorApplicationRow type
 
-Phase 2 — Admin Protection (Supabase Auth):
-  • Add Supabase Auth for admin route
-  • Replace all anon UPDATE/INSERT policies with auth-based policies
-  • Gate /admin behind a session check
-  • Creator login — view own application status
+Phase 2 — Platform v2 Foundation (Supabase Auth email/password): ✅ COMPLETE
+  ✅  Supabase Auth email/password — no GitHub OAuth (deferred)
+  ✅  src/lib/auth.ts — signUpWithEmail, signInWithEmail, signOut
+  ✅  src/contexts/AuthContext.tsx — AuthProvider + useAuth hook
+  ✅  user_profiles table + RLS (supabase/migrations/account-profile-foundation.sql)
+  ✅  github_url field on user_profiles (supabase/migrations/email-account-profile-fields.sql)
+  ✅  /signin — email/password sign-in + sign-up tabs, check-email state
+  ✅  /onboarding — role selection (buyer/creator), creates user_profiles row
+  ✅  /dashboard — role-based creator/buyer dashboard, profileAI scoring
+  ✅  /dashboard/profile — creator profile editor (writes to creator_profiles)
+  ✅  /dashboard/analytics — placeholder analytics + live request count
+  ✅  /dashboard/settings — display name, GitHub profile link field, sign out
+  ✅  src/lib/profileAI.ts — rule-based profile strength + readiness scoring
+  ✅  Admin workflow templates (7 preset copyable message blocks)
+  ✅  Navbar auth-aware UI (Sign In when out / Dashboard + avatar when in)
+  ⏳  GitHub OAuth — deferred until production domain established
 
-Phase 3 — Stripe Subscriptions:
-  • Add Stripe Checkout for Pro/Verified payment after approval
+Phase 3 — Admin Protection:
+  • Gate /admin behind Supabase Auth session + admin role
+  • Replace all anon UPDATE policies with auth.uid() checks
+  • Admin role table or VITE_ADMIN_EMAILS allowlist enforcement
+
+Phase 4 — Stripe Subscriptions:
+  • Stripe Checkout for Pro/Verified payment after approval
   • Sync subscription_status via Stripe webhooks
   • Activate creator profile only after Stripe confirms payment
 
-Phase 4 — Creator Account System:
-  • Creator profile editing (self-serve)
-  • Public profile photo upload
-  • Creator dashboard (/creator/dashboard)
-  • Slug-based routing (/creator/:slug)
-
-Phase 5 — Buyer Account System:
-  • Buyer login + buyer_requests history
-  • business_profiles linked to auth user
-  • Build status tracking per request
-
-Phase 6 — Build Matching & Fulfillment:
+Phase 5 — Build Matching & Fulfillment:
   • Assign creator to buyer request
   • Build status workflow
   • Delivery confirmation + ratings
@@ -352,7 +357,11 @@ Phase 6 — Build Matching & Fulfillment:
 
 ## 9. Next Build Phase Recommendation
 
-### Recommendation: **Admin Protection**
+### Current Phase: Platform v2 Complete
+
+GitHub sign-in, `user_profiles`, dashboards, profile editor, profile AI scoring, and admin workflow templates are all live and the build passes cleanly.
+
+### Next Phase Recommendation: **Admin Protection**
 
 **Rationale:**
 

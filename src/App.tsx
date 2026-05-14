@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Browse from './pages/Browse';
@@ -10,40 +11,59 @@ import CreatorProfile from './pages/CreatorProfile';
 import HowItWorks from './pages/HowItWorks';
 import Pricing from './pages/Pricing';
 import CaseStudies from './pages/CaseStudies';
+import SignIn from './pages/SignIn';
+import Onboarding from './pages/Onboarding';
+import Dashboard from './pages/Dashboard';
+import DashboardProfile from './pages/DashboardProfile';
+import DashboardAnalytics from './pages/DashboardAnalytics';
+import DashboardSettings from './pages/DashboardSettings';
 import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
 import NotFound from './pages/NotFound';
 
-// NOTE: AdminRouteGuard exists in src/components/ but is intentionally not
-// wired here. Admin auth is deferred to a later phase. See:
-//   docs/profile-account-system-audit.md — "Next Build Phase Recommendation"
-//   supabase/migrations/admin-auth-notes.sql — hardening guide
+// NOTE: AdminRouteGuard (src/components/AdminRouteGuard.tsx) exists but is
+// intentionally not wired. Admin auth is deferred. See admin-auth-notes.sql.
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Home />} />
-          <Route path="browse" element={<Browse />} />
-          <Route path="builds/:slug" element={<BuildDetail />} />
-          <Route path="request" element={<Request />} />
-          <Route path="creators" element={<CreatorDirectory />} />
-          <Route path="creators/apply" element={<CreatorsApply />} />
-          <Route path="creator/:id" element={<CreatorProfile />} />
-          <Route path="how-it-works" element={<HowItWorks />} />
-          <Route path="pricing" element={<Pricing />} />
-          <Route path="case-studies" element={<CaseStudies />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            {/* ── Public routes ───────────────────────────────────── */}
+            <Route index element={<Home />} />
+            <Route path="browse" element={<Browse />} />
+            <Route path="builds/:slug" element={<BuildDetail />} />
+            <Route path="request" element={<Request />} />
+            <Route path="creators" element={<CreatorDirectory />} />
+            <Route path="creators/apply" element={<CreatorsApply />} />
+            <Route path="creator/:id" element={<CreatorProfile />} />
+            <Route path="how-it-works" element={<HowItWorks />} />
+            <Route path="pricing" element={<Pricing />} />
+            <Route path="case-studies" element={<CaseStudies />} />
 
-          {/* Admin — no auth guard in dev mode; login is a deferred placeholder */}
-          <Route path="admin">
-            <Route index element={<Admin />} />
-            <Route path="login" element={<AdminLogin />} />
+            {/* ── Auth routes ─────────────────────────────────────── */}
+            <Route path="signin" element={<SignIn />} />
+            <Route path="onboarding" element={<Onboarding />} />
+
+            {/* ── Dashboard (authenticated) ───────────────────────── */}
+            <Route path="dashboard">
+              <Route index element={<Dashboard />} />
+              <Route path="profile" element={<DashboardProfile />} />
+              <Route path="analytics" element={<DashboardAnalytics />} />
+              <Route path="settings" element={<DashboardSettings />} />
+            </Route>
+
+            {/* ── Admin — dev mode, no auth guard ─────────────────── */}
+            <Route path="admin">
+              <Route index element={<Admin />} />
+              <Route path="login" element={<AdminLogin />} />
+            </Route>
+
+            <Route path="*" element={<NotFound />} />
           </Route>
-
-          <Route path="*" element={<NotFound />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }

@@ -1,0 +1,50 @@
+/* ─── Dashboard Analytics ──────────────────────────────────────────────────── */
+
+.da-page { min-height: 100vh; background: var(--bg-primary); }
+.da-loading { min-height: 60vh; display: flex; align-items: center; justify-content: center; }
+.da-spinner { width: 32px; height: 32px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); animation: da-spin 0.7s linear infinite; }
+@keyframes da-spin { to { transform: rotate(360deg); } }
+
+.da-header { background: var(--bg-secondary); border-bottom: 1px solid var(--border); padding: 1.75rem 1.5rem; }
+.da-back { display: inline-block; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; margin-bottom: 0.75rem; }
+.da-back:hover { color: var(--accent); }
+.da-title { font-size: 1.5rem; font-weight: 900; color: var(--text-primary); letter-spacing: -0.02em; }
+.da-sub { font-size: 0.82rem; color: var(--text-secondary); margin-top: 0.3rem; }
+.da-placeholder-badge { display: inline-block; margin-top: 0.6rem; font-size: 0.72rem; background: rgba(249,176,50,0.08); color: #b89430; border: 1px solid rgba(249,176,50,0.2); border-radius: 5px; padding: 0.2rem 0.6rem; }
+
+.da-body { padding: 2rem 0 5rem; display: flex; flex-direction: column; gap: 1rem; }
+.da-section { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.35rem 1.5rem; }
+.da-section-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 1rem; }
+
+/* Live grid */
+.da-live-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; }
+.da-live-card { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 1rem 1.1rem; }
+.da-live-val { font-size: 2rem; font-weight: 900; color: var(--accent); letter-spacing: -0.03em; }
+.da-live-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Bars */
+.da-bars { display: flex; flex-direction: column; gap: 0.55rem; margin-bottom: 0.75rem; }
+.da-bar-row { display: flex; align-items: center; gap: 0.75rem; }
+.da-bar-label { font-size: 0.75rem; color: var(--text-secondary); width: 90px; flex-shrink: 0; }
+.da-bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.da-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+.da-bar-val { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); width: 28px; text-align: right; }
+.da-note { font-size: 0.78rem; color: var(--text-muted); }
+.da-link { color: var(--accent); text-decoration: none; }
+.da-link:hover { text-decoration: underline; }
+
+/* Placeholder grid */
+.da-placeholder-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.65rem; }
+@media (max-width: 768px) { .da-placeholder-grid { grid-template-columns: repeat(2, 1fr); } }
+.da-placeholder-card { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 0.9rem 1rem; }
+.da-placeholder-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.da-placeholder-val { font-size: 1.8rem; font-weight: 900; color: var(--border); letter-spacing: -0.03em; margin: 0.2rem 0; }
+.da-placeholder-note { font-size: 0.68rem; color: var(--text-muted); line-height: 1.4; }
+
+/* Graph placeholder */
+.da-graph-placeholder { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 1.5rem; }
+.da-graph-bars { display: flex; align-items: flex-end; gap: 0.5rem; height: 120px; margin-bottom: 0.75rem; }
+.da-graph-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0.35rem; }
+.da-graph-bar { width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 8px; }
+.da-graph-month { font-size: 0.65rem; color: var(--text-muted); }
+.da-graph-note { font-size: 0.75rem; color: var(--text-muted); text-align: center; }

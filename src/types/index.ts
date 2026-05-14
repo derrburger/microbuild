@@ -1,4 +1,6 @@
 export type CreatorTier = 'free' | 'professional' | 'verified';
+export type AccountType = 'buyer' | 'creator' | 'admin';
+export type OnboardingStatus = 'pending' | 'complete';
 export type ProfileApprovalStatus = 'draft' | 'approved_pending_payment' | 'active' | 'hidden' | 'suspended' | 'rejected';
 export type PublicProfileStatus = 'hidden' | 'public' | 'paused';
 export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'rejected';

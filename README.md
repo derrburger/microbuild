@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses — quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Early Access MVP — live Supabase backend, creator tier system, profile system foundation, admin dashboard (dev-mode, auth deferred).
+**Status:** Platform v2 Foundation — Supabase Auth + GitHub sign-in, user profiles, creator/buyer dashboards, onboarding flow, profile editor, AI-style profile scoring, admin workflow templates. Build passes. Stripe deferred.
 
 ---
 
@@ -31,9 +31,9 @@ MicroBuild solves this by offering five standardized "MicroBuilds" — small, fo
 | Frontend | React 18 + TypeScript + Vite |
 | Routing | React Router v6 |
 | Database | Supabase (PostgreSQL) |
-| Auth | Not active — admin auth deferred to a later phase; buyer/creator auth TBD |
-| Payments | Not yet implemented (Phase 4) |
-| AI | Not yet implemented (Phase 3) |
+| Auth | Supabase Auth — email/password sign-up + sign-in. GitHub OAuth deferred until stable domain. |
+| Payments | Not yet implemented — Stripe deferred (Phase 4) |
+| AI | Rules-based only — `src/lib/profileAI.ts`, `src/lib/buildPacket.ts`. No external APIs. |
 | Deployment | Hostinger (planned) |
 
 ---
@@ -118,6 +118,8 @@ Run these SQL files **in order** in your Supabase Dashboard → SQL Editor:
 | 3 | `supabase/policies.sql` | Enables RLS + all access policies |
 | 4 | `supabase/migrations/creator-tier-fields.sql` | Adds tier columns to `creator_applications` |
 | 5 | `supabase/migrations/profile-system-foundation.sql` | Expands `creator_profiles` and `business_profiles` |
+| 6 | `supabase/migrations/account-profile-foundation.sql` | Creates `user_profiles` table, links auth, adds `creator_profiles` v2 columns, RLS policies |
+| 7 | `supabase/migrations/email-account-profile-fields.sql` | Adds `github_url` and `avatar_url` to `user_profiles` for email auth accounts |
 
 Each file is safe to re-run: migrations use `ADD COLUMN IF NOT EXISTS`, policies use `DROP POLICY IF EXISTS`.
 
@@ -141,6 +143,44 @@ Each file is safe to re-run: migrations use `ADD COLUMN IF NOT EXISTS`, policies
 | `/how-it-works` | Process explanation |
 | `/pricing` | Three pricing tiers |
 | `/case-studies` | Demo scenario examples |
+
+### Platform v2 — Account & Dashboard Routes
+
+| Route | Description |
+|-------|-------------|
+| `/signin` | Email/password sign-in **and** sign-up (tab toggle on same page). |
+| `/onboarding` | Role selection (buyer / creator) and basic profile setup. Requires sign-in. |
+| `/dashboard` | Creator or buyer dashboard — role-based view based on `user_profiles.account_type`. |
+| `/dashboard/profile` | Creator profile editor — edits `creator_profiles` row linked by `user_id`. |
+| `/dashboard/analytics` | Analytics page — live request count + placeholder metrics. |
+| `/dashboard/settings` | Account settings — display name, GitHub profile URL (plain link), sign out. |
+
+### Supabase Auth Setup (Email/Password)
+
+Email/password auth is built-in to Supabase — no OAuth app registration required.
+
+**For local development — disable email confirmation:**
+1. Supabase Dashboard → Authentication → Settings → Email
+2. Toggle off **"Enable email confirmations"**
+3. Users are signed in immediately after sign-up (no email needed)
+
+**For production — enable email confirmation:**
+- Leave "Enable email confirmations" on
+- After sign-up, the app shows a "Check your email" screen
+- The confirmation link redirects to your site's callback URL
+
+**Add your site URL:**
+- Supabase Dashboard → Authentication → URL Configuration
+- Site URL: `http://localhost:5173` (dev) or your production URL
+- Redirect URLs: add `http://localhost:5173/dashboard`
+
+### GitHub OAuth — Deferred
+
+GitHub sign-in is intentionally **not implemented yet**. It will be added once MicroBuild has a stable production domain. Currently:
+- GitHub URL is stored as a **plain text link** on `user_profiles.github_url` and `creator_profiles.github_url`
+- Users can add their GitHub URL in Settings or the Profile Editor
+- It shows as a clickable link on public creator profiles
+- No OAuth flow, no GitHub app registration needed
 
 ### Admin (dev-mode, no auth required)
 

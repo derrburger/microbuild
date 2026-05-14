@@ -1,0 +1,326 @@
+/* ─── Sign-In / Sign-Up Page ───────────────────────────────────────────────── */
+
+.signin-page {
+  min-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: var(--bg-primary);
+}
+
+.signin-checking {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+}
+
+.signin-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: si-spin 0.7s linear infinite;
+}
+
+@keyframes si-spin { to { transform: rotate(360deg); } }
+
+/* ─── Card ──────────────────────────────────────────────────────────────────── */
+
+.signin-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 2.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35);
+}
+
+.signin-logo {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+  align-self: center;
+  margin-bottom: 0.25rem;
+}
+
+.signin-logo span {
+  color: var(--accent);
+}
+
+/* ─── Mode tabs ─────────────────────────────────────────────────────────────── */
+
+.signin-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.signin-tab {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.5rem 0;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.signin-tab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.signin-tab:not(.active):hover { color: var(--text-secondary); }
+
+/* ─── Sub text ──────────────────────────────────────────────────────────────── */
+
+.signin-sub {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.5;
+  margin-top: -0.25rem;
+}
+
+/* ─── Form ──────────────────────────────────────────────────────────────────── */
+
+.signin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.signin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.signin-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.signin-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.signin-forgot {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.signin-pwd-wrap {
+  position: relative;
+}
+
+.signin-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  padding: 0.65rem 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.signin-input:focus { border-color: var(--accent); }
+.signin-input::placeholder { color: var(--text-muted); }
+.signin-input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.signin-pwd-wrap .signin-input {
+  padding-right: 2.5rem;
+}
+
+.signin-show-pwd {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+  padding: 0;
+}
+
+.signin-show-pwd:hover { opacity: 1; }
+
+/* ─── Error ─────────────────────────────────────────────────────────────────── */
+
+.signin-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 7px;
+  color: #fca5a5;
+  font-size: 0.82rem;
+  padding: 0.55rem 0.75rem;
+  line-height: 1.45;
+}
+
+/* ─── Submit button ─────────────────────────────────────────────────────────── */
+
+.signin-submit-btn {
+  width: 100%;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #000;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  margin-top: 0.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  font-family: inherit;
+}
+
+.signin-submit-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.signin-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.signin-btn-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.3);
+  border-top-color: #000;
+  animation: si-spin 0.7s linear infinite;
+}
+
+/* ─── Switch mode link ──────────────────────────────────────────────────────── */
+
+.signin-switch {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: -0.1rem;
+}
+
+.signin-switch-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.signin-switch-btn:hover { text-decoration: underline; }
+
+/* ─── GitHub deferred note ──────────────────────────────────────────────────── */
+
+.signin-github-deferred {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.signin-github-icon-sm {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.signin-github-icon-sm svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ─── Check email confirmation state ───────────────────────────────────────── */
+
+.signin-confirm-icon {
+  font-size: 2.5rem;
+  text-align: center;
+  line-height: 1;
+}
+
+.signin-confirm-note {
+  background: rgba(249, 176, 50, 0.07);
+  border: 1px solid rgba(249, 176, 50, 0.2);
+  border-radius: 7px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.76rem;
+  color: #b89430;
+  line-height: 1.5;
+}
+
+.signin-confirm-note strong { color: #d4a42e; }
+
+.signin-back-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  padding: 0.6rem 1.25rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.signin-back-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ─── Footer links ──────────────────────────────────────────────────────────── */
+
+.signin-link {
+  color: var(--accent);
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.signin-link:hover { opacity: 0.8; text-decoration: underline; }
+
+.signin-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}

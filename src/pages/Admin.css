@@ -1228,6 +1228,73 @@
 }
 .create-profile-visibility-btn:disabled { opacity: 0.5; cursor: default; }
 
+/* ─── Workflow Templates ────────────────────────────────────────────────────── */
+.wf-intro {
+  font-size: 0.8rem;
+  color: #636f88;
+  margin-bottom: 0.85rem;
+}
+.wf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+.wf-card {
+  background: #141927;
+  border: 1px solid #1f2a3d;
+  border-radius: 9px;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.wf-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.wf-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.wf-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 4px;
+  padding: 0.15rem 0.45rem;
+}
+.wf-tag--buyer  { background: rgba(99,179,237,0.1); color: #63b3ed; border: 1px solid rgba(99,179,237,0.25); }
+.wf-tag--creator{ background: rgba(249,176,50,0.1); color: #f9b032; border: 1px solid rgba(249,176,50,0.25); }
+.wf-preview {
+  font-size: 0.72rem;
+  color: #505870;
+  white-space: pre-wrap;
+  font-family: monospace;
+  line-height: 1.4;
+  max-height: 56px;
+  overflow: hidden;
+  background: #0d1117;
+  border-radius: 5px;
+  padding: 0.4rem 0.55rem;
+}
+.wf-copy-btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3rem 0.75rem;
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid #2a2f42;
+  color: #8892a4;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  align-self: flex-start;
+}
+.wf-copy-btn:hover { border-color: #63b3ed; color: #e2e8f0; }
+.wf-copy-btn.copied { border-color: #00d478; color: #00d478; background: rgba(0,212,120,0.06); }
+
 /* ─── Error boundary fallback ──────────────────────────────────────────────── */
 .admin-section-crash {
   background: #2a1a1a;
