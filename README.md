@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses — quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Admin AI Ops v3 — full admin command center with AI Focus Panel, Creator Review Queue with batch selection, Buyer Request Queue, Profile Quality Queue, Reusable Workflow Templates (10), and Platform Health Snapshot. Rules-based AI operations throughout. Build passes. Stripe and GitHub OAuth deferred.
+**Status:** Dashboard v2 + Admin AI Ops v3 — creator/buyer account dashboards with AI focus panels, profile strength, next best action cards, project pipeline placeholders, and consistent 4-tab navigation. Full admin command center with Creator Review Queue (batch selection), Buyer Request Queue, Profile Quality Queue, Workflow Templates (10), and Platform Health Snapshot. Rules-based AI throughout. Build passes. Stripe and GitHub OAuth deferred.
 
 ---
 
@@ -205,6 +205,101 @@ The creator dashboard shows real-time application status including:
 - Active
 - Rejected (with reason)
 - Suspended
+
+---
+
+## Dashboard v2 — Account Command Center
+
+### Dashboard Navigation
+All dashboard pages share a consistent top navigation bar (`DashboardNav` component):
+- **Overview** (`/dashboard`)
+- **Profile** (`/dashboard/profile`)
+- **Analytics** (`/dashboard/analytics`)
+- **Settings** (`/dashboard/settings`)
+
+### Creator Dashboard Features (v2)
+
+**Account Status Panel:**
+- Tier (Free / Professional / Verified)
+- Account status (approval status)
+- Profile visibility (Public / Hidden / Paused)
+- Verification status
+- Application status
+- Payment status placeholder
+
+**Next Best Action Card:**
+Rules-based card that surfaces the highest priority action based on the creator's current state:
+- Submit application (no application found)
+- Review under way — wait for admin
+- Update profile (needs more info)
+- Payment setup coming soon (approved)
+- Profile live — keep it updated
+- Complete profile (low strength score)
+- Profile active but waiting to be published
+
+**Profile Strength Panel:**
+- Composite score (0–100) computed by `analyzeProfileStrength()` in `src/lib/profileAI.ts`
+- Section scores: Identity, Expertise, Portfolio, Credentials, Availability
+- Missing items checklist with direct link to profile editor
+- Strengths list
+- Suggested badges (awarded by admin)
+- AI Readiness Assessment verdict + verification path
+
+**Creator Analytics Preview:**
+- Completed builds count (live from Supabase)
+- Average rating (live from Supabase)
+- Profile views: placeholder — requires analytics integration
+- Buyer interest: placeholder — requires matching system
+- Estimated earnings: placeholder — requires Stripe
+- Monthly revenue: placeholder — requires Stripe
+
+**Project Pipeline (Placeholder):**
+Five-stage pipeline view: Available → Assigned → In Progress → In Review → Completed.
+All stages show "—" until the build order system is built (Phase 2).
+
+### Buyer Dashboard Features (v2)
+
+**Request List (Enhanced):**
+- Business name and build type
+- Industry tag
+- Budget (if provided)
+- Deadline (if provided)
+- Status with color coding
+
+**Missing Info Panel:**
+Automatically detects missing fields in the latest buyer request:
+- No budget specified
+- No deadline specified
+- No industry/business type included
+
+**Recommended Next MicroBuild:**
+Rules-based recommendation of a MicroBuild type the buyer hasn't tried yet, based on their submitted request types. Includes quick links to other untried builds.
+
+**Quick Actions:**
+- Submit a New Request
+- Browse All Builds
+- How It Works
+
+### Dashboard AI Intelligence (Rules-Based)
+All dashboard intelligence is computed locally using rules in:
+- `src/lib/profileAI.ts` — `analyzeProfileStrength()`, `analyzeCreatorReadiness()`
+- No external AI API is called
+- Scores are deterministic from profile data
+
+### Analytics Page (v2)
+- Live profile strength section bars (fetches creator profile and computes real scores)
+- Live build count and rating for creators
+- Live request count for buyers
+- Placeholder metrics grid clearly labeled with what integration is required
+- Earnings bar chart placeholder
+
+### Future Dashboard Phases
+- **Phase 2:** Project matching, build pipeline, assignment notifications
+- **Phase 3:** Event tracking, profile view counts, real-time buyer interest
+- **Phase 4:** Stripe integration for earnings, subscription management, invoices
+- **Phase 5:** Real AI recommendations via Supabase Edge Functions (server-side only)
+
+> **⚠ Never put Stripe keys or AI API keys in the frontend.** All payment and real AI calls must go through Supabase Edge Functions.
 
 ### Future
 - Stripe payment activation for Pro/Verified tiers (Phase 4)

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { analyzeProfileStrength, getStrengthColor } from '../lib/profileAI';
 import type { CreatorProfileRow } from '../types/database';
+import DashboardNav from '../components/DashboardNav';
 import './DashboardProfile.css';
 
 function safeArr<T>(v: unknown): T[] { return Array.isArray(v) ? (v as T[]) : []; }
@@ -300,6 +301,7 @@ export default function DashboardProfile() {
       </div>
 
       <div className="container dp-body">
+        <DashboardNav />
         {/* Status bar */}
         <div className="dp-status-bar">
           <div className="dp-status-item">

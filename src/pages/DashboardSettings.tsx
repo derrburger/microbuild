@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { UserProfileRow } from '../types/database';
+import DashboardNav from '../components/DashboardNav';
 import './DashboardSettings.css';
 
 export default function DashboardSettings() {
@@ -90,6 +91,7 @@ export default function DashboardSettings() {
       </div>
 
       <div className="container ds-body">
+        <DashboardNav />
 
         {/* ── Account info ──────────────────────────────────────── */}
         <div className="ds-section">

@@ -561,3 +561,380 @@
   line-height: 1.55;
 }
 .das-action { margin-top: 0.6rem; }
+
+/* ─── Dashboard sub-header description ──────────────────────────────────────── */
+.dashboard-sub {
+  font-size: 0.83rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+  line-height: 1.5;
+}
+
+/* ─── Account Status Panel ───────────────────────────────────────────────────── */
+.dash-account-status-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.4rem;
+  margin-bottom: 1.25rem;
+}
+.das-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+}
+.das-status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.das-status-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+.das-status-val {
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* ─── Next Best Action Card ──────────────────────────────────────────────────── */
+.dash-nba-card {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.4rem;
+  margin-bottom: 1.25rem;
+}
+.dash-nba-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-top: 0.15rem;
+}
+.dash-nba-body {
+  flex: 1;
+  min-width: 0;
+}
+.dash-nba-label {
+  font-size: 0.67rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+}
+.dash-nba-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.35rem;
+  line-height: 1.3;
+}
+.dash-nba-message {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 0 0 0.5rem;
+}
+.dash-nba-cta { margin-top: 0.4rem; }
+.dash-nba-btn {
+  display: inline-block;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(99, 179, 237, 0.1);
+  border: 1px solid rgba(99, 179, 237, 0.35);
+  border-radius: 6px;
+  color: #63b3ed;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.dash-nba-btn:hover {
+  background: rgba(99, 179, 237, 0.18);
+  border-color: rgba(99, 179, 237, 0.6);
+}
+
+/* ─── Section action link ────────────────────────────────────────────────────── */
+.dash-section-action {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.dash-section-action:hover { text-decoration: underline; }
+
+/* ─── Badges section ─────────────────────────────────────────────────────────── */
+.dash-badges-section { }
+.dash-badge-chip {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(249, 176, 50, 0.1);
+  border: 1px solid rgba(249, 176, 50, 0.3);
+  border-radius: 20px;
+  color: #f9b032;
+}
+.dash-badge-note {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
+
+/* ─── AI Readiness section ───────────────────────────────────────────────────── */
+.dash-ai-badge-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+.dash-readiness-row {
+  margin-bottom: 0.5rem;
+}
+.dash-readiness-verdict {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+.dash-checklist--warn .dash-check-icon { color: #f9b032; }
+.dash-ai-path {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  line-height: 1.5;
+}
+
+/* ─── Coming soon badge ──────────────────────────────────────────────────────── */
+.dash-coming-soon-badge {
+  font-size: 0.67rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  background: rgba(99, 179, 237, 0.1);
+  border: 1px solid rgba(99, 179, 237, 0.25);
+  color: #63b3ed;
+  padding: 0.15rem 0.55rem;
+  border-radius: 4px;
+}
+
+/* ─── Project Pipeline ───────────────────────────────────────────────────────── */
+.dash-pipeline {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0.75rem 0 0.5rem;
+}
+.dash-pipeline-wrap {
+  display: flex;
+  align-items: center;
+}
+.dash-pipeline-stage {
+  text-align: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 100px;
+}
+.dash-pipeline-count {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--text-muted);
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+.dash-pipeline-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.2rem;
+}
+.dash-pipeline-note {
+  font-size: 0.67rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+.dash-pipeline-arrow {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  padding: 0 0.4rem;
+  margin-bottom: 1rem;
+}
+.dash-pipeline-footer {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
+
+/* ─── Creator Analytics Preview Grid ─────────────────────────────────────────── */
+.dash-analytics-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.75rem;
+}
+.dash-analytics-cell {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  text-align: center;
+}
+.dash-analytics-cell--placeholder {
+  opacity: 0.6;
+}
+.dac-val {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.dac-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.dac-note {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
+/* ─── Buyer dashboard improvements ───────────────────────────────────────────── */
+.dash-buyer-sub {
+  font-size: 0.83rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+.dash-request-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.dash-request-industry {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+}
+.dash-request-budget {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #00d478;
+}
+.dash-request-deadline {
+  font-size: 0.74rem;
+  color: #f9b032;
+}
+.dash-request-date { font-size: 0.73rem; color: var(--text-muted); }
+
+/* ─── Missing info panel ─────────────────────────────────────────────────────── */
+.dash-missing-info-panel {
+  background: rgba(249, 176, 50, 0.05);
+  border: 1px solid rgba(249, 176, 50, 0.2);
+  border-radius: 10px;
+  padding: 1.25rem 1.4rem;
+  margin-bottom: 1.25rem;
+}
+.dash-missing-sub {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin: 0.35rem 0 0.6rem;
+}
+
+/* ─── Recommended build card ─────────────────────────────────────────────────── */
+.dash-rec-build-section { }
+.dash-rec-build-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-top: 0.75rem;
+  transition: border-color 0.15s;
+}
+.dash-rec-build-card:hover { border-color: var(--accent); }
+.dash-rec-build-icon { font-size: 1.75rem; flex-shrink: 0; }
+.dash-rec-build-body { flex: 1; min-width: 0; }
+.dash-rec-build-type {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.2rem;
+}
+.dash-rec-build-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.45;
+}
+.dash-rec-build-btn {
+  display: inline-block;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(99, 179, 237, 0.1);
+  border: 1px solid rgba(99, 179, 237, 0.3);
+  border-radius: 6px;
+  color: #63b3ed;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.dash-rec-build-btn:hover { background: rgba(99, 179, 237, 0.18); }
+.dash-rec-build-others {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+.dash-rec-others-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.dash-rec-other-link {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.dash-rec-other-link:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ─── Quick links update (add settings icon) ──────────────────────────────────── */
+.dash-quick-links a:last-child { }
+
+/* ─── Responsive ─────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .das-status-grid { grid-template-columns: repeat(2, 1fr); }
+  .dash-analytics-preview-grid { grid-template-columns: repeat(2, 1fr); }
+  .dash-pipeline { flex-wrap: wrap; gap: 0.5rem; }
+  .dash-pipeline-arrow { display: none; }
+  .dash-rec-build-card { flex-wrap: wrap; }
+  .dash-rec-build-btn { width: 100%; text-align: center; }
+  .dash-nba-card { flex-direction: column; gap: 0.75rem; }
+}
