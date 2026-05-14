@@ -1,8 +1,8 @@
-# MicroBuild
+﻿# MicroBuild
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Buyer Experience v2 + Request Workflow â€” expanded multi-section buyer intake form, AI-style live request preview, enhanced buyer dashboard (status cards, request timelines, recommended builds, business profile panel), buyer analytics, buyer billing settings, and admin quick-action buttons on request cards. Rules-based buyer AI (`buyerAI.ts`) with no external API calls. Build passes. Stripe and GitHub OAuth deferred.
+**Status:** Project Pipeline v1 live - buyer requests can be converted to trackable projects, assigned to creators, and tracked through a full pipeline (draft, ready_to_quote, assigned, in_progress, in_review, delivered, completed). Creator dashboard shows live assigned projects. Buyer dashboard shows linked project status. Admin Project Pipeline section with order cards, creator assignment, and status controls. Rules-based AI (buyerAI.ts, buildPacket.ts) with no external API calls. Build passes.
 
 ---
 
@@ -813,3 +813,139 @@ The admin dashboard can now write status updates back to Supabase:
 ### Mock data fallback
 
 `src/lib/templates.ts` fetches from Supabase and falls back to `src/data/mockListings.ts` if the query fails or returns empty. This lets the app render correctly without a live Supabase connection.
+
+
+---
+
+## Project Pipeline v1
+
+### Overview
+
+The Project Pipeline converts buyer requests into trackable projects assigned to creators and visible to both parties on their dashboards.
+
+### Core Flow
+
+`
+Buyer submits request
+  -> Admin reviews in /admin Buyer Request Queue
+  -> Admin generates Build Packet (AI-style rules-based brief)
+  -> Admin clicks "+ Create Project" on any request card
+  -> Admin assigns an active creator to the project
+  -> Creator sees assigned project in /dashboard Project Pipeline
+  -> Buyer sees linked project status in /dashboard Active Requests
+  -> Admin updates project status as work progresses
+  -> Project marked delivered -> completed
+`
+
+### Order Pipeline Statuses
+
+| Status | Meaning |
+|--------|---------|
+| draft | Project created, not yet assigned or quoted |
+| eady_to_quote | Ready to send proposal to buyer |
+| pending_payment | Awaiting buyer payment (future Stripe integration) |
+| ssigned | Creator assigned, work not yet started |
+| in_progress | Creator is actively building |
+| in_review | Build submitted, under review |
+| delivered | Delivered to buyer, awaiting approval |
+| completed | Buyer approved, project closed |
+| ejected | Request rejected |
+| canceled | Project canceled |
+
+### New Migration: project-pipeline-foundation.sql
+
+Run this in the Supabase SQL editor **after** schema.sql:
+
+`
+supabase/migrations/project-pipeline-foundation.sql
+`
+
+**What it does:**
+- Adds order_status, payment_status, project_title, project_type, dmin_notes, microbuild_fee, creator_payout to orders
+- Makes uyer_id nullable on orders (supports guest buyer requests)
+- Adds launch_checklist, i_summary, suggested_page_sections to uild_packets
+- Adds github_url, delivery_status, creator_profile_id to deliverables
+- Adds DEV-ONLY RLS policies for orders, uild_packets, deliverables (clearly labeled UNSAFE)
+
+**Note:** The dev policies grant full anon + authenticated access. Remove before production deployment.
+
+### New File: src/lib/orders.ts
+
+CRUD helpers for the project pipeline:
+
+| Function | Purpose |
+|----------|---------|
+| createOrderFromRequest() | Creates an order from a buyer request, prevents duplicates |
+| updateOrderStatus() | Updates order pipeline status |
+| ssignCreatorToOrder() | Assigns creator profile, moves status to assigned |
+| etchAllOrders() | Admin: fetch all orders |
+| etchOrderByRequestId() | Check if order exists for a request |
+| etchOrdersByCreatorProfile() | Creator dashboard: fetch assigned orders |
+| etchOrdersByRequestIds() | Buyer dashboard: fetch orders for buyer's requests |
+| etchActiveCreatorProfiles() | Creator assignment dropdown data |
+| createDeliverablePlaceholder() | Creates a deliverable placeholder |
+| etchDeliverableByOrderId() | Fetch deliverable for an order |
+| updateDeliverable() | Update deliverable URLs and status |
+
+Also exports ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, ORDER_PIPELINE_STAGES, and getNextOrderAction().
+
+### Admin: Project Pipeline Section
+
+The /admin dashboard now includes a **Project Pipeline** section (replaces the old "Orders: Phase 2" placeholder):
+
+- Filter tabs: All, Draft, Ready to Quote, Assigned, In Progress, In Review, Delivered, Completed
+- Each order card shows: project title, type, pipeline progress bar, payment status, creator assignment dropdown, status action buttons, next best action, admin notes
+- Creator assignment: select from active creators, one-click assign
+- Status updates write directly to Supabase with optimistic UI
+
+Each buyer request card now includes a **+ Create Project** button that:
+- Checks for existing order first (prevents duplicates)
+- Creates order linked to the buyer request
+- Shows the project ID badge once created
+
+### Creator Dashboard: Live Project Pipeline
+
+The creator dashboard now shows **real assigned projects** instead of a Phase 2 placeholder:
+
+- Fetches orders from Supabase where creator_id = creator_profile.id
+- Shows stage counts: Assigned, In Progress, In Review, Delivered, Completed
+- Shows individual project cards with: title, type, status badge, date, next action
+- Empty state: "Approved creators will see assigned MicroBuild projects here."
+
+### Buyer Dashboard: Project Status
+
+The buyer dashboard's Active Requests section now shows a **Project Status block** on each request card:
+
+- If a project exists: shows project title, pipeline status badge, and a human-readable next step
+- If no project yet: shows "Your request is under review. MicroBuild will prepare a recommended build plan."
+- Orders are fetched by matching buyer request IDs
+
+### Deliverables (Placeholder)
+
+Deliverable records can be created via createDeliverablePlaceholder() in orders.ts. The deliverable schema now supports:
+- live_url / preview_url / github_url - build URLs
+- delivery_status: draft -> submitted -> revision_needed -> approved
+- creator_profile_id - explicit creator link
+- 
+otes - creator notes
+
+Full deliverable submission UI and buyer review flow are planned for a future phase.
+
+### Payment Integration (Future)
+
+Stripe integration is **not included in v1**. The payment_status field on orders (unpaid, pending, paid, efunded) and microbuild_fee / creator_payout fields are in place for a future Stripe integration via Supabase Edge Functions.
+
+### Real AI Integration (Future)
+
+All current AI functionality is rules-based (uyerAI.ts, uildPacket.ts). Phase 3 will replace generateBuildPacket() with a Supabase Edge Function call to GPT-4o server-side. The GeneratedBuildPacket interface shape will not change.
+
+### Manual Tests After Migration
+
+1. **Submit buyer request**: Go to /request, submit a form
+2. **Generate/save build packet**: Open request in /admin, expand AI Operations Panel, generate packet and save to Supabase
+3. **Create project**: Click "+ Create Project" on any request card in admin; verify project ID badge appears
+4. **Assign creator**: In Project Pipeline section, select an active creator from the dropdown and click Assign
+5. **Creator dashboard**: Log in as creator, verify assigned project appears in Project Pipeline with correct status
+6. **Buyer dashboard**: Log in as buyer, verify linked project status appears on Active Requests
+7. **Admin status update**: In Project Pipeline, click status buttons (In Progress, In Review, Delivered) and verify they update
+

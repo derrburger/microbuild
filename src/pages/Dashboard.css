@@ -1276,3 +1276,145 @@
   .buyer-quick-actions { grid-template-columns: 1fr; }
   .buyer-timeline { gap: 0; }
 }
+
+/* ============================================================
+   BUYER — Linked Project Block (inside ActiveRequestCard)
+   ============================================================ */
+
+.buyer-project-block {
+  margin: 0.25rem 0;
+  padding: 0.65rem 0.875rem;
+  background: rgba(99,179,237,0.05);
+  border: 1px solid rgba(99,179,237,0.2);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.buyer-project-block--pending {
+  background: rgba(138,148,166,0.05);
+  border-color: rgba(138,148,166,0.15);
+}
+.buyer-project-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #63b3ed;
+  font-weight: 700;
+}
+.buyer-project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.buyer-project-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.buyer-project-status-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 5px;
+  border: 1px solid;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+.buyer-project-next {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ============================================================
+   CREATOR — Live Project Pipeline Card
+   ============================================================ */
+
+.cd-pipeline-loading {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 0.75rem 0;
+}
+.cd-pipeline-empty {
+  padding: 0.5rem 0;
+}
+.cd-pipeline-empty p {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0 0 0.25rem;
+}
+.cd-pipeline-empty-sub {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.cd-pipeline-live-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #63b3ed;
+  background: rgba(99,179,237,0.1);
+  border: 1px solid rgba(99,179,237,0.25);
+  border-radius: 10px;
+  padding: 0.15rem 0.5rem;
+}
+
+/* Project cards inside the pipeline card */
+.cd-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+.cd-project-card {
+  padding: 0.65rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.cd-project-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.cd-project-type {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.cd-project-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.cd-project-status-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 5px;
+  border: 1px solid;
+  text-transform: capitalize;
+}
+.cd-project-date {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+.cd-project-next {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  padding-top: 0.3rem;
+  margin-top: 0.1rem;
+}
+.cd-project-more {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0.3rem;
+}

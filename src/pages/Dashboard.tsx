@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -14,6 +14,14 @@ import {
   getRequestTimeline,
   analyzeBuyerDashboard,
 } from '../lib/buyerAI';
+import {
+  fetchOrdersByCreatorProfile,
+  fetchOrdersByRequestIds,
+  ORDER_STATUS_LABELS,
+  ORDER_STATUS_COLORS,
+  getNextOrderAction,
+} from '../lib/orders';
+import type { OrderPipelineRow } from '../lib/orders';
 import type { UserProfileRow, CreatorProfileRow } from '../types/database';
 import DashboardNav from '../components/DashboardNav';
 import './Dashboard.css';
@@ -270,38 +278,95 @@ function ProfileReadinessCard({ profile }: { profile: CreatorProfileRow }) {
   );
 }
 
-// ─── Project Pipeline preview ──────────────────────────────────────────────────
+// ─── Creator Project Pipeline (live data) ─────────────────────────────────────
 
-function ProjectPipelinePreview({ completedCount }: { completedCount: number }) {
+function CreatorProjectPipeline({ creatorProfileId }: { creatorProfileId: string }) {
+  const [orders, setOrders]   = useState<OrderPipelineRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchOrdersByCreatorProfile(creatorProfileId).then((data) => {
+      setOrders(data);
+      setLoading(false);
+    });
+  }, [creatorProfileId]);
+
   const STAGES = [
-    { label: 'Available',   count: 0,              note: 'Open opportunities' },
-    { label: 'Assigned',    count: 0,              note: 'Matched to you' },
-    { label: 'In Progress', count: 0,              note: "You're building" },
-    { label: 'In Review',   count: 0,              note: 'Buyer review' },
-    { label: 'Delivered',   count: 0,              note: 'Awaiting payment' },
-    { label: 'Completed',   count: completedCount, note: 'Finished builds' },
+    { id: 'assigned',    label: 'Assigned',    color: '#63b3ed' },
+    { id: 'in_progress', label: 'In Progress', color: '#f9b032' },
+    { id: 'in_review',   label: 'In Review',   color: '#f97316' },
+    { id: 'delivered',   label: 'Delivered',   color: '#00d478' },
+    { id: 'completed',   label: 'Completed',   color: '#00d478' },
   ];
+
+  const activeOrders = orders.filter(
+    (o) => !['completed', 'rejected', 'canceled'].includes(o.order_status),
+  );
 
   return (
     <div className="cd-pipeline-card">
       <div className="cd-pipeline-header">
         <h3 className="cd-card-title">Project Pipeline</h3>
-        <span className="cd-phase-badge">Phase 2</span>
+        {!loading && (
+          <span className="cd-pipeline-live-badge">
+            {orders.length > 0 ? `${orders.length} project${orders.length > 1 ? 's' : ''}` : 'No projects yet'}
+          </span>
+        )}
       </div>
-      <div className="cd-pipeline-stages">
-        {STAGES.map((s) => (
-          <div key={s.label} className={`cd-pipeline-stage${s.count > 0 ? ' cd-pipeline-stage--active' : ''}`}>
-            <div className="cd-pipeline-count" style={{ color: s.count > 0 ? '#00d478' : undefined }}>
-              {s.count > 0 ? s.count : '—'}
-            </div>
-            <div className="cd-pipeline-label">{s.label}</div>
-            <div className="cd-pipeline-note">{s.note}</div>
+
+      {loading ? (
+        <div className="cd-pipeline-loading">Loading projects…</div>
+      ) : orders.length === 0 ? (
+        <div className="cd-pipeline-empty">
+          <p>Approved creators will see assigned MicroBuild projects here.</p>
+          <p className="cd-pipeline-empty-sub">Admin will assign projects once a buyer request is approved.</p>
+        </div>
+      ) : (
+        <>
+          {/* Stage counts */}
+          <div className="cd-pipeline-stages">
+            {STAGES.map((s) => {
+              const count = orders.filter((o) => o.order_status === s.id).length;
+              return (
+                <div key={s.id} className={`cd-pipeline-stage${count > 0 ? ' cd-pipeline-stage--active' : ''}`}>
+                  <div className="cd-pipeline-count" style={{ color: count > 0 ? s.color : undefined }}>
+                    {count > 0 ? count : '—'}
+                  </div>
+                  <div className="cd-pipeline-label">{s.label}</div>
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
-      <p className="cd-pipeline-note-main">
-        Project matching and build assignment are coming in Phase 2.
-      </p>
+
+          {/* Active project cards */}
+          {activeOrders.length > 0 && (
+            <div className="cd-project-list">
+              {activeOrders.slice(0, 4).map((order) => {
+                const sColor = ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6';
+                return (
+                  <div key={order.id} className="cd-project-card">
+                    <div className="cd-project-title">
+                      {order.project_title ?? `Project ${order.id.slice(0, 8)}…`}
+                    </div>
+                    <div className="cd-project-type">{order.project_type ?? '—'}</div>
+                    <div className="cd-project-footer">
+                      <span className="cd-project-status-badge"
+                        style={{ color: sColor, borderColor: sColor + '44', background: sColor + '11' }}>
+                        {ORDER_STATUS_LABELS[order.order_status] ?? order.order_status}
+                      </span>
+                      <span className="cd-project-date">{fmtDate(order.created_at)}</span>
+                    </div>
+                    <div className="cd-project-next">→ {getNextOrderAction(order.order_status)}</div>
+                  </div>
+                );
+              })}
+              {activeOrders.length > 4 && (
+                <div className="cd-project-more">+{activeOrders.length - 4} more projects</div>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -514,7 +579,7 @@ function CreatorDashboard({
 
         {/* Right column */}
         <div className="cd-main-right">
-          <ProjectPipelinePreview completedCount={completedBuilds} />
+          <CreatorProjectPipeline creatorProfileId={profile.id} />
           <EarningsPreview completedCount={completedBuilds} avgRating={avgRating} />
         </div>
 
@@ -563,7 +628,13 @@ function RequestTimeline({ status }: { status: string }) {
 
 // ─── Active request card ────────────────────────────────────────────────────────
 
-function ActiveRequestCard({ request }: { request: BuyerRequest }) {
+function ActiveRequestCard({
+  request,
+  linkedOrder,
+}: {
+  request: BuyerRequest;
+  linkedOrder?: OrderPipelineRow | null;
+}) {
   const data = {
     business_name:   request.business_name,
     industry:        request.industry ?? '',
@@ -588,6 +659,46 @@ function ActiveRequestCard({ request }: { request: BuyerRequest }) {
           {request.status.replace(/[-_]/g, ' ')}
         </span>
       </div>
+
+      {/* Linked project block */}
+      {linkedOrder ? (
+        <div className="buyer-project-block">
+          <div className="buyer-project-label">Project Created</div>
+          <div className="buyer-project-row">
+            <span className="buyer-project-title">
+              {linkedOrder.project_title ?? `Project ${linkedOrder.id.slice(0, 8)}…`}
+            </span>
+            <span className="buyer-project-status-badge"
+              style={{
+                color:       ORDER_STATUS_COLORS[linkedOrder.order_status] ?? '#8a94a6',
+                borderColor: (ORDER_STATUS_COLORS[linkedOrder.order_status] ?? '#8a94a6') + '44',
+                background:  (ORDER_STATUS_COLORS[linkedOrder.order_status] ?? '#8a94a6') + '11',
+              }}
+            >
+              {ORDER_STATUS_LABELS[linkedOrder.order_status] ?? linkedOrder.order_status}
+            </span>
+          </div>
+          <div className="buyer-project-next">
+            {linkedOrder.order_status === 'draft' || linkedOrder.order_status === 'ready_to_quote'
+              ? 'MicroBuild is preparing a build plan for your request.'
+              : linkedOrder.order_status === 'assigned' || linkedOrder.order_status === 'in_progress'
+              ? 'A creator has been assigned and is building your MicroBuild.'
+              : linkedOrder.order_status === 'in_review'
+              ? "Build is under review. You'll be notified when it's ready."
+              : linkedOrder.order_status === 'delivered'
+              ? 'Your MicroBuild has been delivered! Review and confirm.'
+              : linkedOrder.order_status === 'completed'
+              ? 'Build completed. Thank you for using MicroBuild!'
+              : getNextOrderAction(linkedOrder.order_status)}
+          </div>
+        </div>
+      ) : (
+        <div className="buyer-project-block buyer-project-block--pending">
+          <div className="buyer-project-next">
+            Your request is under review. MicroBuild will prepare a recommended build plan.
+          </div>
+        </div>
+      )}
 
       <RequestTimeline status={request.status} />
 
@@ -732,8 +843,9 @@ function BusinessProfilePanel({ requests }: { requests: BuyerRequest[] }) {
 // ─── Buyer Dashboard ───────────────────────────────────────────────────────────
 
 function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
-  const [requests,    setRequests]    = useState<BuyerRequest[]>([]);
-  const [loadingReqs, setLoadingReqs] = useState(true);
+  const [requests,     setRequests]     = useState<BuyerRequest[]>([]);
+  const [orders,       setOrders]       = useState<OrderPipelineRow[]>([]);
+  const [loadingReqs,  setLoadingReqs]  = useState(true);
 
   useEffect(() => {
     supabase
@@ -743,10 +855,22 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
       .order('created_at', { ascending: false })
       .limit(10)
       .then(({ data }) => {
-        setRequests((data as BuyerRequest[]) ?? []);
+        const reqs = (data as BuyerRequest[]) ?? [];
+        setRequests(reqs);
         setLoadingReqs(false);
+        // Fetch linked orders once we have request IDs
+        if (reqs.length > 0) {
+          fetchOrdersByRequestIds(reqs.map((r) => r.id)).then(setOrders);
+        }
       });
   }, [userProfile.email]);
+
+  // Build a map of request_id → order for O(1) lookup
+  const orderByRequestId = useMemo<Record<string, OrderPipelineRow>>(() => {
+    const map: Record<string, OrderPipelineRow> = {};
+    for (const o of orders) { if (o.request_id) map[o.request_id] = o; }
+    return map;
+  }, [orders]);
 
   const displayName = userProfile.display_name ?? userProfile.email.split('@')[0];
 
@@ -801,7 +925,11 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
         ) : (
           <div className="buyer-active-list">
             {activeRequests.map((r) => (
-              <ActiveRequestCard key={r.id} request={r} />
+              <ActiveRequestCard
+                key={r.id}
+                request={r}
+                linkedOrder={orderByRequestId[r.id] ?? null}
+              />
             ))}
           </div>
         )}

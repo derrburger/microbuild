@@ -7,6 +7,19 @@ import { buildCreatorProfileInsert, normalizeCreatorProfile } from '../lib/profi
 import { analyzeProfileStrength, getStrengthColor as psGetStrengthColor } from '../lib/profileAI';
 import type { CreatorApplicationRow as DBCreatorApplicationRow, CreatorProfileRow as DBCreatorProfileRow } from '../types/database';
 import type { MicroBuildListing } from '../types';
+import {
+  createOrderFromRequest,
+  fetchAllOrders,
+  fetchActiveCreatorProfiles,
+  updateOrderStatus,
+  assignCreatorToOrder,
+  ORDER_STATUS_LABELS,
+  ORDER_STATUS_COLORS,
+  ORDER_PIPELINE_STAGES,
+  getNextOrderAction,
+} from '../lib/orders';
+import type { OrderPipelineRow, CreatorProfileSnap, } from '../lib/orders';
+import type { OrderPipelineStatus } from '../types/database';
 import './Admin.css';
 
 // ─── Defensive helpers ────────────────────────────────────────────────────────
@@ -891,6 +904,319 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
   );
 }
 
+// ─── Create Project Button ────────────────────────────────────────────────────
+
+function CreateProjectBtn({
+  requestId, buildType,
+}: { requestId: string; buildType: string }) {
+  type BtnState = 'checking' | 'idle' | 'creating' | 'exists' | 'done' | 'error';
+  const [state, setState] = useState<BtnState>('checking');
+  const [projectId, setProjectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('orders')
+      .select('id, order_status')
+      .eq('request_id', requestId)
+      .limit(1)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setProjectId((data[0] as { id: string }).id);
+          setState('exists');
+        } else {
+          setState('idle');
+        }
+      });
+  }, [requestId]);
+
+  async function handleCreate() {
+    setState('creating');
+    const result = await createOrderFromRequest({ requestId, buildType });
+    if (result) {
+      setProjectId(result.id);
+      setState(result.isNew ? 'done' : 'exists');
+    } else {
+      setState('error');
+      setTimeout(() => setState('idle'), 3000);
+    }
+  }
+
+  if (state === 'checking') return null;
+  if (state === 'exists' || state === 'done') {
+    return (
+      <div className="create-project-badge">
+        ✓ Project <span className="create-project-id">{projectId?.slice(0, 8) ?? '…'}…</span>
+        {state === 'done' && <span className="create-project-new"> Created</span>}
+      </div>
+    );
+  }
+  return (
+    <button
+      className={`create-project-btn${state === 'error' ? ' create-project-btn--error' : ''}`}
+      onClick={handleCreate}
+      disabled={state === 'creating'}
+    >
+      {state === 'creating' ? '…' : state === 'error' ? 'Failed — retry' : '+ Create Project'}
+    </button>
+  );
+}
+
+// ─── Order Card (Project Pipeline) ───────────────────────────────────────────
+
+function OrderCard({
+  order, activeCreators, onUpdate,
+}: {
+  order: OrderPipelineRow;
+  activeCreators: CreatorProfileSnap[];
+  onUpdate: (id: string, updates: Partial<OrderPipelineRow>) => void;
+}) {
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [assigning, setAssigning]           = useState(false);
+  const [selectedCreator, setSelectedCreator] = useState(order.creator_id ?? '');
+  const [notesVal, setNotesVal]             = useState(order.admin_notes ?? '');
+  const [savingNotes, setSavingNotes]       = useState(false);
+
+  const statusColor = ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6';
+  const assignedCreator = activeCreators.find((c) => c.id === order.creator_id);
+
+  async function handleStatus(status: OrderPipelineStatus) {
+    setUpdatingStatus(true);
+    const ok = await updateOrderStatus(order.id, status);
+    if (ok) onUpdate(order.id, { order_status: status });
+    setUpdatingStatus(false);
+  }
+
+  async function handleAssign() {
+    if (!selectedCreator) return;
+    setAssigning(true);
+    const ok = await assignCreatorToOrder(order.id, selectedCreator);
+    if (ok) onUpdate(order.id, { creator_id: selectedCreator, order_status: 'assigned' });
+    setAssigning(false);
+  }
+
+  return (
+    <div className="order-card">
+      <div className="order-card-header">
+        <div className="order-card-title-col">
+          <div className="order-card-title">
+            {order.project_title ?? `Project ${order.id.slice(0, 8)}`}
+          </div>
+          <div className="order-card-type">{order.project_type ?? '—'}</div>
+        </div>
+        <div className="order-card-badges">
+          <span className="order-status-badge"
+            style={{ color: statusColor, borderColor: statusColor + '44', background: statusColor + '11' }}>
+            {ORDER_STATUS_LABELS[order.order_status] ?? order.order_status}
+          </span>
+          <span className="order-payment-badge"
+            style={{ color: order.payment_status === 'paid' ? '#00d478' : '#8a94a6' }}>
+            {order.payment_status ?? 'unpaid'}
+          </span>
+        </div>
+      </div>
+
+      {/* Pipeline progress bar */}
+      <div className="order-pipeline-bar">
+        {ORDER_PIPELINE_STAGES.map((s) => {
+          const idx = ORDER_PIPELINE_STAGES.findIndex((x) => x.id === order.order_status);
+          const sIdx = ORDER_PIPELINE_STAGES.findIndex((x) => x.id === s.id);
+          const done   = sIdx < idx;
+          const active = s.id === order.order_status;
+          return (
+            <div key={s.id} className={`order-pipe-step${active ? ' active' : ''}${done ? ' done' : ''}`}>
+              <div className="order-pipe-dot"
+                style={{ background: done || active ? ORDER_STATUS_COLORS[s.id] ?? '#63b3ed' : 'var(--border)' }} />
+              <span className="order-pipe-label">{s.label}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Details row */}
+      <div className="order-card-details">
+        <div className="order-detail">
+          <span className="order-detail-label">Request ID</span>
+          <span className="order-detail-val">{order.request_id?.slice(0, 8) ?? '—'}…</span>
+        </div>
+        <div className="order-detail">
+          <span className="order-detail-label">Fee</span>
+          <span className="order-detail-val">{order.microbuild_fee ?? '—'}</span>
+        </div>
+        <div className="order-detail">
+          <span className="order-detail-label">Creator Payout</span>
+          <span className="order-detail-val">{order.creator_payout ?? '—'}</span>
+        </div>
+        <div className="order-detail">
+          <span className="order-detail-label">Created</span>
+          <span className="order-detail-val">{fmtDate(order.created_at)}</span>
+        </div>
+      </div>
+
+      {/* Creator assignment */}
+      <div className="order-assign-row">
+        <span className="order-assign-label">
+          {assignedCreator
+            ? `Assigned: ${assignedCreator.display_name ?? assignedCreator.full_name}`
+            : 'Not yet assigned'}
+        </span>
+        <select
+          className="order-creator-select"
+          value={selectedCreator}
+          onChange={(e) => setSelectedCreator(e.target.value)}
+          disabled={assigning}
+        >
+          <option value="">Select creator…</option>
+          {activeCreators.length === 0 && <option disabled>No active creators yet</option>}
+          {activeCreators.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.display_name ?? c.full_name} · {c.tier}
+            </option>
+          ))}
+        </select>
+        <button
+          className="order-assign-btn"
+          onClick={handleAssign}
+          disabled={!selectedCreator || assigning || selectedCreator === order.creator_id}
+        >
+          {assigning ? '…' : selectedCreator === order.creator_id ? 'Assigned ✓' : 'Assign'}
+        </button>
+      </div>
+
+      {/* Status action buttons */}
+      <div className="order-status-actions">
+        <span className="order-status-actions-label">Update Status:</span>
+        {[
+          { id: 'ready_to_quote', label: 'Ready to Quote' },
+          { id: 'in_progress',    label: 'In Progress'    },
+          { id: 'in_review',      label: 'In Review'      },
+          { id: 'delivered',      label: 'Delivered'      },
+          { id: 'completed',      label: 'Completed'      },
+          { id: 'rejected',       label: 'Reject'         },
+        ].map(({ id, label }) => (
+          <button
+            key={id}
+            className={`order-status-btn${order.order_status === id ? ' order-status-btn--active' : ''}`}
+            style={order.order_status === id ? { borderColor: ORDER_STATUS_COLORS[id], color: ORDER_STATUS_COLORS[id] } : undefined}
+            onClick={() => handleStatus(id as OrderPipelineStatus)}
+            disabled={updatingStatus || order.order_status === id}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Next best action */}
+      <div className="order-next-action">
+        <span className="order-next-icon">→</span>
+        {getNextOrderAction(order.order_status)}
+      </div>
+
+      {/* Admin notes */}
+      <div className="order-notes-row">
+        <textarea
+          className="order-notes-input"
+          placeholder="Admin notes (internal only)…"
+          rows={2}
+          value={notesVal}
+          onChange={(e) => setNotesVal(e.target.value)}
+        />
+        <button
+          className="order-notes-save"
+          onClick={async () => {
+            setSavingNotes(true);
+            await supabase.from('orders').update({ admin_notes: notesVal }).eq('id', order.id);
+            onUpdate(order.id, { admin_notes: notesVal });
+            setSavingNotes(false);
+          }}
+          disabled={savingNotes || notesVal === (order.admin_notes ?? '')}
+        >
+          {savingNotes ? '…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Project Pipeline Section ─────────────────────────────────────────────────
+
+function ProjectPipelineSection({
+  orders, activeCreators, loading, onOrderUpdate,
+}: {
+  orders: OrderPipelineRow[];
+  activeCreators: CreatorProfileSnap[];
+  loading: boolean;
+  onOrderUpdate: (id: string, updates: Partial<OrderPipelineRow>) => void;
+}) {
+  const [filter, setFilter] = useState('all');
+
+  const FILTERS = [
+    { id: 'all',           label: 'All' },
+    { id: 'draft',         label: 'Draft' },
+    { id: 'ready_to_quote',label: 'To Quote' },
+    { id: 'assigned',      label: 'Assigned' },
+    { id: 'in_progress',   label: 'In Progress' },
+    { id: 'in_review',     label: 'In Review' },
+    { id: 'delivered',     label: 'Delivered' },
+    { id: 'completed',     label: 'Completed' },
+  ];
+
+  const filtered = filter === 'all' ? orders : orders.filter((o) => o.order_status === filter);
+
+  return (
+    <section className="admin-section" id="section-pipeline">
+      <div className="admin-section-header">
+        <h2>Project Pipeline</h2>
+        {!loading && <span className="admin-count">{orders.length}</span>}
+      </div>
+
+      {loading ? (
+        <div className="admin-state-row admin-loading">Loading projects…</div>
+      ) : orders.length === 0 ? (
+        <div className="admin-state-row admin-empty">
+          No projects yet. Use the <strong>+ Create Project</strong> button on any buyer request above
+          to start a project.
+        </div>
+      ) : (
+        <>
+          <div className="pipeline-filter-bar">
+            {FILTERS.map(({ id, label }) => {
+              const count = id === 'all' ? orders.length : orders.filter((o) => o.order_status === id).length;
+              return (
+                <button
+                  key={id}
+                  className={`pipeline-filter-tab${filter === id ? ' active' : ''}`}
+                  style={filter === id && id !== 'all'
+                    ? { color: ORDER_STATUS_COLORS[id], borderColor: ORDER_STATUS_COLORS[id] }
+                    : undefined}
+                  onClick={() => setFilter(id)}
+                >
+                  {label}
+                  <span className="pipeline-filter-count">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="admin-state-row admin-empty">No projects in this status.</div>
+          ) : (
+            <div className="pipeline-card-list">
+              {filtered.map((order) => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  activeCreators={activeCreators}
+                  onUpdate={onOrderUpdate}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 // ─── Quick Status Button ──────────────────────────────────────────────────────
 
 function QuickStatusBtn({
@@ -1043,6 +1369,7 @@ function RequestCard({
               🔴 {packet.riskFlags.length} risk flag{packet.riskFlags.length > 1 ? 's' : ''}
             </div>
           )}
+          <CreateProjectBtn requestId={row.id} buildType={row.build_type} />
         </div>
       </div>
 
@@ -2504,10 +2831,13 @@ export default function Admin() {
   const [applications, setApplications]     = useState<CreatorApplicationRow[]>([]);
   const [creatorProfiles, setCreatorProfiles] = useState<DBCreatorProfileRow[]>([]);
   const [templates, setTemplates]           = useState<MicroBuildListing[]>([]);
+  const [orders, setOrders]                 = useState<OrderPipelineRow[]>([]);
+  const [activeCreators, setActiveCreators] = useState<CreatorProfileSnap[]>([]);
   const [reqLoading, setReqLoading]         = useState(true);
   const [appLoading, setAppLoading]         = useState(true);
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [tplLoading, setTplLoading]         = useState(true);
+  const [ordersLoading, setOrdersLoading]   = useState(true);
   const [reqError, setReqError]             = useState(false);
   const [appError, setAppError]             = useState(false);
   const [profilesError, setProfilesError]   = useState(false);
@@ -2551,6 +2881,10 @@ export default function Admin() {
       setTemplates(listings);
       setTplLoading(false);
     });
+
+    // Project pipeline
+    fetchAllOrders().then((data) => { setOrders(data); setOrdersLoading(false); });
+    fetchActiveCreatorProfiles().then(setActiveCreators);
 
     supabase
       .from('creator_profiles')
@@ -2604,6 +2938,9 @@ export default function Admin() {
     setApplications((prev) =>
       prev.map((a) => a.id === id ? { ...a, status: newStatus } : a)
     );
+  }
+  function handleOrderUpdate(id: string, updates: Partial<OrderPipelineRow>) {
+    setOrders((prev) => prev.map((o) => o.id === id ? { ...o, ...updates } : o));
   }
 
   // Batch selection helpers
@@ -2991,27 +3328,26 @@ export default function Admin() {
           />
         </SectionErrorBoundary>
 
-        {/* ── Phase 2+ placeholders ─────────────────────────────────────────── */}
+        {/* ── Project Pipeline ──────────────────────────────────────────────── */}
+        <SectionErrorBoundary name="Project Pipeline">
+          <ProjectPipelineSection
+            orders={orders}
+            activeCreators={activeCreators}
+            loading={ordersLoading}
+            onOrderUpdate={handleOrderUpdate}
+          />
+        </SectionErrorBoundary>
+
+        {/* ── Phase 3+ placeholders ─────────────────────────────────────────── */}
         <div className="admin-placeholders">
           <section className="admin-section admin-section--dim">
             <div className="admin-section-header">
-              <h2>Orders</h2>
-              <span className="admin-placeholder-tag">Phase 2</span>
-            </div>
-            <div className="admin-placeholder">
-              Orders are created when admin accepts a request and assigns a creator.
-              Built in Phase 2 alongside Supabase Auth and admin role checks.
-            </div>
-          </section>
-
-          <section className="admin-section admin-section--dim">
-            <div className="admin-section-header">
-              <h2>AI Build Packets</h2>
+              <h2>AI Build Packets (GPT-4o)</h2>
               <span className="admin-placeholder-tag">Phase 3</span>
             </div>
             <div className="admin-placeholder">
               Real GPT-4o packets via Supabase Edge Function (server-side, no frontend API keys) in Phase 3.
-              Use "Save to Supabase" in the Proposal tab of each request to store the rules-based packet now.
+              Use &ldquo;Save to Supabase&rdquo; in the Proposal tab of each request to store the rules-based packet now.
             </div>
           </section>
         </div>

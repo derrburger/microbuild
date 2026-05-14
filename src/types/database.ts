@@ -49,6 +49,22 @@ export type OrderStatus =
   | 'disputed'
   | 'refunded';
 
+/** Extended pipeline status added by project-pipeline-foundation.sql */
+export type OrderPipelineStatus =
+  | 'draft'
+  | 'ready_to_quote'
+  | 'pending_payment'
+  | 'assigned'
+  | 'in_progress'
+  | 'in_review'
+  | 'delivered'
+  | 'completed'
+  | 'rejected'
+  | 'canceled';
+
+export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'refunded';
+export type DeliveryStatus = 'draft' | 'submitted' | 'revision_needed' | 'approved';
+
 // ─── Row types (what you get back from SELECT) ───────────────────────────────
 
 export interface UserRow {
@@ -290,13 +306,21 @@ export interface CreatorApplicationRow {
 
 export interface OrderRow {
   id: string;
-  request_id: string;
-  buyer_id: string;
-  creator_id: string | null;
+  request_id: string | null;
+  buyer_id: string | null;          // nullable since project-pipeline-foundation.sql
+  creator_id: string | null;        // FK → creator_profiles.id
   template_id: string | null;
   build_packet_id: string | null;
   amount_cents: number;
-  status: OrderStatus;
+  status: OrderStatus;              // legacy field — kept for compat
+  // Fields added by project-pipeline-foundation.sql
+  order_status: OrderPipelineStatus;
+  payment_status: PaymentStatus;
+  project_title: string | null;
+  project_type: string | null;
+  admin_notes: string | null;
+  microbuild_fee: string | null;
+  creator_payout: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -314,21 +338,31 @@ export interface BuildPacketRow {
   automation_needs: string | null;
   creator_instructions: string;
   quality_checklist: string[];
+  // Fields added by project-pipeline-foundation.sql
+  launch_checklist: string[];
+  ai_summary: string | null;
+  suggested_page_sections: string[];
   generated_at: string;
   generated_by: string;
+  updated_at: string;
 }
 
 export interface DeliverableRow {
   id: string;
   order_id: string;
-  creator_id: string;
-  live_url: string;
+  creator_id: string;             // original FK, kept for compat
+  creator_profile_id: string | null; // added by project-pipeline-foundation.sql
+  live_url: string;               // original live URL field
   preview_url: string | null;
   source_files_url: string | null;
   notes: string | null;
+  // Fields added by project-pipeline-foundation.sql
+  github_url: string | null;
+  delivery_status: DeliveryStatus;
   submitted_at: string;
   approved_at: string | null;
   revision_count: number;
+  updated_at: string;
 }
 
 export interface ReviewRow {
@@ -398,14 +432,21 @@ export interface CreatorApplicationInsert {
 
 export interface OrderInsert {
   id?: string;
-  request_id: string;
-  buyer_id: string;
+  request_id?: string | null;
+  buyer_id?: string | null;
   creator_id?: string | null;
-  template_id: string;
+  template_id?: string | null;
   build_packet_id?: string | null;
-  price_cents: number;
+  amount_cents?: number;
   status?: OrderStatus;
-  notes?: string | null;
+  // Pipeline fields
+  order_status?: OrderPipelineStatus;
+  payment_status?: PaymentStatus;
+  project_title?: string | null;
+  project_type?: string | null;
+  admin_notes?: string | null;
+  microbuild_fee?: string | null;
+  creator_payout?: string | null;
   created_at?: string;
   updated_at?: string;
 }
