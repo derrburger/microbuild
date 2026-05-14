@@ -213,16 +213,34 @@ export default function DashboardSettings() {
           <div className="ds-billing-notice">
             <span className="ds-billing-icon">💳</span>
             <div>
-              <div className="ds-billing-title">Billing is not active yet</div>
-              <p className="ds-billing-desc">
-                Professional and Verified creators will only pay after admin approval,
-                when Stripe is fully connected. No payment is required right now.
-              </p>
-              <div className="ds-billing-meta">
-                <span className="ds-billing-tag">Free tier: No charge</span>
-                <span className="ds-billing-tag">Professional: $15/mo — after Stripe</span>
-                <span className="ds-billing-tag">Verified: $25/mo — after Stripe</span>
-              </div>
+              {profile?.account_type === 'buyer' ? (
+                <>
+                  <div className="ds-billing-title">No subscription required</div>
+                  <p className="ds-billing-desc">
+                    Buyers pay per approved MicroBuild, after scope and pricing are confirmed.
+                    No upfront cost, no subscription. Payment will be set up through Stripe when
+                    your build is approved and ready to start.
+                  </p>
+                  <div className="ds-billing-meta">
+                    <span className="ds-billing-tag">No subscription</span>
+                    <span className="ds-billing-tag">Pay per build — after approval</span>
+                    <span className="ds-billing-tag">Stripe integration coming soon</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="ds-billing-title">Billing is not active yet</div>
+                  <p className="ds-billing-desc">
+                    Professional and Verified creators will only pay after admin approval,
+                    when Stripe is fully connected. No payment is required right now.
+                  </p>
+                  <div className="ds-billing-meta">
+                    <span className="ds-billing-tag">Free tier: No charge</span>
+                    <span className="ds-billing-tag">Professional: $15/mo — after Stripe</span>
+                    <span className="ds-billing-tag">Verified: $25/mo — after Stripe</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

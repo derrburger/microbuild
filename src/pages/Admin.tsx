@@ -891,6 +891,42 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
   );
 }
 
+// ─── Quick Status Button ──────────────────────────────────────────────────────
+
+function QuickStatusBtn({
+  requestId, status, label, color, currentStatus, onStatusChange,
+}: {
+  requestId: string;
+  status: string;
+  label: string;
+  color: string;
+  currentStatus: string;
+  onStatusChange: (id: string, newStatus: string) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const isCurrent = currentStatus === status;
+
+  async function handle() {
+    if (isCurrent) return;
+    setSaving(true);
+    const ok = await updateRequestStatus(requestId, status);
+    setSaving(false);
+    if (ok) onStatusChange(requestId, status);
+  }
+
+  return (
+    <button
+      className={`req-qa-btn${isCurrent ? ' req-qa-btn--active' : ''}`}
+      style={isCurrent ? { borderColor: color, color } : undefined}
+      onClick={handle}
+      disabled={saving || isCurrent}
+      title={isCurrent ? `Already: ${label}` : `Set status to: ${label}`}
+    >
+      {saving ? '…' : label}
+    </button>
+  );
+}
+
 // ─── Request Card ─────────────────────────────────────────────────────────────
 
 function RequestCard({
@@ -1020,6 +1056,29 @@ function RequestCard({
             {row.current_problem.slice(0, 180)}{row.current_problem.length > 180 ? '…' : ''}
           </>
         )}
+      </div>
+
+      {/* Quick action buttons */}
+      <div className="req-quick-actions">
+        <span className="req-qa-label">Quick Actions:</span>
+        {[
+          { status: 'in-review',        label: 'Mark Reviewed',    color: '#63b3ed' },
+          { status: 'needs-more-info',  label: 'Needs More Info',  color: '#f9b032' },
+          { status: 'proposal-sent',    label: 'Ready to Quote',   color: '#a78bfa' },
+          { status: 'in-progress',      label: 'In Progress',      color: '#00d478' },
+          { status: 'completed',        label: 'Complete',         color: '#00d478' },
+          { status: 'rejected',         label: 'Reject',           color: '#ef4444' },
+        ].map(({ status, label, color }) => (
+          <QuickStatusBtn
+            key={status}
+            requestId={row.id}
+            status={status}
+            label={label}
+            color={color}
+            currentStatus={row.status}
+            onStatusChange={onStatusChange}
+          />
+        ))}
       </div>
 
       {/* AI Ops toggle */}

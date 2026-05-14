@@ -7,6 +7,13 @@ import {
   getStrengthColor,
   getStrengthBarWidth,
 } from '../lib/profileAI';
+import {
+  getRecommendedBuild,
+  getQuoteReadiness,
+  getMissingInfoFlags,
+  getRequestTimeline,
+  analyzeBuyerDashboard,
+} from '../lib/buyerAI';
 import type { UserProfileRow, CreatorProfileRow } from '../types/database';
 import DashboardNav from '../components/DashboardNav';
 import './Dashboard.css';
@@ -520,27 +527,7 @@ function CreatorDashboard({
   );
 }
 
-// ─── Buyer stat card ───────────────────────────────────────────────────────────
-
-function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
-  return (
-    <div className="dash-stat-card">
-      <div className="dash-stat-value" style={color ? { color } : undefined}>{value}</div>
-      <div className="dash-stat-label">{label}</div>
-      {sub && <div className="dash-stat-sub">{sub}</div>}
-    </div>
-  );
-}
-
-// ─── Buyer: recommended build card ────────────────────────────────────────────
-
-const MICROBUILD_RECS = [
-  { type: 'pool-cleaning-quote-funnel',        label: 'Quote Funnel',     icon: '💰', desc: 'Convert visitors into leads with instant price estimates' },
-  { type: 'auto-detailing-package-selector',   label: 'Package Selector', icon: '📦', desc: 'Let customers self-select and book a service tier' },
-  { type: 'review-booster-page',               label: 'Review Booster',   icon: '⭐', desc: 'Route happy customers to Google reviews automatically' },
-  { type: 'before-after-trust-page',           label: 'Trust Page',       icon: '🏆', desc: 'Before/after gallery with testimonials and a strong CTA' },
-  { type: 'painter-estimate-page',             label: 'Estimate Page',    icon: '🖌️', desc: 'Capture project leads with an instant estimate form' },
-];
+// ─── Buyer request row type ────────────────────────────────────────────────────
 
 interface BuyerRequest {
   id: string;
@@ -552,58 +539,192 @@ interface BuyerRequest {
   deadline: string | null;
   main_goal: string | null;
   industry: string | null;
+  website_social: string | null;
 }
 
-function RecommendedBuildCard({ requests }: { requests: BuyerRequest[] }) {
-  const requestedTypes = new Set(requests.map((r) => r.build_type.toLowerCase().replace(/\s+/g, '-')));
-  const untried = MICROBUILD_RECS.filter((b) => !requestedTypes.has(b.type));
-  const rec     = untried[0] ?? MICROBUILD_RECS[0];
+// ─── Request timeline view ─────────────────────────────────────────────────────
+
+function RequestTimeline({ status }: { status: string }) {
+  const stages = getRequestTimeline(status);
   return (
-    <div className="dash-section dash-rec-build-section">
-      <h3 className="dash-section-title">Recommended Next MicroBuild</h3>
-      <div className="dash-rec-build-card">
-        <span className="dash-rec-build-icon">{rec.icon}</span>
-        <div className="dash-rec-build-body">
-          <div className="dash-rec-build-type">{rec.label}</div>
-          <p className="dash-rec-build-desc">{rec.desc}</p>
+    <div className="buyer-timeline">
+      {stages.map((s, i) => (
+        <div key={s.id} className={`buyer-tl-step${s.active ? ' buyer-tl-step--active' : ''}${s.done ? ' buyer-tl-step--done' : ''}`}>
+          <div className="buyer-tl-dot" style={{ background: s.color, borderColor: s.color }} />
+          {i < stages.length - 1 && <div className="buyer-tl-line" style={{ background: s.done ? '#00d478' : 'var(--border)' }} />}
+          <div className="buyer-tl-label" style={{ color: s.active ? '#fff' : s.done ? '#00d478' : 'var(--text-muted)' }}>
+            {s.label}
+          </div>
         </div>
-        <Link to={`/builds/${rec.type}`} className="dash-rec-build-btn">Learn More →</Link>
+      ))}
+    </div>
+  );
+}
+
+// ─── Active request card ────────────────────────────────────────────────────────
+
+function ActiveRequestCard({ request }: { request: BuyerRequest }) {
+  const data = {
+    business_name:   request.business_name,
+    industry:        request.industry ?? '',
+    build_type:      request.build_type,
+    main_goal:       request.main_goal ?? '',
+    budget:          request.budget,
+    deadline:        request.deadline,
+    website_social:  request.website_social,
+  };
+  const readiness = getQuoteReadiness(data);
+  const missing   = getMissingInfoFlags(data);
+  const { build } = getRecommendedBuild(data);
+
+  return (
+    <div className="buyer-req-card">
+      <div className="buyer-req-header">
+        <div className="buyer-req-title-row">
+          <span className="buyer-req-biz">{request.business_name}</span>
+          <span className="buyer-req-build">{request.build_type}</span>
+        </div>
+        <span className="buyer-req-status" style={{ color: STATUS_COLORS[request.status] ?? '#8a94a6' }}>
+          {request.status.replace(/[-_]/g, ' ')}
+        </span>
       </div>
-      {untried.length > 1 && (
-        <div className="dash-rec-build-others">
-          <span className="dash-rec-others-label">Other options:</span>
-          {untried.slice(1, 4).map((b) => (
-            <Link key={b.type} to={`/builds/${b.type}`} className="dash-rec-other-link">
-              {b.icon} {b.label}
-            </Link>
-          ))}
+
+      <RequestTimeline status={request.status} />
+
+      <div className="buyer-req-details">
+        {request.main_goal && (
+          <div className="buyer-req-detail-row">
+            <span className="buyer-req-detail-key">Goal</span>
+            <span className="buyer-req-detail-val">{request.main_goal}</span>
+          </div>
+        )}
+        <div className="buyer-req-detail-row">
+          <span className="buyer-req-detail-key">Recommended Build</span>
+          <span className="buyer-req-detail-val">{build}</span>
+        </div>
+        {request.budget && (
+          <div className="buyer-req-detail-row">
+            <span className="buyer-req-detail-key">Budget</span>
+            <span className="buyer-req-detail-val">{request.budget}</span>
+          </div>
+        )}
+        {request.deadline && (
+          <div className="buyer-req-detail-row">
+            <span className="buyer-req-detail-key">Timeline</span>
+            <span className="buyer-req-detail-val">{request.deadline}</span>
+          </div>
+        )}
+        <div className="buyer-req-detail-row">
+          <span className="buyer-req-detail-key">Quote Readiness</span>
+          <span className="buyer-req-detail-val" style={{ color: readiness.color }}>{readiness.label}</span>
+        </div>
+        <div className="buyer-req-detail-row">
+          <span className="buyer-req-detail-key">Submitted</span>
+          <span className="buyer-req-detail-val">{fmtDate(request.created_at)}</span>
+        </div>
+      </div>
+
+      {missing.length > 0 && (
+        <div className="buyer-req-missing">
+          <span className="buyer-req-missing-label">Add to speed up your proposal:</span>
+          <div className="buyer-req-missing-items">
+            {missing.slice(0, 3).map((m) => (
+              <span key={m} className="buyer-req-missing-item">○ {m}</span>
+            ))}
+          </div>
+          <Link to="/request" className="buyer-req-missing-link">Submit updated request →</Link>
         </div>
       )}
     </div>
   );
 }
 
-function BuyerMissingInfoPanel({ requests }: { requests: BuyerRequest[] }) {
-  if (requests.length === 0) return null;
-  const latest  = requests[0];
-  const missing = [
-    !latest.budget   && 'Budget range not specified — helps scope the project',
-    !latest.deadline && 'Deadline not specified — helps prioritize your request',
-    !latest.industry && 'Industry or business type not included',
-  ].filter(Boolean) as string[];
-  if (missing.length === 0) return null;
+// ─── Buyer status overview cards ───────────────────────────────────────────────
+
+function BuyerStatusOverview({ requests, loadingReqs }: { requests: BuyerRequest[]; loadingReqs: boolean }) {
+  if (loadingReqs) return null;
+  const total      = requests.length;
+  const inReview   = requests.filter((r) => r.status === 'in-review').length;
+  const proposals  = requests.filter((r) => r.status === 'proposal-sent').length;
+  const needsInfo  = requests.filter((r) => r.status === 'needs-more-info').length;
+  const completed  = requests.filter((r) => r.status === 'completed').length;
+
+  const latest = requests[0];
+  const { build, reason } = latest
+    ? getRecommendedBuild({ industry: latest.industry ?? '', main_goal: latest.main_goal ?? '', build_type: latest.build_type })
+    : { build: 'Quote Funnel', reason: 'Great starting point' };
+
   return (
-    <div className="dash-section dash-missing-info-panel">
-      <h3 className="dash-section-title">Missing Info — Latest Request</h3>
-      <p className="dash-missing-sub">Adding these details helps us prepare your proposal faster:</p>
-      <ul className="dash-checklist">
-        {missing.map((m) => (
-          <li key={m} className="dash-checklist-item">
-            <span className="dash-check-icon">○</span>{m}
-          </li>
+    <div className="buyer-status-row">
+      <div className="buyer-sc">
+        <div className="buyer-sc-val">{total}</div>
+        <div className="buyer-sc-label">Requests Submitted</div>
+        <div className="buyer-sc-sub">Total</div>
+      </div>
+      <div className="buyer-sc">
+        <div className="buyer-sc-val" style={{ color: inReview > 0 ? '#63b3ed' : undefined }}>{inReview}</div>
+        <div className="buyer-sc-label">Under Review</div>
+        <div className="buyer-sc-sub">Being evaluated</div>
+      </div>
+      <div className="buyer-sc">
+        <div className="buyer-sc-val" style={{ color: proposals > 0 ? '#00d478' : undefined }}>{proposals}</div>
+        <div className="buyer-sc-label">Proposals Pending</div>
+        <div className="buyer-sc-sub">Ready to scope</div>
+      </div>
+      <div className="buyer-sc">
+        <div className="buyer-sc-val" style={{ color: needsInfo > 0 ? '#f9b032' : undefined }}>{needsInfo}</div>
+        <div className="buyer-sc-label">Needs More Info</div>
+        <div className="buyer-sc-sub">Awaiting reply</div>
+      </div>
+      <div className="buyer-sc">
+        <div className="buyer-sc-val" style={{ color: completed > 0 ? '#00d478' : undefined }}>{completed}</div>
+        <div className="buyer-sc-label">Completed Builds</div>
+        <div className="buyer-sc-sub">Delivered</div>
+      </div>
+      <div className="buyer-sc buyer-sc--rec">
+        <div className="buyer-sc-val buyer-sc-val--build">{build}</div>
+        <div className="buyer-sc-label">Recommended Next</div>
+        <div className="buyer-sc-sub" style={{ maxWidth: '100%' }}>{reason}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Business profile completeness ────────────────────────────────────────────
+
+function BusinessProfilePanel({ requests }: { requests: BuyerRequest[] }) {
+  if (requests.length === 0) return null;
+  const r = requests[0];
+  const missing = getMissingInfoFlags({
+    business_name:  r.business_name,
+    industry:       r.industry ?? '',
+    build_type:     r.build_type,
+    main_goal:      r.main_goal ?? '',
+    budget:         r.budget,
+    deadline:       r.deadline,
+    website_social: r.website_social,
+  });
+  const bizMissing = [
+    !r.website_social && 'Website or social profile URL',
+    !r.budget         && 'Budget range for future requests',
+    !r.deadline       && 'Preferred timeline',
+  ].filter(Boolean) as string[];
+
+  if (bizMissing.length === 0 && missing.length === 0) return null;
+
+  return (
+    <div className="buyer-profile-panel">
+      <h3 className="buyer-panel-title">Complete Your Business Profile</h3>
+      <p className="buyer-panel-sub">Adding these details helps us prepare faster, more accurate proposals.</p>
+      <div className="buyer-panel-items">
+        {bizMissing.map((m) => (
+          <div key={m} className="buyer-panel-item">
+            <span className="buyer-panel-check">○</span>
+            <span>{m}</span>
+          </div>
         ))}
-      </ul>
-      <Link to="/request" className="dash-fix-link">Submit updated request →</Link>
+      </div>
+      <Link to="/request" className="buyer-panel-link">Submit new request with full details →</Link>
     </div>
   );
 }
@@ -617,7 +738,7 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
   useEffect(() => {
     supabase
       .from('buyer_requests')
-      .select('id, business_name, build_type, status, created_at, budget, deadline, main_goal, industry')
+      .select('id, business_name, build_type, status, created_at, budget, deadline, main_goal, industry, website_social')
       .eq('email', userProfile.email)
       .order('created_at', { ascending: false })
       .limit(10)
@@ -627,17 +748,32 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
       });
   }, [userProfile.email]);
 
-  const activeCount    = requests.filter((r) => !['rejected', 'completed'].includes(r.status)).length;
-  const completedCount = requests.filter((r) => r.status === 'completed').length;
+  const displayName = userProfile.display_name ?? userProfile.email.split('@')[0];
+
+  // Buyer AI analysis
+  const dashAnalysis = !loadingReqs ? analyzeBuyerDashboard(
+    requests.map((r) => ({
+      business_name: r.business_name, industry: r.industry ?? '',
+      build_type: r.build_type, main_goal: r.main_goal ?? '',
+      budget: r.budget, deadline: r.deadline, website_social: r.website_social,
+    })),
+    requests[0] ? {
+      business_name: requests[0].business_name, industry: requests[0].industry ?? '',
+      build_type: requests[0].build_type, main_goal: requests[0].main_goal ?? '',
+      budget: requests[0].budget, deadline: requests[0].deadline, website_social: requests[0].website_social,
+    } : undefined,
+  ) : null;
+
+  const activeRequests = requests.filter((r) => !['completed','rejected'].includes(r.status));
 
   return (
     <div className="dash-buyer">
+
+      {/* Header */}
       <div className="dash-buyer-header">
         <div>
-          <h2 className="dash-buyer-title">
-            Welcome back, {userProfile.display_name ?? userProfile.email.split('@')[0]}
-          </h2>
-          <p className="dash-buyer-sub">Manage your MicroBuild requests and track your projects.</p>
+          <h2 className="dash-buyer-title">Welcome back, {displayName}</h2>
+          <p className="dash-buyer-sub">Track your MicroBuild requests and grow your business.</p>
         </div>
         <div className="dash-buyer-actions">
           <Link to="/request" className="btn btn-primary btn-sm">+ New Request</Link>
@@ -645,59 +781,87 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
         </div>
       </div>
 
-      <div className="dash-stats-grid">
-        <StatCard label="Requests Submitted" value={requests.length} />
-        <StatCard label="Active Requests"    value={activeCount}    color={activeCount    > 0 ? '#00d478' : undefined} />
-        <StatCard label="Completed Builds"   value={completedCount} color={completedCount > 0 ? '#63b3ed' : undefined} />
-        <StatCard label="Account Type"       value="Buyer" />
-      </div>
+      {/* Status overview cards */}
+      <BuyerStatusOverview requests={requests} loadingReqs={loadingReqs} />
 
-      <div className="dash-section">
-        <div className="dash-section-header">
-          <h3 className="dash-section-title">Your Requests</h3>
-          {!loadingReqs && requests.length > 0 && (
-            <Link to="/request" className="dash-section-action">+ New Request</Link>
-          )}
+      {/* Active requests with timeline */}
+      <div className="buyer-section">
+        <div className="buyer-section-header">
+          <h3 className="buyer-section-title">Active Requests</h3>
+          <Link to="/request" className="buyer-section-action">+ New Request</Link>
         </div>
         {loadingReqs ? (
           <div className="dash-loading">Loading requests…</div>
-        ) : requests.length === 0 ? (
-          <div className="dash-empty">
-            <p>No requests yet.</p>
-            <Link to="/request" className="dash-fix-link">Submit your first MicroBuild request →</Link>
+        ) : activeRequests.length === 0 ? (
+          <div className="buyer-empty-state">
+            <span className="buyer-empty-icon">📋</span>
+            <p>No active requests yet.</p>
+            <Link to="/request" className="btn btn-primary btn-sm">Submit Your First MicroBuild Request →</Link>
           </div>
         ) : (
-          <div className="dash-requests-list">
-            {requests.map((r) => (
-              <div key={r.id} className="dash-request-row">
-                <div className="dash-request-info">
-                  <span className="dash-request-name">{r.business_name}</span>
-                  <span className="dash-request-type">{r.build_type}</span>
-                  {r.industry && <span className="dash-request-industry">{r.industry}</span>}
-                </div>
-                <div className="dash-request-meta">
-                  {r.budget   && <span className="dash-request-budget">{r.budget}</span>}
-                  {r.deadline && <span className="dash-request-deadline">by {r.deadline}</span>}
-                  <span className="dash-request-date">{fmtDate(r.created_at)}</span>
-                </div>
-                <span className="dash-request-status" style={{ color: STATUS_COLORS[r.status] ?? '#8a94a6' }}>
-                  {r.status.replace(/[-_]/g, ' ')}
-                </span>
-              </div>
+          <div className="buyer-active-list">
+            {activeRequests.map((r) => (
+              <ActiveRequestCard key={r.id} request={r} />
             ))}
           </div>
         )}
       </div>
 
-      {!loadingReqs && <BuyerMissingInfoPanel requests={requests} />}
-      {!loadingReqs && <RecommendedBuildCard requests={requests} />}
+      {/* Recommended next build */}
+      {!loadingReqs && dashAnalysis && (
+        <div className="buyer-rec-section">
+          <div className="buyer-rec-card">
+            <span className="buyer-rec-icon">💡</span>
+            <div className="buyer-rec-body">
+              <div className="buyer-rec-eyebrow">Recommended Next MicroBuild</div>
+              <div className="buyer-rec-build">{dashAnalysis.recommendedBuild}</div>
+              <p className="buyer-rec-reason">{dashAnalysis.recommendedReason}</p>
+            </div>
+            <Link
+              to={`/request?build=${dashAnalysis.recommendedBuild.toLowerCase().replace(/\s+/g, '-')}`}
+              className="buyer-rec-btn"
+            >
+              Request This Build →
+            </Link>
+          </div>
+        </div>
+      )}
 
-      <div className="dash-section dash-section--dim">
-        <h3 className="dash-section-title">Quick Actions</h3>
-        <div className="dash-recommendations">
-          <Link to="/request"       className="dash-rec-card"><span className="dash-rec-icon">📋</span><div><div className="dash-rec-title">Submit a New Request</div><div className="dash-rec-sub">Get a quote for a specific MicroBuild</div></div></Link>
-          <Link to="/browse"        className="dash-rec-card"><span className="dash-rec-icon">🔍</span><div><div className="dash-rec-title">Browse All Builds</div><div className="dash-rec-sub">Find the right tool for your business</div></div></Link>
-          <Link to="/how-it-works"  className="dash-rec-card"><span className="dash-rec-icon">⚡</span><div><div className="dash-rec-title">How It Works</div><div className="dash-rec-sub">Understand the delivery process</div></div></Link>
+      {/* Business profile completeness */}
+      {!loadingReqs && <BusinessProfilePanel requests={requests} />}
+
+      {/* Past requests list */}
+      {!loadingReqs && requests.length > 0 && (
+        <div className="buyer-section">
+          <h3 className="buyer-section-title">All Requests</h3>
+          <div className="buyer-requests-table">
+            {requests.map((r) => (
+              <div key={r.id} className="buyer-req-row">
+                <div className="buyer-req-row-info">
+                  <span className="buyer-req-row-biz">{r.business_name}</span>
+                  <span className="buyer-req-row-type">{r.build_type}</span>
+                </div>
+                <div className="buyer-req-row-meta">
+                  {r.budget   && <span className="buyer-req-meta-tag">{r.budget}</span>}
+                  {r.deadline && <span className="buyer-req-meta-tag">{r.deadline}</span>}
+                  <span className="buyer-req-meta-date">{fmtDate(r.created_at)}</span>
+                </div>
+                <span className="buyer-req-row-status" style={{ color: STATUS_COLORS[r.status] ?? '#8a94a6' }}>
+                  {r.status.replace(/[-_]/g, ' ')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick actions */}
+      <div className="buyer-section buyer-section--dim">
+        <h3 className="buyer-section-title">Quick Actions</h3>
+        <div className="buyer-quick-actions">
+          <Link to="/request"      className="buyer-qa-card"><span>📋</span><span>New Request</span></Link>
+          <Link to="/browse"       className="buyer-qa-card"><span>🔍</span><span>Browse Builds</span></Link>
+          <Link to="/how-it-works" className="buyer-qa-card"><span>⚡</span><span>How It Works</span></Link>
         </div>
       </div>
     </div>

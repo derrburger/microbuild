@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import type { BuyerRequest, MicroBuildCategory, MicroBuildListing } from '../types';
 import { mockListings } from '../data/mockListings';
 import { fetchTemplateBySlug } from '../lib/templates';
@@ -7,96 +8,192 @@ import { insertBuyerRequest } from '../lib/supabase';
 import type { SupabaseInsertError } from '../lib/supabase';
 import { generateBuildPacket } from '../lib/buildPacket';
 import type { GeneratedBuildPacket } from '../lib/buildPacket';
+import { previewBuyerRequest } from '../lib/buyerAI';
 import './Request.css';
 
-const buildTypes: Array<MicroBuildCategory | 'Not sure'> = [
-  'Quote Funnel',
-  'Booking Page',
-  'Review Booster',
-  'Trust Page',
-  'Package Selector',
-  'Not sure',
+// ─── Constants ─────────────────────────────────────────────────────────────────
+
+const BUILD_OPTIONS: { value: MicroBuildCategory | 'Not sure — recommend one'; icon: string; desc: string; price: string }[] = [
+  { value: 'Quote Funnel',              icon: '💰', desc: 'Captures lead info + instant price range', price: '$150–$300' },
+  { value: 'Booking Page',              icon: '📅', desc: 'Online appointment scheduling for your service', price: '$150–$300' },
+  { value: 'Review Booster',            icon: '⭐', desc: 'Routes happy customers to Google reviews', price: '$100–$200' },
+  { value: 'Package Selector',          icon: '📦', desc: 'Let customers choose and understand your tiers', price: '$200–$400' },
+  { value: 'Trust Page',                icon: '🏆', desc: 'Before/after gallery + testimonials + strong CTA', price: '$200–$350' },
+  { value: 'Not sure — recommend one',  icon: '🤔', desc: "Tell us your goal and we'll recommend the right build", price: 'Custom' },
 ];
 
-const budgetOptions = [
-  'Under $100',
-  '$100–$200',
-  '$200–$400',
-  '$400–$800',
-  '$800+',
-  'Not sure yet',
+const GOAL_OPTIONS = [
+  { value: 'Get more quote requests',               icon: '💰', desc: 'Capture leads who want a price' },
+  { value: 'Get more bookings',                     icon: '📅', desc: 'Turn visitors into scheduled appointments' },
+  { value: 'Get more Google reviews',               icon: '⭐', desc: 'Route happy customers to leave reviews' },
+  { value: 'Reduce repetitive customer questions',  icon: '🔁', desc: 'Answer FAQs before customers call' },
+  { value: 'Show before/after work better',         icon: '🏆', desc: 'Prove your quality with a visual gallery' },
+  { value: 'Improve trust before customers call',   icon: '🤝', desc: 'Build credibility before the first contact' },
+  { value: 'Not sure yet',                          icon: '💡', desc: "Tell us your problem and we'll suggest a goal" },
 ];
 
-const deadlineOptions = [
-  'ASAP — within a week',
-  '1–2 weeks',
-  '2–4 weeks',
-  'No hard deadline',
+const BUDGET_OPTIONS = [
+  'Under $100', '$100–$200', '$200–$400', '$400–$800', '$800+', 'Not sure yet',
 ];
 
-const initialForm: BuyerRequest = {
-  fullName: '',
-  email: '',
-  phone: '',
-  businessName: '',
-  industry: '',
-  websiteSocial: '',
-  buildType: '',
-  mainGoal: '',
-  currentProblem: '',
-  budget: '',
-  deadline: '',
-  styleNotes: '',
+const DEADLINE_OPTIONS = [
+  'ASAP — within a week', '1–2 weeks', '2–4 weeks', 'No hard deadline',
+];
+
+const CTA_OPTIONS = [
+  'Call us', 'Text us', 'Book online', 'Request a quote', 'Leave a review', 'Not sure',
+];
+
+const LEAD_SOURCE_OPTIONS = [
+  'Google search', 'Google Maps / Business', 'Word of mouth', 'Instagram / Social',
+  'Door hanger / mailer', 'Referral from customer', 'Other',
+];
+
+// ─── Extended form state ────────────────────────────────────────────────────────
+
+interface ExtendedForm extends BuyerRequest {
+  cityState: string;
+  instagramUrl: string;
+  googleBusinessUrl: string;
+  preferredCta: string;
+  servicesOffered: string;
+  targetCustomer: string;
+  leadSource: string;
+}
+
+const INITIAL_FORM: ExtendedForm = {
+  fullName: '', email: '', phone: '',
+  businessName: '', industry: '', websiteSocial: '',
+  buildType: '', mainGoal: '', currentProblem: '',
+  budget: '', deadline: '', styleNotes: '',
+  cityState: '', instagramUrl: '', googleBusinessUrl: '',
+  preferredCta: '', servicesOffered: '', targetCustomer: '', leadSource: '',
 };
 
-/** User-facing message for a Supabase insert error (no internals exposed). */
+// ─── Error message ──────────────────────────────────────────────────────────────
+
 function friendlyErrorMessage(err: SupabaseInsertError): string {
   if (err.code === '42501') {
     return (
       'Submission is temporarily unavailable — our database policies are still being configured. ' +
-      'Please email us directly and we will get back to you within 24 hours. ' +
-      '(Check the browser console for technical details.)'
+      'Please email us directly and we will get back to you within 24 hours.'
     );
   }
+  return 'There was a problem submitting your request. Please try again or email us directly.';
+}
+
+// ─── Pack extra fields into style_notes ────────────────────────────────────────
+
+function packStyleNotes(form: ExtendedForm): string {
+  const parts: string[] = [];
+  if (form.styleNotes.trim()) parts.push(`[Visual Notes]\n${form.styleNotes.trim()}`);
+
+  const ctx: string[] = [];
+  if (form.cityState)        ctx.push(`City/State: ${form.cityState}`);
+  if (form.instagramUrl)     ctx.push(`Instagram: ${form.instagramUrl}`);
+  if (form.googleBusinessUrl) ctx.push(`Google Business: ${form.googleBusinessUrl}`);
+  if (form.preferredCta)     ctx.push(`Preferred CTA: ${form.preferredCta}`);
+  if (form.servicesOffered)  ctx.push(`Services: ${form.servicesOffered}`);
+  if (form.targetCustomer)   ctx.push(`Target Customer: ${form.targetCustomer}`);
+  if (form.leadSource)       ctx.push(`Lead Source: ${form.leadSource}`);
+
+  if (ctx.length > 0) parts.push(`[Business Context]\n${ctx.join('\n')}`);
+  return parts.join('\n\n');
+}
+
+// ─── AI Preview Panel ───────────────────────────────────────────────────────────
+
+function AiPreviewPanel({ form }: { form: ExtendedForm }) {
+  const preview = useMemo(() => previewBuyerRequest({
+    business_name:   form.businessName,
+    industry:        form.industry,
+    build_type:      form.buildType,
+    main_goal:       form.mainGoal,
+    current_problem: form.currentProblem,
+    budget:          form.budget || null,
+    deadline:        form.deadline || null,
+    website_social:  form.websiteSocial || form.instagramUrl || null,
+  }), [form]);
+
+  const hasEnough = form.businessName.length > 1 || form.industry.length > 1 || form.mainGoal.length > 5;
+  if (!hasEnough) return null;
+
   return (
-    'There was a problem submitting your request. Please try again or email us directly. ' +
-    '(Check the browser console for technical details.)'
+    <div className="req-ai-preview">
+      <div className="req-ai-preview-header">
+        <span className="req-ai-badge">⚡ AI-style Request Preview · Rules-based</span>
+        <span className="req-ai-readiness" style={{ color: preview.readinessColor }}>
+          {preview.readinessLabel} · {preview.readinessScore}/100
+        </span>
+      </div>
+
+      <div className="req-ai-grid">
+        <div className="req-ai-cell">
+          <span className="req-ai-cell-label">Recommended Build</span>
+          <span className="req-ai-cell-value">{preview.recommendedBuild}</span>
+        </div>
+        <div className="req-ai-cell">
+          <span className="req-ai-cell-label">Est. Price Range</span>
+          <span className="req-ai-cell-value">{preview.estimatedPriceRange}</span>
+        </div>
+        <div className="req-ai-cell">
+          <span className="req-ai-cell-label">Complexity</span>
+          <span className="req-ai-cell-value">{preview.complexity}</span>
+        </div>
+        <div className="req-ai-cell">
+          <span className="req-ai-cell-label">Quote Readiness</span>
+          <span className="req-ai-cell-value" style={{ color: preview.readinessColor }}>
+            {preview.readinessLabel}
+          </span>
+        </div>
+      </div>
+
+      {preview.missingFields.length > 0 && (
+        <div className="req-ai-missing">
+          <span className="req-ai-missing-label">To improve readiness, add:</span>
+          <ul className="req-ai-missing-list">
+            {preview.missingFields.slice(0, 4).map((f) => (
+              <li key={f} className="req-ai-missing-item">○ {f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="req-ai-next-step">
+        <span className="req-ai-step-icon">→</span> {preview.suggestedNextStep}
+      </div>
+    </div>
   );
 }
 
+// ─── Main component ─────────────────────────────────────────────────────────────
+
 export default function Request() {
   const [searchParams] = useSearchParams();
+  const { user } = useAuth();
   const prefillSlug = searchParams.get('build');
 
-  // Synchronous mock fallback for instant UI (builds the form label immediately)
   const mockPrefill: MicroBuildListing | null = prefillSlug
     ? (mockListings.find((l) => l.slug === prefillSlug) ?? null)
     : null;
 
   const [prefillListing, setPrefillListing] = useState<MicroBuildListing | null>(mockPrefill);
-  // UUID of the template from Supabase (null when not available or using mock fallback)
-  const [templateDbId, setTemplateDbId] = useState<string | null>(null);
-
-  const [form, setForm] = useState<BuyerRequest>({
-    ...initialForm,
+  const [templateDbId,   setTemplateDbId]   = useState<string | null>(null);
+  const [form,           setForm]           = useState<ExtendedForm>({
+    ...INITIAL_FORM,
     buildType: mockPrefill?.category ?? '',
   });
-  const [submitted, setSubmitted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitted,   setSubmitted]   = useState(false);
+  const [submitting,  setSubmitting]  = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [packet, setPacket] = useState<GeneratedBuildPacket | null>(null);
+  const [packet,      setPacket]      = useState<GeneratedBuildPacket | null>(null);
 
-  // Fetch the real template from Supabase when slug is present so we can:
-  //   1. Store the actual UUID for the template_id FK
-  //   2. Keep the sidebar listing in sync with live data
   useEffect(() => {
     if (!prefillSlug) return;
     fetchTemplateBySlug(prefillSlug).then(({ listing, fromSupabase }) => {
       if (listing) {
         setPrefillListing(listing);
-        // Only use the ID as a FK if this came from the real database
         setTemplateDbId(fromSupabase ? listing.id : null);
-        // Keep buildType in sync (only override if user hasn't changed it yet)
         setForm((prev) =>
           prev.buildType === '' || prev.buildType === (mockPrefill?.category ?? '')
             ? { ...prev, buildType: listing.category }
@@ -107,11 +204,12 @@ export default function Request() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillSlug]);
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+  function set(field: keyof ExtendedForm, value: string) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
+    set(e.target.name as keyof ExtendedForm, e.target.value);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -119,97 +217,133 @@ export default function Request() {
     setSubmitting(true);
     setSubmitError(null);
 
+    const packedNotes = packStyleNotes(form);
+
     const { error } = await insertBuyerRequest({
-      full_name:          form.fullName,
-      email:              form.email,
-      phone:              form.phone      || null,
-      business_name:      form.businessName,
-      industry:           form.industry,
-      website_social:     form.websiteSocial || null,
-      build_type:         form.buildType  || 'Not sure',
-      main_goal:          form.mainGoal,
-      current_problem:    form.currentProblem,
-      budget:             form.budget     || null,
-      deadline:           form.deadline   || null,
-      style_notes:        form.styleNotes || null,
-      // FK columns — all null for guest submissions without auth
+      full_name:           form.fullName,
+      email:               form.email,
+      phone:               form.phone     || null,
+      business_name:       form.businessName,
+      industry:            form.industry,
+      website_social:      form.websiteSocial || form.instagramUrl || form.googleBusinessUrl || null,
+      build_type:          form.buildType || 'Not sure',
+      main_goal:           form.mainGoal  || form.buildType || 'Not specified',
+      current_problem:     form.currentProblem || 'Not provided',
+      budget:              form.budget    || null,
+      deadline:            form.deadline  || null,
+      style_notes:         packedNotes   || null,
       user_id:             null,
       business_profile_id: null,
-      // Use the real Supabase UUID when available; null is fine and accepted by schema
       template_id:         templateDbId,
-      status:             'new',
+      status:              'new',
     });
 
     setSubmitting(false);
 
-    if (error) {
-      setSubmitError(friendlyErrorMessage(error));
-      return;
-    }
+    if (error) { setSubmitError(friendlyErrorMessage(error)); return; }
 
-    setPacket(generateBuildPacket(form, prefillListing?.title));
+    setPacket(generateBuildPacket({
+      fullName: form.fullName, email: form.email, phone: form.phone,
+      businessName: form.businessName, industry: form.industry,
+      websiteSocial: form.websiteSocial || form.instagramUrl || '',
+      buildType: (form.buildType || 'Not sure') as MicroBuildCategory | 'Not sure',
+      mainGoal: form.mainGoal, currentProblem: form.currentProblem,
+      budget: form.budget, deadline: form.deadline, styleNotes: packedNotes,
+    }, prefillListing?.title));
     setSubmitted(true);
   }
+
+  // ── Success state ────────────────────────────────────────────────────────────
 
   if (submitted) {
     return (
       <div className="request-page">
         <div className="container request-success">
-          <div className="success-icon">✓</div>
-          <h2>Request Received</h2>
-          <p>
+          <div className="success-check">✓</div>
+          <h2 className="success-title">Request Received</h2>
+          <p className="success-message">
             Thanks, <strong>{form.fullName}</strong>. We received your request for{' '}
-            <strong>{form.businessName}</strong>. This is an early-access submission — we review every
-            request manually and will reach out within 1–2 business days with next steps.
+            <strong>{form.businessName}</strong>. Every request is reviewed manually — we'll reach out
+            within 1–2 business days with next steps.
           </p>
           <p className="success-note">
-            No payment is collected at this stage. We'll send a scope and price confirmation before anything moves forward.
+            No payment is collected at this stage. We'll confirm scope and pricing before anything moves forward.
           </p>
-          <Link to="/browse" className="btn btn-ghost btn-sm">
-            Browse More MicroBuilds
-          </Link>
 
+          {/* Next Steps */}
+          <div className="success-timeline">
+            {[
+              { icon: '✉', step: 'Request received',  desc: 'Your request is in the queue. We read every one.' },
+              { icon: '🔍', step: 'We review it',      desc: 'Typically within 1–2 business days.' },
+              { icon: '📋', step: 'We send a proposal', desc: 'Scope, price, and timeline confirmed first.' },
+              { icon: '⚙', step: 'Creator builds it', desc: 'A vetted creator gets a structured brief.' },
+              { icon: '✅', step: 'You approve & go live', desc: 'One revision round included.' },
+            ].map((s) => (
+              <div key={s.step} className="success-step">
+                <span className="success-step-icon">{s.icon}</span>
+                <div>
+                  <div className="success-step-label">{s.step}</div>
+                  <div className="success-step-desc">{s.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* CTAs */}
+          <div className="success-ctas">
+            {user && (
+              <Link to="/dashboard" className="btn btn-primary btn-sm">View Dashboard →</Link>
+            )}
+            <Link to="/browse" className="btn btn-ghost btn-sm">Browse More MicroBuilds</Link>
+          </div>
+
+          {/* AI review of submission */}
           {packet && (
             <div className="success-analysis">
-              <h3 className="success-analysis-title">What we'll review next</h3>
+              <h3 className="success-analysis-title">What our team will review</h3>
               <p className="success-analysis-sub">
-                Here's what our team will look at when they review your request.
-                We'll confirm scope and pricing with you before anything moves forward.
+                Here's a summary of your request. We'll confirm all details before scoping.
               </p>
               <div className="success-analysis-grid">
-                <div className="success-analysis-item">
-                  <span className="success-analysis-label">Business</span>
-                  <span className="success-analysis-value">{form.businessName} · {form.industry}</span>
+                <div className="sai">
+                  <span className="sai-label">Business</span>
+                  <span className="sai-value">{form.businessName} · {form.industry}</span>
                 </div>
-                <div className="success-analysis-item">
-                  <span className="success-analysis-label">Requested Build</span>
-                  <span className="success-analysis-value">{packet.recommendedBuild}</span>
+                <div className="sai">
+                  <span className="sai-label">Recommended Build</span>
+                  <span className="sai-value">{packet.recommendedBuild}</span>
                 </div>
-                <div className="success-analysis-item">
-                  <span className="success-analysis-label">Business Goal</span>
-                  <span className="success-analysis-value">{form.mainGoal || '—'}</span>
+                <div className="sai">
+                  <span className="sai-label">Goal</span>
+                  <span className="sai-value">{form.mainGoal || '—'}</span>
                 </div>
-                <div className="success-analysis-item">
-                  <span className="success-analysis-label">Current Problem</span>
-                  <span className="success-analysis-value">{form.currentProblem || '—'}</span>
+                <div className="sai">
+                  <span className="sai-label">Estimated Price</span>
+                  <span className="sai-value">{packet.suggestedPriceRange}</span>
                 </div>
                 {form.budget && (
-                  <div className="success-analysis-item">
-                    <span className="success-analysis-label">Budget Indicated</span>
-                    <span className="success-analysis-value">{form.budget}</span>
+                  <div className="sai">
+                    <span className="sai-label">Budget Indicated</span>
+                    <span className="sai-value">{form.budget}</span>
                   </div>
                 )}
                 {form.deadline && (
-                  <div className="success-analysis-item">
-                    <span className="success-analysis-label">Deadline</span>
-                    <span className="success-analysis-value">{form.deadline}</span>
+                  <div className="sai">
+                    <span className="sai-label">Timeline</span>
+                    <span className="sai-value">{form.deadline}</span>
                   </div>
                 )}
               </div>
-              <p className="success-analysis-note">
-                Our team reviews every request manually. We'll reach out within 1–2 business days
-                with a scope summary and pricing confirmation.
-              </p>
+              {packet.missingInfoFlags.length > 0 && (
+                <div className="success-missing">
+                  <span className="success-missing-label">Our team may ask about:</span>
+                  <ul>
+                    {packet.missingInfoFlags.slice(0, 3).map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -217,15 +351,23 @@ export default function Request() {
     );
   }
 
+  // ── Form ─────────────────────────────────────────────────────────────────────
+
   return (
     <div className="request-page">
       <div className="request-hero">
         <div className="container">
           <h1 className="request-title">Request a MicroBuild</h1>
           <p className="request-sub">
-            Tell us about your business and what you want to accomplish. The more detail you give,
-            the better we can scope and price your build.
+            Tell us about your business and what you want to accomplish.
+            The more detail you give, the faster we can scope and price your build.
           </p>
+          {user && (
+            <p className="request-logged-in-note">
+              Signed in as <strong>{user.email}</strong> ·{' '}
+              <Link to="/dashboard" className="req-dashboard-link">View Dashboard</Link>
+            </p>
+          )}
         </div>
       </div>
 
@@ -233,133 +375,148 @@ export default function Request() {
         <div className="request-grid">
           <form className="request-form" onSubmit={handleSubmit} noValidate>
 
-            {/* Section 1: Contact Info */}
+            {/* ── Section 1: Business Basics ─────────────────────── */}
             <fieldset className="form-group-block">
-              <legend>Contact Info</legend>
+              <legend>Business Basics</legend>
               <div className="form-row">
                 <div className="form-group">
                   <label htmlFor="fullName">Your Name *</label>
-                  <input
-                    id="fullName"
-                    name="fullName"
-                    type="text"
-                    required
-                    placeholder="Jane Smith"
-                    value={form.fullName}
-                    onChange={handleChange}
-                  />
+                  <input id="fullName" name="fullName" type="text" required
+                    placeholder="Jane Smith" value={form.fullName} onChange={handleChange} />
                 </div>
-                <div className="form-group">
-                  <label htmlFor="email">Email Address *</label>
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    required
-                    placeholder="jane@smithpools.com"
-                    value={form.email}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-              <div className="form-group form-group--half">
-                <label htmlFor="phone">Phone Number (optional)</label>
-                <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  placeholder="(555) 555-5555"
-                  value={form.phone}
-                  onChange={handleChange}
-                />
-              </div>
-            </fieldset>
-
-            {/* Section 2: Your Business */}
-            <fieldset className="form-group-block">
-              <legend>Your Business</legend>
-              <div className="form-row">
                 <div className="form-group">
                   <label htmlFor="businessName">Business Name *</label>
-                  <input
-                    id="businessName"
-                    name="businessName"
-                    type="text"
-                    required
-                    placeholder="Smith Pool Services"
-                    value={form.businessName}
-                    onChange={handleChange}
-                  />
+                  <input id="businessName" name="businessName" type="text" required
+                    placeholder="Smith Pool Services" value={form.businessName} onChange={handleChange} />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="email">Email *</label>
+                  <input id="email" name="email" type="email" required
+                    placeholder="jane@smithpools.com" value={form.email} onChange={handleChange} />
                 </div>
                 <div className="form-group">
+                  <label htmlFor="phone">Phone <span className="label-hint">(optional)</span></label>
+                  <input id="phone" name="phone" type="tel"
+                    placeholder="(555) 555-5555" value={form.phone} onChange={handleChange} />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
                   <label htmlFor="industry">Industry / Trade *</label>
-                  <input
-                    id="industry"
-                    name="industry"
-                    type="text"
-                    required
-                    placeholder="e.g. Pool Cleaning, Auto Detailing, Painting…"
-                    value={form.industry}
-                    onChange={handleChange}
-                  />
+                  <input id="industry" name="industry" type="text" required
+                    placeholder="Pool Cleaning, Auto Detailing, HVAC…" value={form.industry} onChange={handleChange} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="cityState">City, State <span className="label-hint">(optional)</span></label>
+                  <input id="cityState" name="cityState" type="text"
+                    placeholder="Phoenix, AZ" value={form.cityState} onChange={handleChange} />
                 </div>
               </div>
               <div className="form-group">
-                <label htmlFor="websiteSocial">
-                  Website or Social Profile
-                  <span className="label-hint"> — optional but helpful</span>
-                </label>
-                <input
-                  id="websiteSocial"
-                  name="websiteSocial"
-                  type="text"
-                  placeholder="https://yoursite.com or @yourinstagram"
-                  value={form.websiteSocial}
-                  onChange={handleChange}
-                />
+                <label htmlFor="websiteSocial">Website URL <span className="label-hint">(optional)</span></label>
+                <input id="websiteSocial" name="websiteSocial" type="url"
+                  placeholder="https://yoursite.com" value={form.websiteSocial} onChange={handleChange} />
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="instagramUrl">Instagram / Social <span className="label-hint">(optional)</span></label>
+                  <input id="instagramUrl" name="instagramUrl" type="text"
+                    placeholder="@yourhandle or https://instagram.com/…" value={form.instagramUrl} onChange={handleChange} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="googleBusinessUrl">Google Business Profile <span className="label-hint">(optional)</span></label>
+                  <input id="googleBusinessUrl" name="googleBusinessUrl" type="url"
+                    placeholder="https://g.page/yourbusiness" value={form.googleBusinessUrl} onChange={handleChange} />
+                </div>
               </div>
             </fieldset>
 
-            {/* Section 3: Your Project */}
+            {/* ── Section 2: Business Goal ───────────────────────── */}
             <fieldset className="form-group-block">
-              <legend>Your Project</legend>
-              <div className="form-group">
-                <label htmlFor="buildType">MicroBuild Type *</label>
-                <select
-                  id="buildType"
-                  name="buildType"
-                  required
-                  value={form.buildType}
-                  onChange={handleChange}
-                >
-                  <option value="">Select a build type…</option>
-                  {buildTypes.map((bt) => (
-                    <option key={bt} value={bt}>
-                      {bt === 'Not sure' ? "Not sure — help me choose" : bt}
-                    </option>
-                  ))}
-                </select>
+              <legend>Business Goal</legend>
+              <p className="form-section-sub">What does success look like for you?</p>
+              <div className="req-goal-grid">
+                {GOAL_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.value}
+                    className={`req-goal-card${form.mainGoal === opt.value ? ' req-goal-card--selected' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="mainGoal"
+                      value={opt.value}
+                      checked={form.mainGoal === opt.value}
+                      onChange={handleChange}
+                    />
+                    <span className="req-goal-icon">{opt.icon}</span>
+                    <span className="req-goal-label">{opt.value}</span>
+                    <span className="req-goal-desc">{opt.desc}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            {/* ── Section 3: Requested MicroBuild ───────────────── */}
+            <fieldset className="form-group-block">
+              <legend>Requested MicroBuild</legend>
+              <p className="form-section-sub">Which build type fits your goal? Select "Not sure" and we'll recommend one.</p>
+              <div className="req-build-grid">
+                {BUILD_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.value}
+                    className={`req-build-card${form.buildType === opt.value ? ' req-build-card--selected' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="buildType"
+                      value={opt.value}
+                      checked={form.buildType === opt.value}
+                      onChange={handleChange}
+                    />
+                    <div className="req-build-card-inner">
+                      <span className="req-build-icon">{opt.icon}</span>
+                      <div className="req-build-info">
+                        <span className="req-build-name">{opt.value}</span>
+                        <span className="req-build-desc">{opt.desc}</span>
+                      </div>
+                      <span className="req-build-price">{opt.price}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {prefillListing && (
+                <div className="req-prefill-note">
+                  Pre-selected from: <strong>{prefillListing.title}</strong> · Starting from ${prefillListing.startingPrice}
+                </div>
+              )}
+            </fieldset>
+
+            {/* ── Section 4: Current Problem ────────────────────── */}
+            <fieldset className="form-group-block">
+              <legend>Current Problem</legend>
+              <p className="form-section-sub">What's not working right now? The more specific, the better.</p>
+              <div className="req-problem-examples">
+                {[
+                  '"People ask for prices but never book"',
+                  '"I answer the same questions every day"',
+                  '"I need more Google reviews"',
+                  '"Customers don\'t understand my packages"',
+                  '"My website doesn\'t convert visitors"',
+                ].map((ex) => (
+                  <button
+                    key={ex}
+                    type="button"
+                    className="req-example-chip"
+                    onClick={() => set('currentProblem', ex.replace(/^"|"$/g, ''))}
+                  >
+                    {ex}
+                  </button>
+                ))}
               </div>
               <div className="form-group">
-                <label htmlFor="mainGoal">
-                  Main Goal *
-                  <span className="label-hint"> — what should this MicroBuild accomplish?</span>
-                </label>
-                <input
-                  id="mainGoal"
-                  name="mainGoal"
-                  type="text"
-                  required
-                  placeholder="e.g. Capture quote leads from Instagram traffic, reduce DMs asking about pricing…"
-                  value={form.mainGoal}
-                  onChange={handleChange}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="currentProblem">
-                  Current Problem *
-                  <span className="label-hint"> — what's not working right now?</span>
-                </label>
+                <label htmlFor="currentProblem">Describe your situation *</label>
                 <textarea
                   id="currentProblem"
                   name="currentProblem"
@@ -372,49 +529,90 @@ export default function Request() {
               </div>
             </fieldset>
 
-            {/* Section 4: Scope & Preferences */}
+            {/* ── Section 5: Scope Details ──────────────────────── */}
             <fieldset className="form-group-block">
-              <legend>Scope & Preferences</legend>
+              <legend>Scope Details</legend>
               <div className="form-row">
                 <div className="form-group">
                   <label htmlFor="budget">Budget Range</label>
                   <select id="budget" name="budget" value={form.budget} onChange={handleChange}>
                     <option value="">Select a range…</option>
-                    {budgetOptions.map((b) => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
+                    {BUDGET_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label htmlFor="deadline">Deadline</label>
+                  <label htmlFor="deadline">Timeline / Deadline</label>
                   <select id="deadline" name="deadline" value={form.deadline} onChange={handleChange}>
                     <option value="">Select a timeline…</option>
-                    {deadlineOptions.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
+                    {DEADLINE_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
               </div>
+
               <div className="form-group">
-                <label htmlFor="styleNotes">
-                  Style Notes
-                  <span className="label-hint"> — optional: colors, tone, references, what you like/dislike</span>
-                </label>
+                <label>Preferred CTA <span className="label-hint">(what should visitors do?)</span></label>
+                <div className="req-cta-row">
+                  {CTA_OPTIONS.map((cta) => (
+                    <label
+                      key={cta}
+                      className={`req-cta-chip${form.preferredCta === cta ? ' req-cta-chip--selected' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        name="preferredCta"
+                        value={cta}
+                        checked={form.preferredCta === cta}
+                        onChange={handleChange}
+                      />
+                      {cta}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="servicesOffered">Services You Offer <span className="label-hint">(optional)</span></label>
+                  <input id="servicesOffered" name="servicesOffered" type="text"
+                    placeholder="Pool cleaning, maintenance, repair, equipment install"
+                    value={form.servicesOffered} onChange={handleChange} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="targetCustomer">Target Customer <span className="label-hint">(optional)</span></label>
+                  <input id="targetCustomer" name="targetCustomer" type="text"
+                    placeholder="Homeowners 35-65 in Phoenix area"
+                    value={form.targetCustomer} onChange={handleChange} />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="leadSource">Current Lead Source <span className="label-hint">(optional)</span></label>
+                  <select id="leadSource" name="leadSource" value={form.leadSource} onChange={handleChange}>
+                    <option value="">How do most leads find you?</option>
+                    {LEAD_SOURCE_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="styleNotes">Style Notes <span className="label-hint">(optional — colors, tone, references)</span></label>
                 <textarea
                   id="styleNotes"
                   name="styleNotes"
                   rows={3}
-                  placeholder="e.g. Clean and professional, dark background, keep it simple. Similar feel to Jobber or ServiceTitan. No generic stock photos."
+                  placeholder="e.g. Clean and professional, dark background. Similar feel to Jobber or ServiceTitan. No generic stock photos."
                   value={form.styleNotes}
                   onChange={handleChange}
                 />
               </div>
             </fieldset>
 
+            {/* ── AI Preview ────────────────────────────────────── */}
+            <AiPreviewPanel form={form} />
+
             {submitError && (
-              <div className="form-error-banner">
-                {submitError}
-              </div>
+              <div className="form-error-banner">{submitError}</div>
             )}
 
             <button
@@ -429,40 +627,18 @@ export default function Request() {
             </p>
           </form>
 
+          {/* Sidebar */}
           <div className="request-sidebar">
             <div className="request-info-card">
               <h3>What happens after you submit?</h3>
               <ol className="request-steps">
-                <li>
-                  <strong>We review your request</strong>
-                  <span>Usually within 1–2 business days. We read every submission.</span>
-                </li>
-                <li>
-                  <strong>We send a proposal</strong>
-                  <span>Scope, price, and turnaround confirmed before anything moves forward.</span>
-                </li>
-                <li>
-                  <strong>A creator builds it</strong>
-                  <span>A vetted MicroBuild creator receives a structured brief and gets to work.</span>
-                </li>
-                <li>
-                  <strong>You review and approve</strong>
-                  <span>One revision round included. Payment is released only after approval.</span>
-                </li>
-                <li>
-                  <strong>Go live</strong>
-                  <span>Share your MicroBuild link and start collecting leads, bookings, or reviews.</span>
-                </li>
+                <li><strong>We review your request</strong><span>Usually within 1–2 business days. We read every submission.</span></li>
+                <li><strong>We send a proposal</strong><span>Scope, price, and turnaround confirmed before anything moves forward.</span></li>
+                <li><strong>A creator builds it</strong><span>A vetted MicroBuild creator receives a structured brief and gets to work.</span></li>
+                <li><strong>You review and approve</strong><span>One revision round included. Payment released only after approval.</span></li>
+                <li><strong>Go live</strong><span>Share your MicroBuild link and start collecting leads, bookings, or reviews.</span></li>
               </ol>
             </div>
-
-            {prefillListing && (
-              <div className="request-build-ref">
-                <span className="build-ref-label">Requesting this build:</span>
-                <strong>{prefillListing.title}</strong>
-                <span className="build-ref-price">Starting from ${prefillListing.startingPrice}</span>
-              </div>
-            )}
 
             <div className="request-note-card">
               <p>

@@ -7,6 +7,15 @@ import type { CreatorProfileRow } from '../types/database';
 import DashboardNav from '../components/DashboardNav';
 import './DashboardAnalytics.css';
 
+// ─── Buyer request row for analytics ──────────────────────────────────────────
+
+interface BuyerReqSnap {
+  id: string;
+  status: string;
+  build_type: string;
+  main_goal: string | null;
+}
+
 // ─── Bar component ─────────────────────────────────────────────────────────────
 
 interface BarProps { label: string; value: number; max?: number; color?: string; }
@@ -30,6 +39,7 @@ export default function DashboardAnalytics() {
   const navigate = useNavigate();
 
   const [requestCount,    setRequestCount]    = useState(0);
+  const [buyerRequests,   setBuyerRequests]   = useState<BuyerReqSnap[]>([]);
   const [creatorProfile,  setCreatorProfile]  = useState<CreatorProfileRow | null>(null);
   const [accountType,     setAccountType]     = useState<string>('');
   const [loading,         setLoading]         = useState(true);
@@ -68,6 +78,16 @@ export default function DashboardAnalytics() {
       ]);
 
       setRequestCount(reqRes.count ?? 0);
+
+      // Also fetch buyer request snapshots for analytics breakdown (not just count)
+      if (acctType === 'buyer') {
+        const { data: bReqs } = await supabase
+          .from('buyer_requests')
+          .select('id, status, build_type, main_goal')
+          .eq('email', user!.email ?? '')
+          .order('created_at', { ascending: false });
+        setBuyerRequests((bReqs as BuyerReqSnap[]) ?? []);
+      }
 
       if (cpRes.data) {
         const raw = { ...(cpRes.data as Record<string, unknown>) };
@@ -216,6 +236,91 @@ export default function DashboardAnalytics() {
             ))}
           </div>
         </div>
+
+        {/* ── Buyer analytics ─────────────────────────────────────── */}
+        {!isCreator && accountType === 'buyer' && (
+          <>
+            {/* Status breakdown */}
+            <div className="da-section">
+              <h2 className="da-section-title">Request Status Breakdown</h2>
+              {buyerRequests.length === 0 ? (
+                <p className="da-section-note" style={{ color: 'var(--text-muted)' }}>No requests submitted yet. <Link to="/request" style={{ color: 'var(--accent)' }}>Submit your first →</Link></p>
+              ) : (
+                <div className="da-buyer-status-grid">
+                  {[
+                    { label: 'New',             status: 'new',              color: '#63b3ed' },
+                    { label: 'Under Review',    status: 'in-review',        color: '#f9b032' },
+                    { label: 'Needs More Info', status: 'needs-more-info',  color: '#f97316' },
+                    { label: 'Proposal Sent',   status: 'proposal-sent',    color: '#a78bfa' },
+                    { label: 'In Progress',     status: 'in-progress',      color: '#63b3ed' },
+                    { label: 'Completed',       status: 'completed',        color: '#00d478' },
+                  ].map(({ label, status, color }) => {
+                    const count = buyerRequests.filter((r) => r.status === status).length;
+                    return (
+                      <div key={status} className="da-buyer-status-cell">
+                        <div className="da-buyer-status-count" style={{ color: count > 0 ? color : undefined }}>
+                          {count}
+                        </div>
+                        <div className="da-buyer-status-label">{label}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* MicroBuild type breakdown */}
+            {buyerRequests.length > 0 && (
+              <div className="da-section">
+                <h2 className="da-section-title">MicroBuild Types Requested</h2>
+                <div className="da-buyer-builds">
+                  {Array.from(new Set(buyerRequests.map((r) => r.build_type))).map((bt) => {
+                    const count = buyerRequests.filter((r) => r.build_type === bt).length;
+                    return (
+                      <div key={bt} className="da-buyer-build-row">
+                        <span className="da-buyer-build-name">{bt}</span>
+                        <div className="da-buyer-build-bar-track">
+                          <div
+                            className="da-buyer-build-bar-fill"
+                            style={{ width: `${(count / buyerRequests.length) * 100}%`, background: '#63b3ed' }}
+                          />
+                        </div>
+                        <span className="da-buyer-build-count">{count}×</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Goal tracking placeholder */}
+            <div className="da-section">
+              <h2 className="da-section-title">Goal & Outcome Tracking <span className="da-phase-badge">Coming Soon</span></h2>
+              <div className="da-buyer-goals">
+                {[
+                  { label: 'Lead Improvement',  note: 'Activates after first MicroBuild goes live' },
+                  { label: 'Booking Rate',       note: 'Requires Booking Page to be active' },
+                  { label: 'Review Rate',        note: 'Requires Review Booster to be active' },
+                  { label: 'Conversion Rate',    note: 'Requires analytics integration' },
+                ].map(({ label, note }) => (
+                  <div key={label} className="da-buyer-goal-row">
+                    <span className="da-buyer-goal-label">{label}</span>
+                    <span className="da-buyer-goal-val">—</span>
+                    <span className="da-buyer-goal-note">{note}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="da-header-notice" style={{ background: 'rgba(0,212,120,0.04)', borderColor: 'rgba(0,212,120,0.2)' }}>
+              <span className="da-notice-icon">💡</span>
+              <span>
+                <strong>Analytics activate after your MicroBuild goes live.</strong> Once your build is delivered
+                and active, you'll see real lead, booking, and review metrics here.
+              </span>
+            </div>
+          </>
+        )}
 
         {/* ── Improvement insights ────────────────────────────────── */}
         {isCreator && (

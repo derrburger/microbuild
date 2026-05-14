@@ -1944,3 +1944,46 @@
   .batch-action-bar { flex-direction: column; align-items: flex-start; }
   .health-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ============================================================
+   ADMIN — Quick Action Buttons on Request Card
+   ============================================================ */
+
+.req-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.req-qa-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+.req-qa-btn {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  white-space: nowrap;
+}
+.req-qa-btn:hover:not(:disabled) {
+  border-color: #63b3ed;
+  color: #63b3ed;
+  background: rgba(99,179,237,0.05);
+}
+.req-qa-btn--active {
+  background: rgba(99,179,237,0.08);
+  font-weight: 700;
+}
+.req-qa-btn:disabled { opacity: 0.5; cursor: not-allowed; }

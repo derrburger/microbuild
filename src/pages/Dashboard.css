@@ -1042,3 +1042,237 @@
 
 @media(max-width:900px){.cd-status-row{grid-template-columns:repeat(3,1fr)}.cd-main-grid{grid-template-columns:1fr}.cd-growth-items{grid-template-columns:1fr}}
 @media(max-width:600px){.cd-status-row{grid-template-columns:repeat(2,1fr)}.cd-pipeline-stages{grid-template-columns:repeat(2,1fr)}.cd-earnings-grid{grid-template-columns:1fr}.cd-nba-card{flex-direction:column}}
+/* ============================================================
+   BUYER DASHBOARD v2
+   ============================================================ */
+
+/* Status overview cards */
+.buyer-status-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+.buyer-sc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1rem 0.85rem;
+  text-align: center;
+}
+.buyer-sc--rec { background: rgba(99,179,237,0.04); border-color: rgba(99,179,237,0.25); }
+.buyer-sc-val  { font-size: 1.6rem; font-weight: 800; color: var(--text-primary); margin-bottom: 0.25rem; }
+.buyer-sc-val--build { font-size: 0.85rem; font-weight: 700; color: #63b3ed; }
+.buyer-sc-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.buyer-sc-sub  { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+/* Sections */
+.buyer-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.buyer-section--dim { background: rgba(255,255,255,0.02); }
+.buyer-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+.buyer-section-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+.buyer-section-action { font-size: 0.82rem; color: var(--accent); text-decoration: none; }
+.buyer-section-action:hover { color: #fff; }
+
+/* Empty state */
+.buyer-empty-state {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+.buyer-empty-icon { font-size: 2rem; }
+
+/* Active request list */
+.buyer-active-list { display: flex; flex-direction: column; gap: 1rem; }
+
+/* Active request card */
+.buyer-req-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+}
+.buyer-req-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.buyer-req-title-row { display: flex; flex-direction: column; gap: 0.2rem; }
+.buyer-req-biz    { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+.buyer-req-build  { font-size: 0.82rem; color: #63b3ed; font-weight: 600; }
+.buyer-req-status { font-size: 0.8rem; font-weight: 600; text-transform: capitalize; }
+
+/* Timeline */
+.buyer-timeline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin-bottom: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+.buyer-tl-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  min-width: 70px;
+}
+.buyer-tl-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  z-index: 1;
+  transition: background 0.2s;
+}
+.buyer-tl-step--active .buyer-tl-dot { width: 14px; height: 14px; }
+.buyer-tl-line {
+  position: absolute;
+  top: 5px;
+  left: calc(50% + 7px);
+  width: calc(100% - 14px);
+  height: 2px;
+  background: var(--border);
+}
+.buyer-tl-label {
+  font-size: 0.63rem;
+  text-align: center;
+  margin-top: 0.3rem;
+  font-weight: 500;
+  line-height: 1.2;
+  transition: color 0.2s;
+}
+
+/* Request details */
+.buyer-req-details { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
+.buyer-req-detail-row { display: flex; flex-direction: column; gap: 0.1rem; }
+.buyer-req-detail-key { font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.buyer-req-detail-val { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+
+/* Missing info */
+.buyer-req-missing {
+  background: rgba(249,176,50,0.05);
+  border: 1px solid rgba(249,176,50,0.18);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-top: 0.75rem;
+}
+.buyer-req-missing-label { font-size: 0.73rem; font-weight: 600; color: #f9b032; display: block; margin-bottom: 0.35rem; }
+.buyer-req-missing-items { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.4rem; }
+.buyer-req-missing-item { font-size: 0.8rem; color: var(--text-secondary); }
+.buyer-req-missing-link { font-size: 0.8rem; color: var(--accent); text-decoration: none; }
+.buyer-req-missing-link:hover { color: #fff; }
+
+/* Recommended build section */
+.buyer-rec-section { margin-bottom: 1.5rem; }
+.buyer-rec-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid rgba(99,179,237,0.25);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  flex-wrap: wrap;
+}
+.buyer-rec-icon { font-size: 2rem; flex-shrink: 0; }
+.buyer-rec-body { flex: 1; min-width: 200px; }
+.buyer-rec-eyebrow { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 0.25rem; }
+.buyer-rec-build { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem; }
+.buyer-rec-reason { font-size: 0.85rem; color: var(--text-secondary); margin: 0; }
+.buyer-rec-btn {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.buyer-rec-btn:hover { background: var(--accent); color: #fff; }
+
+/* Business profile panel */
+.buyer-profile-panel {
+  background: rgba(249,176,50,0.04);
+  border: 1px solid rgba(249,176,50,0.2);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.buyer-panel-title { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.4rem; }
+.buyer-panel-sub { font-size: 0.84rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+.buyer-panel-items { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.75rem; }
+.buyer-panel-item  { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); }
+.buyer-panel-check { color: #f9b032; flex-shrink: 0; }
+.buyer-panel-link  { font-size: 0.82rem; color: var(--accent); text-decoration: none; }
+.buyer-panel-link:hover { color: #fff; }
+
+/* All requests table */
+.buyer-requests-table { display: flex; flex-direction: column; gap: 0.5rem; }
+.buyer-req-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.buyer-req-row-info { flex: 1; display: flex; flex-direction: column; gap: 0.15rem; }
+.buyer-req-row-biz  { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); }
+.buyer-req-row-type { font-size: 0.78rem; color: var(--text-muted); }
+.buyer-req-row-meta { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.buyer-req-meta-tag  { font-size: 0.75rem; padding: 0.18rem 0.5rem; background: rgba(255,255,255,0.05); border-radius: 4px; color: var(--text-secondary); }
+.buyer-req-meta-date { font-size: 0.75rem; color: var(--text-muted); }
+.buyer-req-row-status { font-size: 0.78rem; font-weight: 600; text-transform: capitalize; white-space: nowrap; }
+
+/* Quick actions */
+.buyer-quick-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+.buyer-qa-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-size: 0.87rem;
+  font-weight: 600;
+  transition: border-color 0.15s, color 0.15s;
+}
+.buyer-qa-card:hover { border-color: var(--accent); color: var(--text-primary); }
+
+@media (max-width: 900px) {
+  .buyer-status-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 580px) {
+  .buyer-status-row { grid-template-columns: repeat(2, 1fr); }
+  .buyer-quick-actions { grid-template-columns: 1fr; }
+  .buyer-timeline { gap: 0; }
+}
