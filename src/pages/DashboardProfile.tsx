@@ -279,8 +279,35 @@ export default function DashboardProfile() {
     );
   }
 
-  const strength = analyzeProfileStrength(profile);
-  const scoreColor = getStrengthColor(strength.score);
+  const strength    = analyzeProfileStrength(profile);
+  const scoreColor  = getStrengthColor(strength.score);
+  const safeArrInner = <T,>(v: unknown): T[] => Array.isArray(v) ? (v as T[]) : [];
+  const safeStrInner = (v: unknown) => typeof v === 'string' ? v : '';
+
+  // Public readiness label
+  const readinessLabel =
+    strength.score >= 80 ? 'Public-ready'         :
+    strength.score >= 65 ? 'Ready for public review' :
+    strength.score >= 45 ? 'Almost ready'          :
+    strength.score >= 25 ? 'Needs work'            :
+                           'Not ready';
+  const readinessColor =
+    strength.score >= 80 ? '#00d478' :
+    strength.score >= 65 ? '#63b3ed' :
+    strength.score >= 45 ? '#f9b032' : '#ef4444';
+
+  // Missing profile fields checklist
+  const profileFields = [
+    { label: 'Display name',               done: !!safeStrInner(profile.display_name) },
+    { label: 'Bio (80+ characters)',        done: safeStrInner(profile.bio).length >= 80 },
+    { label: 'Tools & platforms',           done: safeArrInner(profile.tools).length > 0 },
+    { label: 'Industry niches',             done: safeArrInner(profile.niches).length > 0 },
+    { label: 'Portfolio links',             done: safeArrInner(profile.portfolio_links).length > 0 },
+    { label: 'GitHub or LinkedIn',          done: !!safeStrInner(profile.github_url) || !!safeStrInner(profile.linkedin_url) },
+    { label: 'Proof / certifications',      done: safeArrInner(profile.certifications).length > 0 },
+    { label: 'Weekly availability',         done: !!safeStrInner(profile.available_hours) },
+  ];
+  const completeFields = profileFields.filter((f) => f.done).length;
 
   return (
     <div className="dp-page">
@@ -302,7 +329,18 @@ export default function DashboardProfile() {
 
       <div className="container dp-body">
         <DashboardNav />
-        {/* Status bar */}
+
+        {/* ── Admin visibility notice ────────────────────────────── */}
+        <div className="dp-admin-notice">
+          <span className="dp-admin-notice-icon">ℹ</span>
+          <span>
+            Your profile content can be edited here, but <strong>public visibility and verification
+            are controlled by the MicroBuild admin team.</strong> Saving does not automatically
+            make your profile public.
+          </span>
+        </div>
+
+        {/* ── Status bar ────────────────────────────────────────── */}
         <div className="dp-status-bar">
           <div className="dp-status-item">
             <span className="dp-status-key">Tier</span>
@@ -318,14 +356,41 @@ export default function DashboardProfile() {
           </div>
           <div className="dp-status-item">
             <span className="dp-status-key">Visibility</span>
-            <span className="dp-status-val">{profile.public_profile_status}</span>
-          </div>
-          {profile.public_profile_status !== 'public' && (
-            <span className="dp-visibility-note">
-              Profile is hidden until admin activates it.
+            <span className="dp-status-val" style={{ color: profile.public_profile_status === 'public' ? '#00d478' : '#8a94a6' }}>
+              {profile.public_profile_status === 'public' ? '🟢 Public' : '🔴 ' + (profile.public_profile_status ?? 'hidden')}
             </span>
-          )}
+          </div>
+          <div className="dp-status-item">
+            <span className="dp-status-key">Public Readiness</span>
+            <span className="dp-status-val" style={{ color: readinessColor }}>{readinessLabel}</span>
+          </div>
         </div>
+
+        {/* ── Two-column profile layout: strength + preview + form ─ */}
+        <div className="dp-profile-layout">
+
+          {/* Left: form */}
+          <div className="dp-profile-main">
+
+            {/* ── Missing info checklist ──────────────────────────── */}
+            {completeFields < profileFields.length && (
+              <div className="dp-missing-checklist">
+                <div className="dp-missing-header">
+                  <h3 className="dp-missing-title">Profile Completeness</h3>
+                  <span className="dp-missing-progress" style={{ color: scoreColor }}>
+                    {completeFields}/{profileFields.length} complete
+                  </span>
+                </div>
+                <div className="dp-missing-items">
+                  {profileFields.map((f) => (
+                    <div key={f.label} className={`dp-missing-item${f.done ? ' dp-missing-item--done' : ''}`}>
+                      <span className="dp-missing-check">{f.done ? '✓' : '○'}</span>
+                      {f.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
         <form className="dp-form" onSubmit={handleSave}>
           {/* Identity */}
@@ -407,11 +472,104 @@ export default function DashboardProfile() {
             <button type="submit" className="dp-save-btn" disabled={saving}>
               {saving ? 'Saving…' : 'Save Profile'}
             </button>
-            <p className="dp-visibility-reminder">
-              Visibility is controlled by the admin team. Saving here does not automatically make your profile public.
-            </p>
           </div>
         </form>
+
+          </div>{/* /dp-profile-main */}
+
+          {/* Right: strength breakdown + public preview */}
+          <div className="dp-profile-sidebar">
+
+            {/* Profile Strength Breakdown */}
+            <div className="dp-strength-breakdown">
+              <h3 className="dp-sidebar-title">Profile Strength Breakdown</h3>
+              <div className="dp-breakdown-score" style={{ color: scoreColor }}>
+                <span className="dp-breakdown-num">{strength.score}</span>
+                <span className="dp-breakdown-label">/ 100 — {strength.label}</span>
+              </div>
+              <div className="dp-breakdown-bar-track">
+                <div className="dp-breakdown-bar-fill" style={{ width: `${strength.score}%`, background: scoreColor }} />
+              </div>
+              <div className="dp-breakdown-categories">
+                {Object.entries(strength.sections).map(([cat, val]) => (
+                  <div key={cat} className="dp-breakdown-cat-row">
+                    <span className="dp-breakdown-cat-label">{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
+                    <div className="dp-breakdown-cat-bar">
+                      <div className="dp-breakdown-cat-fill" style={{ width: `${val}%`, background: getStrengthColor(val) }} />
+                    </div>
+                    <span className="dp-breakdown-cat-pct" style={{ color: getStrengthColor(val) }}>{val}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Public Profile Preview */}
+            <div className="dp-profile-preview">
+              <h3 className="dp-sidebar-title">Public Profile Preview</h3>
+              <p className="dp-preview-notice">How you'll appear in the creator directory</p>
+              <div className="dp-preview-card">
+                <div className="dp-preview-avatar">
+                  {profile.profile_photo_url
+                    ? <img src={profile.profile_photo_url} alt="" className="dp-preview-avatar-img" />
+                    : <span className="dp-preview-avatar-initials">
+                        {safeStrInner(profile.display_name || profile.full_name || '?').slice(0, 2).toUpperCase()}
+                      </span>
+                  }
+                </div>
+                <div className="dp-preview-info">
+                  <div className="dp-preview-name">
+                    {safeStrInner(profile.display_name || profile.full_name) || 'Display Name Not Set'}
+                  </div>
+                  <div className="dp-preview-badges">
+                    {profile.tier && (
+                      <span className="dp-preview-tier-badge">{profile.tier.charAt(0).toUpperCase() + profile.tier.slice(1)}</span>
+                    )}
+                    {profile.verification_status === 'verified' && (
+                      <span className="dp-preview-verified-badge">✓ Verified</span>
+                    )}
+                  </div>
+                </div>
+                {profile.bio && (
+                  <p className="dp-preview-bio">
+                    {safeStrInner(profile.bio).slice(0, 120)}{safeStrInner(profile.bio).length > 120 ? '…' : ''}
+                  </p>
+                )}
+                {!profile.bio && (
+                  <p className="dp-preview-bio dp-preview-bio--empty">No bio yet — add one to strengthen your profile.</p>
+                )}
+                {safeArrInner<string>(profile.tools).length > 0 && (
+                  <div className="dp-preview-chips">
+                    {safeArrInner<string>(profile.tools).slice(0, 4).map((t) => (
+                      <span key={t} className="dp-preview-chip">{t}</span>
+                    ))}
+                  </div>
+                )}
+                {safeArrInner<string>(profile.niches).length > 0 && (
+                  <div className="dp-preview-chips dp-preview-chips--niches">
+                    {safeArrInner<string>(profile.niches).slice(0, 3).map((n) => (
+                      <span key={n} className="dp-preview-chip dp-preview-chip--niche">{n}</span>
+                    ))}
+                  </div>
+                )}
+                {safeArrInner<string>(profile.portfolio_links).length > 0 && (
+                  <div className="dp-preview-links">
+                    {safeArrInner<string>(profile.portfolio_links).slice(0, 2).map((link) => (
+                      <a key={link} href={link} className="dp-preview-link" target="_blank" rel="noopener noreferrer">
+                        Portfolio ↗
+                      </a>
+                    ))}
+                  </div>
+                )}
+                <div className="dp-preview-readiness" style={{ color: readinessColor }}>
+                  {readinessLabel}
+                </div>
+              </div>
+            </div>
+
+          </div>{/* /dp-profile-sidebar */}
+
+        </div>{/* /dp-profile-layout */}
+
       </div>
     </div>
   );

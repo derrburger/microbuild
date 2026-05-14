@@ -24,15 +24,6 @@ function Bar({ label, value, max = 100, color = '#00d478' }: BarProps) {
   );
 }
 
-function PlaceholderCard({ title, note }: { title: string; note: string }) {
-  return (
-    <div className="da-placeholder-card">
-      <div className="da-placeholder-title">{title}</div>
-      <div className="da-placeholder-val">—</div>
-      <div className="da-placeholder-note">{note}</div>
-    </div>
-  );
-}
 
 export default function DashboardAnalytics() {
   const { user, loading: authLoading } = useAuth();
@@ -123,59 +114,57 @@ export default function DashboardAnalytics() {
       <div className="container da-body">
         <DashboardNav />
 
-        {/* ── Live activity ──────────────────────────────────────── */}
-        <div className="da-section">
-          <h2 className="da-section-title">Activity (Live)</h2>
-          <div className="da-live-grid">
-            {!isCreator && (
-              <div className="da-live-card">
-                <div className="da-live-val">{requestCount}</div>
-                <div className="da-live-label">Requests Submitted</div>
-              </div>
-            )}
-            {isCreator && strength && (
-              <>
-                <div className="da-live-card">
-                  <div className="da-live-val" style={{ color: getStrengthColor(strength.score) }}>
-                    {strength.score}/100
-                  </div>
-                  <div className="da-live-label">Profile Strength — {strength.label}</div>
-                </div>
-                <div className="da-live-card">
-                  <div className="da-live-val">
-                    {(creatorProfile?.completed_builds_count as number | null) ?? 0}
-                  </div>
-                  <div className="da-live-label">Builds Completed</div>
-                </div>
-                <div className="da-live-card">
-                  <div className="da-live-val">
-                    {creatorProfile?.average_rating
-                      ? (creatorProfile.average_rating as number).toFixed(1) + ' ★'
-                      : '—'}
-                  </div>
-                  <div className="da-live-label">Average Rating</div>
-                </div>
-                <div className="da-live-card">
-                  <div
-                    className="da-live-val"
-                    style={{
-                      color: creatorProfile?.public_profile_status === 'public' ? '#00d478' : '#8a94a6',
-                      fontSize: '1rem',
-                    }}
-                  >
-                    {creatorProfile?.public_profile_status === 'public' ? '🟢 Public' : '🔴 Hidden'}
-                  </div>
-                  <div className="da-live-label">Profile Visibility</div>
-                </div>
-              </>
-            )}
+        {/* ── Analytics header notice ─────────────────────────────── */}
+        <div className="da-header-notice">
+          <span className="da-notice-icon">ℹ</span>
+          <span>
+            <strong>These are preview metrics.</strong> Real analytics will activate when project matching,
+            profile tracking, and payments are connected.
+          </span>
+        </div>
+
+        {/* ── Metric cards row ────────────────────────────────────── */}
+        <div className="da-metrics-grid">
+          <div className="da-metric-card">
+            <div className="da-metric-val da-metric-val--preview">Preview</div>
+            <div className="da-metric-label">Profile Views</div>
+            <div className="da-metric-note">Tracking not connected</div>
+          </div>
+          <div className="da-metric-card">
+            <div className="da-metric-val da-metric-val--preview">Preview</div>
+            <div className="da-metric-label">Buyer Interest</div>
+            <div className="da-metric-note">Requires profile discovery</div>
+          </div>
+          <div className="da-metric-card">
+            <div className="da-metric-val" style={{ color: '#00d478' }}>
+              {isCreator
+                ? (creatorProfile?.completed_builds_count as number | null) ?? 0
+                : requestCount}
+            </div>
+            <div className="da-metric-label">{isCreator ? 'Completed Builds' : 'Requests Submitted'}</div>
+            <div className="da-metric-note">Live data</div>
+          </div>
+          <div className="da-metric-card">
+            <div className="da-metric-val">$0</div>
+            <div className="da-metric-label">Est. Earnings</div>
+            <div className="da-metric-note">Preview only</div>
+          </div>
+          <div className="da-metric-card da-metric-card--soon">
+            <div className="da-metric-val da-metric-val--soon">—</div>
+            <div className="da-metric-label">Response Rate</div>
+            <div className="da-metric-note">Coming soon</div>
+          </div>
+          <div className="da-metric-card da-metric-card--soon">
+            <div className="da-metric-val da-metric-val--soon">—</div>
+            <div className="da-metric-label">Client Satisfaction</div>
+            <div className="da-metric-note">Coming soon</div>
           </div>
         </div>
 
-        {/* ── Profile completion (live for creators, static for buyers) */}
+        {/* ── Profile completion (live for creators) ──────────────── */}
         {isCreator && strength && (
           <div className="da-section">
-            <h2 className="da-section-title">Profile Completion (Live)</h2>
+            <h2 className="da-section-title">Profile Completion</h2>
             <div className="da-bars">
               <Bar label="Identity"     value={strength.sections.identity}     max={100} color={getStrengthColor(strength.sections.identity)} />
               <Bar label="Expertise"    value={strength.sections.expertise}    max={100} color={getStrengthColor(strength.sections.expertise)} />
@@ -183,48 +172,80 @@ export default function DashboardAnalytics() {
               <Bar label="Credentials" value={strength.sections.credentials}  max={100} color={getStrengthColor(strength.sections.credentials)} />
               <Bar label="Availability" value={strength.sections.availability} max={100} color={getStrengthColor(strength.sections.availability)} />
             </div>
-            {strength.missingItems.length > 0 && (
-              <div className="da-missing-list">
-                <p className="da-section-note">Top improvements:</p>
-                <ul>
-                  {strength.missingItems.slice(0, 3).map((m) => (
-                    <li key={m} className="da-missing-item">○ {m}</li>
-                  ))}
-                </ul>
-                <Link to="/dashboard/profile" className="da-link">Edit profile →</Link>
-              </div>
-            )}
           </div>
         )}
 
-        {/* ── Placeholder metrics ─────────────────────────────────── */}
+        {/* ── Earnings over time placeholder ──────────────────────── */}
         <div className="da-section">
-          <h2 className="da-section-title">Performance (Preview Metrics)</h2>
-          <div className="da-placeholder-grid">
-            <PlaceholderCard title="Profile Views"        note="Requires analytics integration" />
-            <PlaceholderCard title="Monthly Earnings"     note="Requires Stripe integration" />
-            <PlaceholderCard title="Project Pipeline"     note="Requires build matching system" />
-            <PlaceholderCard title="Conversion Rate"      note="Requires event tracking" />
-            <PlaceholderCard title="Avg Response Time"    note="Requires messaging system" />
-            <PlaceholderCard title="Client Satisfaction"  note="Requires review system" />
-          </div>
-        </div>
-
-        {/* ── Earnings graph placeholder ──────────────────────────── */}
-        <div className="da-section">
-          <h2 className="da-section-title">Earnings Over Time (Placeholder)</h2>
+          <h2 className="da-section-title">Earnings Over Time</h2>
           <div className="da-graph-placeholder">
             <div className="da-graph-bars">
               {['Jan','Feb','Mar','Apr','May','Jun'].map((m, i) => (
                 <div key={m} className="da-graph-bar-col">
-                  <div className="da-graph-bar" style={{ height: `${20 + i * 8}%`, opacity: 0.35 }} />
+                  <div className="da-graph-bar" style={{ height: `${14 + i * 5}%`, opacity: 0.3 }} />
                   <span className="da-graph-month">{m}</span>
                 </div>
               ))}
             </div>
-            <p className="da-graph-note">Earnings data requires Stripe integration (Phase 4)</p>
+            <p className="da-graph-note">
+              Earnings data will populate when Stripe and project matching are live.
+              No money has been transacted through these projections.
+            </p>
           </div>
         </div>
+
+        {/* ── Project Pipeline breakdown ───────────────────────────── */}
+        <div className="da-section">
+          <h2 className="da-section-title">Project Pipeline Breakdown <span className="da-phase-badge">Phase 2</span></h2>
+          <div className="da-pipeline-grid">
+            {[
+              { label: 'Available',   count: 0, note: 'Open opportunities' },
+              { label: 'Assigned',    count: 0, note: 'Matched to you' },
+              { label: 'In Progress', count: 0, note: 'Active builds' },
+              { label: 'In Review',   count: 0, note: 'Buyer review' },
+              { label: 'Delivered',   count: 0, note: 'Awaiting sign-off' },
+              { label: 'Completed',   count: isCreator ? ((creatorProfile?.completed_builds_count as number | null) ?? 0) : 0, note: 'Finished' },
+            ].map((s) => (
+              <div key={s.label} className={`da-pipeline-stage${s.count > 0 ? ' da-pipeline-stage--active' : ''}`}>
+                <div className="da-pipeline-count" style={{ color: s.count > 0 ? '#00d478' : undefined }}>
+                  {s.count > 0 ? s.count : '—'}
+                </div>
+                <div className="da-pipeline-label">{s.label}</div>
+                <div className="da-pipeline-note">{s.note}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Improvement insights ────────────────────────────────── */}
+        {isCreator && (
+          <div className="da-section">
+            <h2 className="da-section-title">Improvement Insights</h2>
+            <div className="da-insights">
+              {[
+                strength && strength.sections.portfolio < 60 && 'Add portfolio links to improve profile trust and buyer confidence.',
+                strength && strength.sections.identity  < 60 && 'Complete your bio to increase profile strength and search visibility.',
+                creatorProfile?.public_profile_status !== 'public' && 'Public visibility is required before buyers can discover your profile.',
+                strength && strength.sections.expertise < 60 && 'Add tools and industry niches to appear in relevant buyer searches.',
+                strength && strength.sections.credentials < 40 && 'Add certifications or proof links to qualify for Verified tier.',
+              ].filter(Boolean).map((insight) => (
+                <div key={insight as string} className="da-insight-item">
+                  <span className="da-insight-bullet">→</span>
+                  <span>{insight}</span>
+                </div>
+              ))}
+              {(!strength || (strength.score >= 75 && creatorProfile?.public_profile_status === 'public')) && (
+                <div className="da-insight-item da-insight-item--positive">
+                  <span className="da-insight-bullet">✓</span>
+                  <span>Your profile is in strong shape. Keep your availability and portfolio updated.</span>
+                </div>
+              )}
+            </div>
+            {strength && strength.missingItems.length > 0 && (
+              <Link to="/dashboard/profile" className="da-link">Fix missing profile fields →</Link>
+            )}
+          </div>
+        )}
 
       </div>
     </div>

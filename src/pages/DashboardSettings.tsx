@@ -40,8 +40,8 @@ export default function DashboardSettings() {
       });
   }, [user]);
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSave(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!user) return;
     setSaving(true);
     setSaved(false);
@@ -110,9 +110,9 @@ export default function DashboardSettings() {
           </div>
         </div>
 
-        {/* ── Profile settings ───────────────────────────────────── */}
+        {/* ── Account details ─────────────────────────────────────── */}
         <div className="ds-section">
-          <h2 className="ds-section-title">Profile</h2>
+          <h2 className="ds-section-title">Account</h2>
           <form className="ds-form" onSubmit={handleSave}>
             <div className="ds-field">
               <label className="ds-label" htmlFor="ds-displayname">Display Name</label>
@@ -126,28 +126,10 @@ export default function DashboardSettings() {
               />
             </div>
 
-            <div className="ds-field">
-              <label className="ds-label" htmlFor="ds-github">
-                GitHub Profile URL{' '}
-                <span className="ds-label-hint">(optional — shown on your public creator profile)</span>
-              </label>
-              <input
-                id="ds-github"
-                className="ds-input"
-                type="url"
-                value={githubUrl}
-                onChange={e => { setGithubUrl(e.target.value); setSaved(false); }}
-                placeholder="https://github.com/yourname"
-              />
-              <span className="ds-field-note">
-                This is a plain link, not OAuth. GitHub sign-in is coming after domain setup.
-              </span>
-            </div>
-
             {saveError && <p className="ds-error">{saveError}</p>}
             {saved && <p className="ds-saved">✓ Saved</p>}
             <button type="submit" className="ds-save-btn" disabled={saving}>
-              {saving ? 'Saving…' : 'Save Changes'}
+              {saving ? 'Saving…' : 'Save Display Name'}
             </button>
           </form>
 
@@ -159,21 +141,25 @@ export default function DashboardSettings() {
           )}
         </div>
 
-        {/* ── Privacy ────────────────────────────────────────────── */}
+        {/* ── Profile & Privacy ──────────────────────────────────── */}
         <div className="ds-section">
-          <h2 className="ds-section-title">Privacy</h2>
+          <h2 className="ds-section-title">Profile &amp; Privacy</h2>
           <div className="ds-placeholder-row">
             <span className="ds-placeholder-label">Profile visibility</span>
             <span className="ds-placeholder-note">
               {profile?.account_type === 'creator'
-                ? 'Creator profile visibility is controlled by the admin team. Edit your profile to request changes.'
+                ? 'Public visibility is controlled by the MicroBuild admin team and cannot be self-toggled. Update your profile content and the admin will review it.'
                 : 'Buyer profiles are private by default.'
               }
             </span>
           </div>
           <div className="ds-placeholder-row">
             <span className="ds-placeholder-label">Email notifications</span>
-            <span className="ds-placeholder-note">Coming soon — requires notification system</span>
+            <span className="ds-placeholder-note">Coming soon — requires notification infrastructure</span>
+          </div>
+          <div className="ds-placeholder-row">
+            <span className="ds-placeholder-label">Privacy preferences</span>
+            <span className="ds-placeholder-note">Coming soon</span>
           </div>
           <div className="ds-placeholder-row">
             <span className="ds-placeholder-label">Data export</span>
@@ -181,22 +167,62 @@ export default function DashboardSettings() {
           </div>
         </div>
 
-        {/* ── GitHub connection (coming soon) ─────────────────────── */}
-        <div className="ds-section ds-github-section">
-          <h2 className="ds-section-title">GitHub Connection</h2>
-          <div className="ds-github-deferred-box">
-            <div className="ds-github-deferred-icon">
-              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-              </svg>
+        {/* ── Connected accounts ─────────────────────────────────── */}
+        <div className="ds-section">
+          <h2 className="ds-section-title">Connected Accounts</h2>
+          <div className="ds-field">
+            <label className="ds-label" htmlFor="ds-github2">GitHub Profile URL</label>
+            <input
+              id="ds-github2"
+              className="ds-input"
+              type="url"
+              value={githubUrl}
+              onChange={e => { setGithubUrl(e.target.value); setSaved(false); }}
+              placeholder="https://github.com/yourname"
+            />
+            <span className="ds-field-note">
+              Plain link — displayed on your creator profile.
+              GitHub OAuth is deferred until domain setup is complete.
+            </span>
+          </div>
+          <div className="ds-placeholder-row ds-placeholder-row--mt">
+            <span className="ds-placeholder-label">LinkedIn</span>
+            <span className="ds-placeholder-note">
+              Edit your LinkedIn URL in the{' '}
+              <Link to="/dashboard/profile" className="ds-link">Profile Editor</Link>.
+            </span>
+          </div>
+          <div className="ds-placeholder-row">
+            <span className="ds-placeholder-label">Google</span>
+            <span className="ds-placeholder-note">OAuth integration deferred — email/password only for now</span>
+          </div>
+          {(saved || saveError) && (
+            <div style={{ marginTop: '0.75rem' }}>
+              {saveError && <p className="ds-error">{saveError}</p>}
+              {saved && <p className="ds-saved">✓ Saved</p>}
             </div>
+          )}
+          <button type="button" className="ds-save-btn ds-save-btn--sm" onClick={() => handleSave()} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Connected Accounts'}
+          </button>
+        </div>
+
+        {/* ── Billing ────────────────────────────────────────────── */}
+        <div className="ds-section ds-billing-section">
+          <h2 className="ds-section-title">Billing</h2>
+          <div className="ds-billing-notice">
+            <span className="ds-billing-icon">💳</span>
             <div>
-              <div className="ds-github-deferred-title">GitHub sign-in coming soon</div>
-              <p className="ds-github-deferred-desc">
-                GitHub OAuth will be added after MicroBuild's production domain is
-                configured. For now, add your GitHub URL above to display it on your
-                creator profile.
+              <div className="ds-billing-title">Billing is not active yet</div>
+              <p className="ds-billing-desc">
+                Professional and Verified creators will only pay after admin approval,
+                when Stripe is fully connected. No payment is required right now.
               </p>
+              <div className="ds-billing-meta">
+                <span className="ds-billing-tag">Free tier: No charge</span>
+                <span className="ds-billing-tag">Professional: $15/mo — after Stripe</span>
+                <span className="ds-billing-tag">Verified: $25/mo — after Stripe</span>
+              </div>
             </div>
           </div>
         </div>
@@ -214,9 +240,9 @@ export default function DashboardSettings() {
           <div className="ds-danger-row">
             <div>
               <div className="ds-danger-label">Delete Account</div>
-              <div className="ds-danger-sub">Permanently remove your account. Coming soon — contact support.</div>
+              <div className="ds-danger-sub">Account deletion will be added after auth policies are finalized. Contact support if needed.</div>
             </div>
-            <button className="ds-delete-btn" disabled title="Not yet available">Delete Account</button>
+            <button className="ds-delete-btn" disabled title="Not yet available — contact support">Delete Account</button>
           </div>
         </div>
 

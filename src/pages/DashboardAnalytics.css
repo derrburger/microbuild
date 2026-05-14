@@ -1,4 +1,4 @@
-/* ─── Dashboard Analytics ──────────────────────────────────────────────────── */
+/* â”€â”€â”€ Dashboard Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .da-page { min-height: 100vh; background: var(--bg-primary); }
 .da-loading { min-height: 60vh; display: flex; align-items: center; justify-content: center; }
@@ -48,3 +48,32 @@
 .da-graph-bar { width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 8px; }
 .da-graph-month { font-size: 0.65rem; color: var(--text-muted); }
 .da-graph-note { font-size: 0.75rem; color: var(--text-muted); text-align: center; }
+
+
+/* === DASHBOARD ANALYTICS v3 === */
+
+.da-header-notice{display:flex;align-items:flex-start;gap:0.65rem;padding:0.75rem 1rem;background:rgba(99,179,237,0.06);border:1px solid rgba(99,179,237,0.2);border-radius:9px;font-size:0.78rem;color:var(--text-secondary);line-height:1.5;margin-bottom:0.25rem}
+.da-notice-icon{font-size:0.9rem;color:#63b3ed;flex-shrink:0;margin-top:0.05rem}
+.da-header-notice strong{color:var(--text-primary)}
+.da-metrics-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:0.65rem}
+.da-metric-card{background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:0.9rem 0.75rem;display:flex;flex-direction:column;gap:0.2rem}
+.da-metric-card--soon{opacity:0.55}
+.da-metric-val{font-size:1.2rem;font-weight:800;color:var(--text-secondary)}
+.da-metric-val--preview{font-size:0.75rem;font-weight:700;color:#f9b032;background:rgba(249,176,50,0.08);border-radius:4px;padding:0.2rem 0.5rem;display:inline-block;width:fit-content}
+.da-metric-val--soon{font-size:1.2rem;color:var(--text-muted)}
+.da-metric-label{font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)}
+.da-metric-note{font-size:0.62rem;color:var(--text-muted)}
+.da-pipeline-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:0.6rem}
+.da-pipeline-stage{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.65rem 0.5rem;text-align:center;display:flex;flex-direction:column;gap:0.15rem}
+.da-pipeline-stage--active{border-color:rgba(0,212,120,0.3);background:rgba(0,212,120,0.04)}
+.da-pipeline-count{font-size:1.1rem;font-weight:900;color:var(--text-muted)}
+.da-pipeline-label{font-size:0.67rem;font-weight:700;color:var(--text-secondary)}
+.da-pipeline-note{font-size:0.6rem;color:var(--text-muted)}
+.da-phase-badge{font-size:0.62rem;font-weight:700;background:rgba(99,179,237,0.1);color:#63b3ed;border:1px solid rgba(99,179,237,0.2);border-radius:4px;padding:0.15rem 0.45rem;margin-left:0.5rem;vertical-align:middle;text-transform:none;letter-spacing:0}
+.da-insights{display:flex;flex-direction:column;gap:0.45rem;margin-bottom:0.65rem}
+.da-insight-item{display:flex;align-items:flex-start;gap:0.5rem;font-size:0.8rem;color:var(--text-secondary);line-height:1.45;padding:0.45rem 0.65rem;background:var(--surface);border-radius:7px}
+.da-insight-item--positive{background:rgba(0,212,120,0.05)}
+.da-insight-bullet{color:var(--accent);flex-shrink:0}
+.da-insight-item--positive .da-insight-bullet{color:#00d478}
+@media(max-width:900px){.da-metrics-grid{grid-template-columns:repeat(3,1fr)}.da-pipeline-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:580px){.da-metrics-grid{grid-template-columns:repeat(2,1fr)}.da-pipeline-grid{grid-template-columns:repeat(2,1fr)}}
