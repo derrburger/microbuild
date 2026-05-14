@@ -104,27 +104,36 @@ CREATE POLICY "business_profiles_owner_select"
 -- creator_applications, which makes the /admin page show real submissions.
 --
 -- ⚠️  SECURITY WARNING: These make ALL submissions readable to anyone who
---     knows the Supabase project URL and anon key.
---     REMOVE or REPLACE with auth.uid()-scoped policies before going public.
---     Phase 2 will replace these with admin role checks.
+--     knows the Supabase project URL and anon key. This is intentional for
+--     LOCAL MVP DEVELOPMENT ONLY and must be removed or replaced before the
+--     app is made publicly accessible.
 --
--- Uncomment BOTH blocks below to enable the /admin page data reads.
+-- STATUS: ACTIVE — These policies have been applied to the development
+--     Supabase project so that /admin reads live data during MVP development.
+--
+-- BEFORE GOING PUBLIC:
+--     1. Remove or comment out these policies.
+--     2. Wire Supabase Auth (Phase 2) with admin role checks.
+--     3. Replace with auth.uid() = admin_id scoped policies or use the
+--        Supabase service-role key in a server-side API route.
+--
+-- Phase 2 will replace these with admin JWT role checks.
 
--- ALTER TABLE public.buyer_requests ENABLE ROW LEVEL SECURITY;
--- DROP POLICY IF EXISTS "buyer_requests_dev_admin_read" ON public.buyer_requests;
--- CREATE POLICY "buyer_requests_dev_admin_read"
---   ON public.buyer_requests
---   FOR SELECT
---   TO anon, authenticated
---   USING (true);
+ALTER TABLE public.buyer_requests ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "buyer_requests_dev_admin_read" ON public.buyer_requests;
+CREATE POLICY "buyer_requests_dev_admin_read"
+  ON public.buyer_requests
+  FOR SELECT
+  TO anon, authenticated
+  USING (true);
 
--- ALTER TABLE public.creator_applications ENABLE ROW LEVEL SECURITY;
--- DROP POLICY IF EXISTS "creator_applications_dev_admin_read" ON public.creator_applications;
--- CREATE POLICY "creator_applications_dev_admin_read"
---   ON public.creator_applications
---   FOR SELECT
---   TO anon, authenticated
---   USING (true);
+ALTER TABLE public.creator_applications ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "creator_applications_dev_admin_read" ON public.creator_applications;
+CREATE POLICY "creator_applications_dev_admin_read"
+  ON public.creator_applications
+  FOR SELECT
+  TO anon, authenticated
+  USING (true);
 
 
 -- ─── Verification query (uncomment to check active policies) ─────────────────

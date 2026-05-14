@@ -85,7 +85,6 @@ export default function Request() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [packet, setPacket] = useState<GeneratedBuildPacket | null>(null);
-  const [packetOpen, setPacketOpen] = useState(false);
 
   // Fetch the real template from Supabase when slug is present so we can:
   //   1. Store the actual UUID for the template_id FK
@@ -171,52 +170,46 @@ export default function Request() {
           </Link>
 
           {packet && (
-            <div className="success-packet">
-              <button
-                className="success-packet-toggle"
-                onClick={() => setPacketOpen((v) => !v)}
-                aria-expanded={packetOpen}
-              >
-                {packetOpen ? '▲ Hide Build Packet Preview' : '▼ Preview Your Build Packet'}
-              </button>
-
-              {packetOpen && (
-                <div className="success-packet-body">
-                  <p className="success-packet-disclaimer">
-                    ⚡ This is a template-generated preview — your real packet will be
-                    crafted manually and reviewed with you before build begins.
-                  </p>
-
-                  <div className="success-packet-section">
-                    <div className="success-packet-label">Business Summary</div>
-                    <p>{packet.businessSummary}</p>
-                  </div>
-                  <div className="success-packet-section">
-                    <div className="success-packet-label">Recommended Build</div>
-                    <p>{packet.recommendedBuild}</p>
-                  </div>
-                  <div className="success-packet-section">
-                    <div className="success-packet-label">Suggested Copy Direction</div>
-                    <p>{packet.suggestedCopyDirection}</p>
-                  </div>
-                  <div className="success-packet-section">
-                    <div className="success-packet-label">Design Direction</div>
-                    <p>{packet.designDirection}</p>
-                  </div>
-                  <div className="success-packet-section">
-                    <div className="success-packet-label">Suggested Form Fields</div>
-                    <ul className="success-packet-list">
-                      {packet.formFields.map((f) => <li key={f}>{f}</li>)}
-                    </ul>
-                  </div>
-                  <div className="success-packet-section">
-                    <div className="success-packet-label">Quality Checklist</div>
-                    <ul className="success-packet-list">
-                      {packet.qualityChecklist.map((item) => <li key={item}>☐ {item}</li>)}
-                    </ul>
-                  </div>
+            <div className="success-analysis">
+              <h3 className="success-analysis-title">What we'll review next</h3>
+              <p className="success-analysis-sub">
+                Here's what our team will look at when they review your request.
+                We'll confirm scope and pricing with you before anything moves forward.
+              </p>
+              <div className="success-analysis-grid">
+                <div className="success-analysis-item">
+                  <span className="success-analysis-label">Business</span>
+                  <span className="success-analysis-value">{form.businessName} · {form.industry}</span>
                 </div>
-              )}
+                <div className="success-analysis-item">
+                  <span className="success-analysis-label">Requested Build</span>
+                  <span className="success-analysis-value">{packet.recommendedBuild}</span>
+                </div>
+                <div className="success-analysis-item">
+                  <span className="success-analysis-label">Business Goal</span>
+                  <span className="success-analysis-value">{form.mainGoal || '—'}</span>
+                </div>
+                <div className="success-analysis-item">
+                  <span className="success-analysis-label">Current Problem</span>
+                  <span className="success-analysis-value">{form.currentProblem || '—'}</span>
+                </div>
+                {form.budget && (
+                  <div className="success-analysis-item">
+                    <span className="success-analysis-label">Budget Indicated</span>
+                    <span className="success-analysis-value">{form.budget}</span>
+                  </div>
+                )}
+                {form.deadline && (
+                  <div className="success-analysis-item">
+                    <span className="success-analysis-label">Deadline</span>
+                    <span className="success-analysis-value">{form.deadline}</span>
+                  </div>
+                )}
+              </div>
+              <p className="success-analysis-note">
+                Our team reviews every request manually. We'll reach out within 1–2 business days
+                with a scope summary and pricing confirmation.
+              </p>
             </div>
           )}
         </div>

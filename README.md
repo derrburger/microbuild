@@ -159,15 +159,25 @@ The file also includes commented-out "dev admin read" policies. Uncomment these 
 
 | Route | Description |
 |-------|-------------|
-| `/admin` | Dashboard showing live data from Supabase — buyer requests, creator applications, active templates |
+| `/admin` | AI Operations Command Center — buyer requests with AI-style analysis, creator applications, active template listings |
 
-> ⚠️ The `/admin` route has no authentication. Apply the dev admin read policies and use this URL internally only until Phase 2 adds auth.
+> ⚠️ The `/admin` route has no authentication. Dev admin read policies are active in `supabase/policies.sql`. Use this URL internally only until Phase 2 adds auth.
+
+#### Admin Dashboard Features
+
+- **Metric cards:** Total requests, new requests, high-priority count, needs-follow-up count, new applications, active listings.
+- **Buyer request cards:** Each request shows business name, industry, build type, budget, deadline, status, lead quality score (0–100), priority label, fit rating, next recommended action, missing info warnings, and risk flag warnings.
+- **Filter tabs:** All / New / High Priority / Needs Follow-up / Ready to Quote — computed from the rules-based AI analysis of each request.
+- **AI Operations Panel:** Expandable per-request panel with 7 tabs: AI Summary (scores + overview), Missing Info (flags + risk flags), Follow-up Questions, Creator Brief (instructions + page sections + design direction + form fields), Proposal Draft (copy-ready email), Checklists (quality + launch), Automation Ideas.
+- **Copy buttons:** Copy Packet Summary, Copy Follow-up Questions, Copy Creator Brief, Copy Proposal Draft — no backend writes required.
+- **Creator Applications:** Card layout with auto-derived fit label (Strong candidate / Needs portfolio review / Limited fit), chips for tools and niches, and Copy Candidate Summary button.
+- **MicroBuild Listings:** Clean table with encoding-safe turnaround display.
 
 ### Data behavior
 
 - **Browse and Build Detail:** Fetches from Supabase with a silent fallback to mock data if Supabase is unavailable or RLS blocks the query.
 - **Forms:** Insert directly into Supabase. Full error logging in the browser console — error code `42501` means an RLS policy is missing.
-- **Build Packet Preview:** After submitting a request, a deterministic packet preview is generated from form data (no AI API calls).
+- **AI-Ready Build Packet System:** After submitting a request, a structured build brief is generated from form data. See below for full details.
 
 ---
 
@@ -178,7 +188,8 @@ The file also includes commented-out "dev admin read" policies. Uncomment these 
 - [x] Supabase connected (templates, buyer requests, creator applications)
 - [x] RLS policies for public reads and anonymous inserts
 - [x] Admin dashboard with live data
-- [x] Deterministic build packet preview
+- [x] AI Operations Command Center with filter tabs, cards, AI Ops panel, copy buttons
+- [x] Rules-based AI build packet system (no external AI API)
 
 ### Phase 2 — Auth + Admin Operations
 - [ ] Supabase Auth (email/password or magic link)
@@ -188,10 +199,11 @@ The file also includes commented-out "dev admin read" policies. Uncomment these 
 - [ ] Creator profiles created from approved applications
 
 ### Phase 3 — Build Packets + AI
-- [ ] Supabase Edge Function: `generate-build-packet`
-- [ ] GPT-4o generates structured brief from buyer request
-- [ ] Stored in `build_packets` table
-- [ ] Admin triggers generation; creator views it in their dashboard
+- [ ] Supabase Edge Function: `generate-build-packet` (server-side, no API key in frontend)
+- [ ] GPT-4o generates full build brief from buyer request data
+- [ ] Stored in `build_packets` table, linked to the buyer request row
+- [ ] Admin triggers generation; creator views the brief in their dashboard
+- [ ] `GeneratedBuildPacket` interface shape stays the same — only the generator changes
 
 ### Phase 4 — Payments
 - [ ] Stripe Checkout
@@ -225,6 +237,52 @@ npx supabase gen types typescript --project-id <ref> > src/types/database.ts
 ### Supabase client
 
 `src/lib/supabase.ts` exports the client plus two typed insert helpers (`insertBuyerRequest`, `insertCreatorApplication`). The client strips any `/rest/v1/` suffix from the URL automatically.
+
+### AI-Ready Build Packet System
+
+`src/lib/buildPacket.ts` generates a structured build brief from a buyer request. **No external AI API is called.** The logic is entirely deterministic and runs in the browser. All UI surfaces label this clearly as *"AI-style operations preview — rules-based MVP version."*
+
+**⚠️ Security rule: No AI API keys ever go in the frontend.** Phase 3 will call GPT-4o from a Supabase Edge Function (server-side only).
+
+The generated `GeneratedBuildPacket` includes:
+
+| Field | Description |
+|---|---|
+| `businessSummary` | Sentence built from business name, industry, website, budget |
+| `targetAudience` | Audience inferred from industry + build type |
+| `problem` | Buyer's stated current problem |
+| `aiSummary` | One-paragraph admin-facing overview with all signal scores |
+| `recommendedBuild` | Build type + template title |
+| `whyThisBuildFits` | Why this build type matches the stated goal and problem |
+| `suggestedPageSections` | Per-build-type section list |
+| `ctaStrategy` | CTA best practices for the build type |
+| `suggestedCopyDirection` | Headline/subheadline suggestions from actual form data |
+| `designDirection` | Layout and UX direction per build type |
+| `formFields` | Recommended form inputs per build type |
+| `automationNeeds` | Email/automation needs per build type |
+| `creatorInstructions` | Full creator brief from actual submitted fields |
+| `suggestedProposalAngle` | 2–3 sentence pitch framing for this specific request |
+| `proposalDraft` | Copy-ready email proposal draft for admin to send |
+| `qualityChecklist` | QA items specific to the build type |
+| `launchChecklist` | Post-delivery launch tasks for the business owner |
+| `adminNextAction` | Recommended next step derived from score + urgency |
+| `priorityLabel` | High / Medium / Low — derived from score + urgency |
+| `fitRating` | Strong / Good / Okay / Weak — derived from score + build type |
+| `leadQualityScore` | 0–100 — based on field completeness and specificity |
+| `leadQualityLabel` | Strong / Good / Fair / Needs Detail |
+| `urgencyRating` | High / Medium / Low / Not specified — from deadline field |
+| `complexityRating` | Low / Medium / High — from build type + style notes |
+| `revenuePotentialRating` | High / Medium-High / Medium / Low-Medium / Low / Unknown |
+| `missingInfoFlags` | List of missing or weak fields that should be followed up |
+| `riskFlags` | List of risk signals (low budget, urgent + vague, no build type) |
+| `followUpQuestions` | Suggested questions to ask the buyer before scoping |
+
+**Where it appears:**
+- `/admin` AI Operations Panel — 7 tabs per request: AI Summary, Missing Info, Follow-up Questions, Creator Brief, Proposal Draft, Checklists, Automation Ideas
+- `/request` success state — buyer-safe summary only (goal, build, problem, budget, deadline — no admin-level detail)
+
+**Phase 3 upgrade path:**
+`generateBuildPacket()` on the frontend will be replaced by a Supabase Edge Function call (`/functions/v1/generate-build-packet`) that invokes GPT-4o server-side. The `GeneratedBuildPacket` interface shape stays the same — the UI does not need to change.
 
 ### Mock data fallback
 

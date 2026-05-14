@@ -30,7 +30,7 @@ function rowToListing(row: TemplateWithCategory): MicroBuildListing {
     targetIndustry: row.target_industry,
     mainGoal: row.main_goal,
     startingPrice: row.starting_price,
-    estimatedTurnaround: row.estimated_turnaround,
+    estimatedTurnaround: (row.estimated_turnaround ?? '').replace(/â€"/g, '–').replace(/â€™/g, "'"),
     description: row.description,
     features: row.features,
     setupRequirements: row.setup_requirements,

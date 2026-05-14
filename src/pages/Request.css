@@ -264,87 +264,69 @@
   margin-bottom: 2rem;
 }
 
-/* Build Packet Preview on success page */
-.success-packet {
+/* "What we'll review next" summary on success page */
+.success-analysis {
   margin-top: 2rem;
+  width: 100%;
   text-align: left;
-  width: 100%;
-}
-
-.success-packet-toggle {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--accent);
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.4rem 0.9rem;
-  border-radius: 5px;
-  cursor: pointer;
-  width: 100%;
-  text-align: center;
-  transition: background 0.15s;
-}
-
-.success-packet-toggle:hover {
-  background: rgba(56, 189, 130, 0.07);
-}
-
-.success-packet-body {
-  margin-top: 0.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 1.5rem;
+}
+
+.success-analysis-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.35rem;
+  letter-spacing: -0.01em;
+}
+
+.success-analysis-sub {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 1.25rem !important;
+}
+
+.success-analysis-grid {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
 }
 
-.success-packet-disclaimer {
-  font-size: 0.78rem;
-  color: #f9b032;
-  background: rgba(249, 176, 50, 0.06);
-  border: 1px solid rgba(249, 176, 50, 0.18);
-  border-radius: 5px;
-  padding: 0.5rem 0.75rem;
-  margin: 0;
-  line-height: 1.5;
-}
-
-.success-packet-section {
+.success-analysis-item {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.15rem;
+  padding: 0.6rem 0.8rem;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
-.success-packet-label {
-  font-size: 0.68rem;
+.success-analysis-label {
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--accent);
 }
 
-.success-packet-section p {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  line-height: 1.65;
-  margin: 0;
-}
-
-.success-packet-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.success-packet-list li {
-  font-size: 0.85rem;
+.success-analysis-value {
+  font-size: 0.88rem;
   color: var(--text-secondary);
   line-height: 1.5;
+}
+
+.success-analysis-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin: 0 !important;
+  font-style: italic;
 }
 
 .success-note {
