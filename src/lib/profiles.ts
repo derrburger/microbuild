@@ -27,6 +27,8 @@ export function normalizeCreatorProfile(raw: Record<string, unknown>): CreatorPr
   return {
     id:                      safeStr(raw.id, 'unknown'),
     user_id:                 raw.user_id != null ? safeStr(raw.user_id) : null,
+    auth_user_id:            raw.auth_user_id != null ? safeStr(raw.auth_user_id) : null,
+    user_profile_id:         raw.user_profile_id != null ? safeStr(raw.user_profile_id) : null,
     creator_application_id:  raw.creator_application_id != null ? safeStr(raw.creator_application_id) : null,
     display_name:            raw.display_name != null ? safeStr(raw.display_name) : null,
     full_name:               safeStr(raw.full_name, 'Unknown Creator'),

@@ -312,14 +312,16 @@ async function performApprovalAction(
       .maybeSingle();
 
     if (existingProfile) {
-      // Update existing profile
+      // Update existing profile — also stamp auth_user_id if not set
       await supabase
         .from('creator_profiles')
         .update({
           tier,
-          approval_status: newStatus,
+          approval_status:   newStatus,
           subscription_status,
           verification_status: verif,
+          // Ensure auth_user_id is set on the profile (may be missing on older rows)
+          ...(app.auth_user_id ? { auth_user_id: app.auth_user_id } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', existingProfile.id);
@@ -329,6 +331,9 @@ async function performApprovalAction(
         .from('creator_applications')
         .update({ linked_creator_profile_id: existingProfile.id })
         .eq('id', app.id);
+
+      // Ensure user_profiles.creator_profile_id is set
+      await cascadeUserProfile({ creator_profile_id: existingProfile.id });
 
       return { ok: true, profileId: existingProfile.id };
     } else {

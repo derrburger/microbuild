@@ -162,6 +162,8 @@ export interface BuyerRequestRow {
 export interface CreatorProfileRow {
   id: string;
   user_id: string | null;
+  auth_user_id: string | null;
+  user_profile_id: string | null;
   creator_application_id: string | null;
   // Display
   display_name: string | null;
@@ -209,6 +211,8 @@ export interface CreatorProfileRow {
 export interface CreatorProfileInsert {
   id?: string;
   user_id?: string | null;
+  auth_user_id?: string | null;
+  user_profile_id?: string | null;
   creator_application_id?: string | null;
   display_name?: string | null;
   full_name: string;

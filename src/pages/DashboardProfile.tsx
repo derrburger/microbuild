@@ -15,29 +15,54 @@ function arrToTags(a: string[]): string {
   return safeArr<string>(a).join(', ');
 }
 
+// Context from user_profiles for better "not found" messaging
+interface UserProfileContext {
+  accountType: string;
+  applicationStatus: string | null;
+}
+
+const PROFILE_SELECT = [
+  'id, user_id, auth_user_id, user_profile_id, creator_application_id',
+  'display_name, full_name, profile_photo_url, slug, bio',
+  'tier, verification_status, approval_status, subscription_status, public_profile_status',
+  'badges, tools, niches, portfolio_links, credential_links, certifications, proof_links',
+  'education_or_coursework, github_url, linkedin_url, case_studies',
+  'portfolio_url, skills, available_hours, is_active',
+  'completed_builds_count, average_rating, rating, builds_completed',
+  'created_at, updated_at',
+].join(', ');
+
+function normalizeArrayFields(raw: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...raw };
+  ['tools','niches','badges','portfolio_links','credential_links','certifications','proof_links','skills']
+    .forEach(k => { if (!Array.isArray(result[k])) result[k] = []; });
+  return result;
+}
+
 export default function DashboardProfile() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  const [profile, setProfile]       = useState<CreatorProfileRow | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [saving, setSaving]         = useState(false);
-  const [saved, setSaved]           = useState(false);
-  const [saveError, setSaveError]   = useState<string | null>(null);
+  const [profile, setProfile]             = useState<CreatorProfileRow | null>(null);
+  const [upContext, setUpContext]          = useState<UserProfileContext | null>(null);
+  const [loading, setLoading]             = useState(true);
+  const [saving, setSaving]               = useState(false);
+  const [saved, setSaved]                 = useState(false);
+  const [saveError, setSaveError]         = useState<string | null>(null);
 
   // Form fields
-  const [displayName, setDisplayName]   = useState('');
-  const [bio, setBio]                   = useState('');
-  const [photoUrl, setPhotoUrl]         = useState('');
-  const [tools, setTools]               = useState('');
-  const [niches, setNiches]             = useState('');
+  const [displayName, setDisplayName]       = useState('');
+  const [bio, setBio]                       = useState('');
+  const [photoUrl, setPhotoUrl]             = useState('');
+  const [tools, setTools]                   = useState('');
+  const [niches, setNiches]                 = useState('');
   const [portfolioLinks, setPortfolioLinks] = useState('');
-  const [githubUrl, setGithubUrl]       = useState('');
-  const [linkedinUrl, setLinkedinUrl]   = useState('');
+  const [githubUrl, setGithubUrl]           = useState('');
+  const [linkedinUrl, setLinkedinUrl]       = useState('');
   const [availableHours, setAvailableHours] = useState('');
   const [certifications, setCertifications] = useState('');
-  const [caseStudies, setCaseStudies]   = useState('');
-  const [education, setEducation]       = useState('');
+  const [caseStudies, setCaseStudies]       = useState('');
+  const [education, setEducation]           = useState('');
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -47,34 +72,75 @@ export default function DashboardProfile() {
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from('creator_profiles')
-      .select('id, user_id, creator_application_id, display_name, full_name, profile_photo_url, slug, bio, tier, verification_status, approval_status, subscription_status, public_profile_status, badges, tools, niches, portfolio_links, credential_links, certifications, proof_links, education_or_coursework, github_url, linkedin_url, case_studies, portfolio_url, skills, available_hours, is_active, completed_builds_count, average_rating, rating, builds_completed, created_at, updated_at')
-      .eq('user_id', user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          // Normalize arrays
-          const p = { ...data } as Record<string, unknown>;
-          ['tools','niches','badges','portfolio_links','credential_links','certifications','proof_links','skills']
-            .forEach(k => { if (!Array.isArray(p[k])) p[k] = []; });
-          const cp = p as unknown as CreatorProfileRow;
-          setProfile(cp);
-          setDisplayName(cp.display_name ?? cp.full_name ?? '');
-          setBio(cp.bio ?? '');
-          setPhotoUrl(cp.profile_photo_url ?? '');
-          setTools(arrToTags(cp.tools));
-          setNiches(arrToTags(cp.niches));
-          setPortfolioLinks(arrToTags(cp.portfolio_links));
-          setGithubUrl(cp.github_url ?? '');
-          setLinkedinUrl(cp.linkedin_url ?? '');
-          setAvailableHours(cp.available_hours ?? '');
-          setCertifications(arrToTags(cp.certifications));
-          setCaseStudies(cp.case_studies ?? '');
-          setEducation(cp.education_or_coursework ?? '');
-        }
-        setLoading(false);
+
+    async function loadProfile() {
+      // ── Step 1: Get user_profiles row for context + creator_profile_id ─────
+      const { data: up } = await supabase
+        .from('user_profiles')
+        .select('account_type, creator_profile_id, creator_application_status')
+        .eq('auth_user_id', user!.id)
+        .maybeSingle();
+
+      setUpContext({
+        accountType:       (up as { account_type: string } | null)?.account_type ?? 'buyer',
+        applicationStatus: (up as { creator_application_status: string | null } | null)?.creator_application_status ?? null,
       });
+
+      let cpData: Record<string, unknown> | null = null;
+      const cpId = (up as { creator_profile_id: string | null } | null)?.creator_profile_id;
+
+      // ── Step 2a: Look up by creator_profile_id on user_profiles (most direct) ─
+      if (cpId) {
+        const { data } = await supabase
+          .from('creator_profiles')
+          .select(PROFILE_SELECT)
+          .eq('id', cpId)
+          .maybeSingle();
+        cpData = data as Record<string, unknown> | null;
+      }
+
+      // ── Step 2b: Fall back — by auth_user_id on creator_profiles ────────────
+      if (!cpData) {
+        const { data } = await supabase
+          .from('creator_profiles')
+          .select(PROFILE_SELECT)
+          .eq('auth_user_id', user!.id)
+          .maybeSingle();
+        cpData = data as Record<string, unknown> | null;
+      }
+
+      // ── Step 2c: Fall back — by legacy user_id on creator_profiles ──────────
+      if (!cpData) {
+        const { data } = await supabase
+          .from('creator_profiles')
+          .select(PROFILE_SELECT)
+          .eq('user_id', user!.id)
+          .maybeSingle();
+        cpData = data as Record<string, unknown> | null;
+      }
+
+      if (cpData) {
+        const normalized = normalizeArrayFields(cpData);
+        const cp = normalized as unknown as CreatorProfileRow;
+        setProfile(cp);
+        setDisplayName(cp.display_name ?? cp.full_name ?? '');
+        setBio(cp.bio ?? '');
+        setPhotoUrl(cp.profile_photo_url ?? '');
+        setTools(arrToTags(cp.tools));
+        setNiches(arrToTags(cp.niches));
+        setPortfolioLinks(arrToTags(cp.portfolio_links));
+        setGithubUrl(cp.github_url ?? '');
+        setLinkedinUrl(cp.linkedin_url ?? '');
+        setAvailableHours(cp.available_hours ?? '');
+        setCertifications(arrToTags(cp.certifications));
+        setCaseStudies(cp.case_studies ?? '');
+        setEducation(cp.education_or_coursework ?? '');
+      }
+
+      setLoading(false);
+    }
+
+    loadProfile();
   }, [user]);
 
   async function handleSave(e: React.FormEvent) {
@@ -100,11 +166,12 @@ export default function DashboardProfile() {
       updated_at:               new Date().toISOString(),
     };
 
+    // Save by profile.id only — user_id may be null on admin-created profiles;
+    // auth is enforced at the RLS policy level.
     const { error } = await supabase
       .from('creator_profiles')
       .update(updates)
-      .eq('id', profile.id)
-      .eq('user_id', user.id);
+      .eq('id', profile.id);
 
     if (error) {
       console.error('[DashboardProfile] save error:', error);
@@ -127,18 +194,84 @@ export default function DashboardProfile() {
   }
 
   if (!profile) {
+    const appStatus = upContext?.applicationStatus;
+    const accountType = upContext?.accountType ?? 'buyer';
+
+    // Determine the most helpful message based on real account state
+    type NoProfileInfo = { icon: string; title: string; message: string; action: React.ReactNode };
+    function getNoProfileInfo(): NoProfileInfo {
+      if (accountType !== 'creator') {
+        return {
+          icon: '🏗️',
+          title: 'Creator account not set up',
+          message: 'Your account is not registered as a creator. Start by submitting a creator application.',
+          action: <Link to="/creators/apply" className="btn btn-primary btn-sm">Apply as a Creator →</Link>,
+        };
+      }
+      if (!appStatus || appStatus === 'new' || appStatus === 'reviewing' || appStatus === 'needs_portfolio_review') {
+        return {
+          icon: '⏳',
+          title: 'Application under review',
+          message: 'Your creator application is in the review queue. Once approved, your editable profile will appear here.',
+          action: <Link to="/dashboard" className="btn btn-primary btn-sm">View Application Status →</Link>,
+        };
+      }
+      if (appStatus === 'needs_more_info') {
+        return {
+          icon: '💬',
+          title: 'Admin requested more information',
+          message: 'The MicroBuild team needs more details before creating your profile. Check your dashboard for specifics.',
+          action: <Link to="/dashboard" className="btn btn-primary btn-sm">View Dashboard →</Link>,
+        };
+      }
+      if (appStatus === 'approved_pending_payment') {
+        return {
+          icon: '✅',
+          title: 'Approved — profile setup in progress',
+          message: 'Your application was approved. Your creator profile is being set up. Check back shortly.',
+          action: <Link to="/dashboard" className="btn btn-primary btn-sm">View Dashboard →</Link>,
+        };
+      }
+      if (appStatus === 'active') {
+        return {
+          icon: '🔧',
+          title: 'Profile needs to be created by admin',
+          message: 'Your account is active but your creator profile hasn\'t been linked yet. Contact the MicroBuild team or ask your admin to create your profile from the admin panel.',
+          action: <Link to="/dashboard" className="btn btn-ghost btn-sm">Back to Dashboard</Link>,
+        };
+      }
+      if (appStatus === 'rejected') {
+        return {
+          icon: '❌',
+          title: 'Application not approved',
+          message: 'Your creator application was not approved. You are welcome to reapply as your portfolio grows.',
+          action: <Link to="/creators/apply" className="btn btn-primary btn-sm">Reapply →</Link>,
+        };
+      }
+      if (appStatus === 'suspended') {
+        return {
+          icon: '⊘',
+          title: 'Account suspended',
+          message: 'Your creator account is suspended. Contact MicroBuild support for assistance.',
+          action: <Link to="/dashboard" className="btn btn-ghost btn-sm">Back to Dashboard</Link>,
+        };
+      }
+      return {
+        icon: '⏳',
+        title: 'Profile not available yet',
+        message: 'Your creator profile will be set up by the MicroBuild team after your application is approved.',
+        action: <Link to="/creators/apply" className="btn btn-primary btn-sm">Submit / Check Application →</Link>,
+      };
+    }
+
+    const info = getNoProfileInfo();
     return (
       <div className="dp-page">
         <div className="container dp-no-profile">
-          <div className="dp-no-profile-icon">⏳</div>
-          <h2>Profile Not Available Yet</h2>
-          <p>
-            Your creator profile will be set up by the MicroBuild team after
-            your application is approved. Once linked, you can edit it here.
-          </p>
-          <Link to="/creators/apply" className="btn btn-primary btn-sm">
-            Submit or Check Application →
-          </Link>
+          <div className="dp-no-profile-icon">{info.icon}</div>
+          <h2>{info.title}</h2>
+          <p>{info.message}</p>
+          {info.action}
           <Link to="/dashboard" className="dp-back-link">← Back to Dashboard</Link>
         </div>
       </div>
