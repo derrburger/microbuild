@@ -74,6 +74,8 @@ export interface UserProfileRow {
   creator_application_status: string | null;
   creator_profile_id: string | null;
   approval_status: string | null;
+  // Profile fields (email-account-profile-fields.sql)
+  github_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -87,6 +89,7 @@ export interface UserProfileInsert {
   account_type?: AccountType;
   onboarding_status?: OnboardingStatus;
   privacy_status?: string;
+  github_url?: string | null;
 }
 
 export interface BusinessProfileRow {

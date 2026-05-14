@@ -48,9 +48,11 @@ export default function Onboarding() {
       onboarding_status: 'complete',
     };
 
-    const { error: err } = await supabase.from('user_profiles').insert([payload]);
+    const { error: err } = await supabase
+      .from('user_profiles')
+      .upsert([payload], { onConflict: 'auth_user_id' });
     if (err) {
-      console.error('[Onboarding] insert user_profile failed:', err);
+      console.error('[Onboarding] upsert user_profile failed:', err);
       setError('Could not save your profile. Please try again.');
       setStep(role === 'buyer' ? 'buyer-info' : 'creator-info');
       return;

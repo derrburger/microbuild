@@ -50,7 +50,7 @@ export default function DashboardAnalytics() {
       supabase
         .from('creator_profiles')
         .select('ai_profile_score')
-        .eq('user_id', user.id)
+        .or(`user_id.eq.${user.id},auth_user_id.eq.${user.id}`)
         .maybeSingle(),
     ]).then(([reqRes, cpRes]) => {
       setRequestCount(reqRes.count ?? 0);

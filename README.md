@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses — quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Account Approval Workflow v1 — consistent creator application lifecycle, cascading admin actions, duplicate prevention, real-status creator dashboard. Build passes. Stripe and GitHub OAuth deferred.
+**Status:** Admin Dashboard Polish v1 — operations command center with creator + buyer metrics, AI ops brief with creator signals, human-readable status labels, auth-link indicators, profile-link indicators, admin reason callouts, and full approval workflow. Build passes. Stripe and GitHub OAuth deferred.
 
 ---
 
@@ -169,11 +169,32 @@ Each application card in `/admin` shows action buttons that **cascade updates** 
 | Make Profile Public | — | — | public_profile_status=`public` |
 | Hide Profile | — | — | public_profile_status=`hidden` |
 
-### Admin AI Operations (rules-based, no external API)
-The admin overview panel includes copyable workflow messages:
-- Creator approval messages (Free / Pro / Verified)
-- Needs-more-info message with reason field
-- Rejection message with reason field
+### Admin Dashboard — Operations Command Center
+The `/admin` dashboard is a full operations panel with:
+
+**AI Ops Brief (rules-based, no external API):**
+- Buyer signals: High Priority, Ready to Quote, Needs Follow-up
+- Creator signals: Pending Review, Needs Info, Pending Payment, Active Creators
+- Alerts for approved creators without profiles, and unlinked applications
+- Auto-selected "admin focus today" message
+
+**Metrics Row (two groups):**
+- Buyer Requests: Total, New, High Priority, Ready to Quote, Needs Follow-up
+- Creator Applications: Pending Review, Needs Info, Pending Payment, Active Creators, Rejected/Suspended
+
+**Creator Application Cards show:**
+- Name, email, tier badge, fit score, human-readable status label
+- Auth-linked indicator (🔗 Auth linked) when `auth_user_id` is present
+- Profile-created indicator (✓ Profile created) when `linked_creator_profile_id` is set
+- Admin decision date when a decision has been made
+- Needs-more-info reason callout when status is `needs_more_info`
+- Rejection reason callout when status is `rejected`
+- Suspension reason callout when status is `suspended`
+- Admin notes callout if any notes are saved
+- AI candidate review (tier fit, strengths, gaps, missing info)
+- Copyable messages: approval, rejection, needs-more-info, follow-up, candidate summary
+- Action buttons: Approve Free, Approve Professional, Approve Verified, Needs More Info, Reject, Suspend, Create/Update Profile, Make Public, Hide Profile
+- Workflow templates library: preset copyable message blocks for all common scenarios
 
 ### Creator Dashboard Status
 The creator dashboard shows real-time application status including:

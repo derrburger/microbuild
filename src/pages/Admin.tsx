@@ -86,9 +86,11 @@ interface CreatorApplicationRow {
   user_profile_id: string | null;
   approval_status: string | null;
   admin_notes: string | null;
+  admin_decision_at: string | null;
   rejected_reason: string | null;
   needs_info_reason: string | null;
   linked_creator_profile_id: string | null;
+  updated_at: string | null;
 }
 
 interface EnrichedRequest {
@@ -148,9 +150,11 @@ function normalizeCreatorApp(raw: Record<string, unknown>): CreatorApplicationRo
     user_profile_id:           raw.user_profile_id != null ? safeText(raw.user_profile_id) : null,
     approval_status:           raw.approval_status != null ? safeText(raw.approval_status) : null,
     admin_notes:               raw.admin_notes != null ? safeText(raw.admin_notes) : null,
+    admin_decision_at:         raw.admin_decision_at != null ? safeText(raw.admin_decision_at) : null,
     rejected_reason:           raw.rejected_reason != null ? safeText(raw.rejected_reason) : null,
     needs_info_reason:         raw.needs_info_reason != null ? safeText(raw.needs_info_reason) : null,
     linked_creator_profile_id: raw.linked_creator_profile_id != null ? safeText(raw.linked_creator_profile_id) : null,
+    updated_at:                raw.updated_at != null ? safeText(raw.updated_at) : null,
   };
 }
 
@@ -186,6 +190,22 @@ const tierLabels: Record<string, string> = {
   free:         'Free',
   professional: 'Pro',
   verified:     'Verified ✓',
+};
+
+const statusLabels: Record<string, string> = {
+  new:                      'New — Awaiting Review',
+  reviewing:                'In Review',
+  needs_portfolio_review:   'Needs Portfolio Review',
+  needs_more_info:          'Needs More Info',
+  approved_pending_payment: 'Approved — Pending Payment',
+  active:                   'Active Creator',
+  rejected:                 'Rejected',
+  suspended:                'Suspended',
+  'in-review':              'In Review',
+  'proposal-sent':          'Proposal Sent',
+  accepted:                 'Accepted',
+  'in-progress':            'In Progress',
+  delivered:                'Delivered',
 };
 
 const priorityColors: Record<string, string> = {
@@ -263,8 +283,8 @@ async function performApprovalAction(
     approval_status:   newStatus,
     admin_decision_at: new Date().toISOString(),
   };
-  if (action === 'reject' && opts.reason)       appUpdate.rejected_reason   = opts.reason;
-  if (action === 'needs_more_info' && opts.reason) appUpdate.needs_info_reason = opts.reason;
+  if ((action === 'reject' || action === 'suspend') && opts.reason) appUpdate.rejected_reason   = opts.reason;
+  if (action === 'needs_more_info' && opts.reason)                 appUpdate.needs_info_reason = opts.reason;
 
   const { error: appErr } = await supabase
     .from('creator_applications')
@@ -1026,30 +1046,46 @@ function applyFilter(enriched: EnrichedRequest[], filter: RequestFilter): Enrich
 
 function AiOpsAssistant({
   enriched,
-  newApps,
+  applications,
 }: {
   enriched: EnrichedRequest[];
-  newApps: number;
+  applications: CreatorApplicationRow[];
 }) {
+  // Buyer signals
   const highPriority  = enriched.filter((e) => e.packet.priorityLabel === 'High');
   const readyToQuote  = enriched.filter((e) => e.packet.quoteReadiness.startsWith('Ready') || e.packet.quoteReadiness.startsWith('Nearly'));
   const needsFollowup = enriched.filter((e) => e.packet.missingInfoFlags.length > 2 || e.packet.leadQualityLabel === 'Needs Detail');
 
+  // Creator signals
+  const pendingReview       = applications.filter((a) => a.status === 'new' || a.status === 'reviewing');
+  const needsMoreInfo       = applications.filter((a) => a.status === 'needs_more_info');
+  const approvedPending     = applications.filter((a) => a.status === 'approved_pending_payment');
+  const activeCreators      = applications.filter((a) => a.status === 'active');
+  const unlinkedApps        = applications.filter((a) => !a.auth_user_id);
+  const profilelessApproved = applications.filter((a) =>
+    (a.status === 'active' || a.status === 'approved_pending_payment') && !a.linked_creator_profile_id
+  );
+
+  // Determine focus sentence
   let focus: string;
-  if (highPriority.length > 0 && readyToQuote.length > 0) {
+  if (pendingReview.length > 0 && highPriority.length > 0) {
+    focus = `Review ${pendingReview.length} creator application${pendingReview.length > 1 ? 's' : ''} pending — plus ${highPriority.length} high-priority buyer request${highPriority.length > 1 ? 's' : ''}`;
+  } else if (profilelessApproved.length > 0) {
+    focus = `${profilelessApproved.length} approved creator${profilelessApproved.length > 1 ? 's' : ''} still ${profilelessApproved.length > 1 ? 'need' : 'needs'} a profile — create it from the approval panel`;
+  } else if (pendingReview.length > 0) {
+    focus = `Review ${pendingReview.length} new creator application${pendingReview.length > 1 ? 's' : ''} in the queue`;
+  } else if (needsMoreInfo.length > 0) {
+    focus = `${needsMoreInfo.length} creator application${needsMoreInfo.length > 1 ? 's' : ''} waiting on more information from applicant`;
+  } else if (highPriority.length > 0 && readyToQuote.length > 0) {
     focus = `Review ${highPriority.length} high-priority request${highPriority.length > 1 ? 's' : ''} — ${readyToQuote.length} ${readyToQuote.length === 1 ? 'is' : 'are'} ready to quote`;
-  } else if (highPriority.length > 0) {
-    focus = `Review and respond to ${highPriority.length} high-priority request${highPriority.length > 1 ? 's' : ''} today`;
   } else if (readyToQuote.length > 0) {
     focus = `Send quote proposals for ${readyToQuote.length} request${readyToQuote.length > 1 ? 's' : ''} that are ready to scope`;
   } else if (needsFollowup.length > 0) {
-    focus = `Follow up on ${needsFollowup.length} request${needsFollowup.length > 1 ? 's' : ''} — clarify details before scoping`;
-  } else if (newApps > 0) {
-    focus = `Review ${newApps} new creator application${newApps > 1 ? 's' : ''}`;
-  } else if (enriched.length === 0) {
-    focus = 'No requests yet — share the buyer request URL to start receiving submissions';
+    focus = `Follow up on ${needsFollowup.length} buyer request${needsFollowup.length > 1 ? 's' : ''} — clarify details before scoping`;
+  } else if (enriched.length === 0 && applications.length === 0) {
+    focus = 'No data yet — share the buyer request URL and creator apply URL to start receiving submissions';
   } else {
-    focus = 'All clear — no urgent items. Good time to review open requests and update statuses';
+    focus = 'All clear — no urgent items. Review open applications and pending requests';
   }
 
   return (
@@ -1059,41 +1095,79 @@ function AiOpsAssistant({
         <span className="ops-assistant-note">Rules-based · live data · no AI API</span>
       </div>
       <div className="ops-assistant-focus">{focus}</div>
-      <div className="ops-assistant-signals">
-        <span
-          className="ops-signal"
-          style={{ color: highPriority.length > 0 ? '#ef4444' : undefined }}
-        >
-          {highPriority.length} High Priority
-        </span>
-        <span
-          className="ops-signal"
-          style={{ color: readyToQuote.length > 0 ? '#00d478' : undefined }}
-        >
-          {readyToQuote.length} Ready to Quote
-        </span>
-        <span
-          className="ops-signal"
-          style={{ color: needsFollowup.length > 0 ? '#f9b032' : undefined }}
-        >
-          {needsFollowup.length} Needs Follow-up
-        </span>
-        <span
-          className="ops-signal"
-          style={{ color: newApps > 0 ? '#63b3ed' : undefined }}
-        >
-          {newApps} New Applications
-        </span>
+
+      {/* Buyer signals */}
+      <div className="ops-assistant-group">
+        <span className="ops-group-label">Buyer Requests</span>
+        <div className="ops-assistant-signals">
+          <span className="ops-signal" style={{ color: highPriority.length > 0 ? '#ef4444' : undefined }}>
+            {highPriority.length} High Priority
+          </span>
+          <span className="ops-signal" style={{ color: readyToQuote.length > 0 ? '#00d478' : undefined }}>
+            {readyToQuote.length} Ready to Quote
+          </span>
+          <span className="ops-signal" style={{ color: needsFollowup.length > 0 ? '#f9b032' : undefined }}>
+            {needsFollowup.length} Needs Follow-up
+          </span>
+        </div>
       </div>
+
+      {/* Creator signals */}
+      <div className="ops-assistant-group">
+        <span className="ops-group-label">Creator Applications</span>
+        <div className="ops-assistant-signals">
+          <span className="ops-signal" style={{ color: pendingReview.length > 0 ? '#63b3ed' : undefined }}>
+            {pendingReview.length} Pending Review
+          </span>
+          <span className="ops-signal" style={{ color: needsMoreInfo.length > 0 ? '#f9b032' : undefined }}>
+            {needsMoreInfo.length} Needs Info
+          </span>
+          <span className="ops-signal" style={{ color: approvedPending.length > 0 ? '#63b3ed' : undefined }}>
+            {approvedPending.length} Pending Payment
+          </span>
+          <span className="ops-signal" style={{ color: activeCreators.length > 0 ? '#00d478' : undefined }}>
+            {activeCreators.length} Active
+          </span>
+        </div>
+      </div>
+
+      {/* Alerts row */}
+      {(profilelessApproved.length > 0 || unlinkedApps.length > 0) && (
+        <div className="ops-assistant-alerts">
+          {profilelessApproved.length > 0 && (
+            <span className="ops-alert ops-alert--warn">
+              ⚠ {profilelessApproved.length} approved without profile
+            </span>
+          )}
+          {unlinkedApps.length > 0 && (
+            <span className="ops-alert ops-alert--info">
+              ℹ {unlinkedApps.length} app{unlinkedApps.length > 1 ? 's' : ''} missing auth link
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Top lists */}
       {highPriority.length > 0 && (
         <div className="ops-assistant-toplist">
-          <span className="ops-tl-label">High Priority:</span>
+          <span className="ops-tl-label">High Priority Buyers:</span>
           {highPriority.slice(0, 3).map((e) => (
             <span key={e.row.id} className="ops-tl-item">
               {e.row.business_name} ({e.row.build_type})
             </span>
           ))}
           {highPriority.length > 3 && <span className="ops-tl-more">+{highPriority.length - 3} more</span>}
+        </div>
+      )}
+      {pendingReview.length > 0 && (
+        <div className="ops-assistant-toplist">
+          <span className="ops-tl-label">Pending Creators:</span>
+          {pendingReview.slice(0, 3).map((a) => (
+            <span key={a.id} className="ops-tl-item">
+              {safeText(a.full_name, 'Unknown')} ({tierLabels[a.tier] ?? a.tier})
+            </span>
+          ))}
+          {pendingReview.length > 3 && <span className="ops-tl-more">+{pendingReview.length - 3} more</span>}
         </div>
       )}
     </div>
@@ -1138,7 +1212,7 @@ function AdminApprovalPanel({
   const name = safeText(app.full_name, 'the applicant');
 
   // Load existing linked profile visibility on mount
-  useState(() => {
+  useEffect(() => {
     if (app.linked_creator_profile_id) {
       supabase
         .from('creator_profiles')
@@ -1152,7 +1226,7 @@ function AdminApprovalPanel({
           }
         });
     }
-  });
+  }, [app.linked_creator_profile_id]);
 
   async function doAction(action: ApprovalAction, reason?: string) {
     setLoading(true);
@@ -1556,8 +1630,8 @@ function CreatorCard({
 
       <div className="creator-card-header">
         <div className="creator-header-left">
-          <div className="creator-name">{app.full_name}</div>
-          <div className="creator-email">{app.email}</div>
+          <div className="creator-name">{app.full_name || '—'}</div>
+          <div className="creator-email">{app.email || '—'}</div>
           <div className="creator-tier-row">
             <span className="creator-tier-badge" style={{ color: tColor, borderColor: tColor + '55', backgroundColor: tColor + '15' }}>
               {tierLabels[app.tier] ?? app.tier}
@@ -1565,7 +1639,22 @@ function CreatorCard({
             {(app.requested_plan_price ?? 0) > 0 && (
               <span className="creator-plan-price">${app.requested_plan_price}/mo after approval</span>
             )}
+            {app.auth_user_id && (
+              <span className="creator-link-badge creator-link-badge--auth" title={`Auth ID: ${app.auth_user_id}`}>
+                🔗 Auth linked
+              </span>
+            )}
+            {app.linked_creator_profile_id && (
+              <span className="creator-link-badge creator-link-badge--profile" title={`Profile ID: ${app.linked_creator_profile_id}`}>
+                ✓ Profile created
+              </span>
+            )}
           </div>
+          {app.admin_decision_at && (
+            <div className="creator-decision-date">
+              Decision: {fmtDate(app.admin_decision_at)}
+            </div>
+          )}
         </div>
         <div className="creator-card-right">
           <span
@@ -1579,7 +1668,7 @@ function CreatorCard({
             style={{ color: statusColors[status] ?? '#8a94a6' }}
             title="Use the action buttons below to change status"
           >
-            {status.replace(/_/g, ' ')}
+            {statusLabels[status] ?? status.replace(/_/g, ' ')}
           </span>
         </div>
       </div>
@@ -1618,6 +1707,26 @@ function CreatorCard({
           </div>
         )}
       </div>
+
+      {/* Admin reason callouts */}
+      {status === 'needs_more_info' && app.needs_info_reason && (
+        <div className="creator-reason-callout creator-reason-callout--info">
+          <span className="creator-reason-label">📋 More info requested:</span>
+          <span className="creator-reason-text">{app.needs_info_reason}</span>
+        </div>
+      )}
+      {(status === 'rejected' || status === 'suspended') && app.rejected_reason && (
+        <div className="creator-reason-callout creator-reason-callout--warn">
+          <span className="creator-reason-label">{status === 'suspended' ? '⛔ Suspension reason:' : '✗ Rejection reason:'}</span>
+          <span className="creator-reason-text">{app.rejected_reason}</span>
+        </div>
+      )}
+      {app.admin_notes && (
+        <div className="creator-reason-callout creator-reason-callout--note">
+          <span className="creator-reason-label">📝 Admin notes:</span>
+          <span className="creator-reason-text">{app.admin_notes}</span>
+        </div>
+      )}
 
       {/* Decision */}
       <div className="creator-decision">{review.recommendedDecision}</div>
@@ -1882,11 +1991,19 @@ export default function Admin() {
 
     supabase
       .from('creator_applications')
-      .select('id,full_name,email,tools,niches,experience,available_hours,portfolio_url,portfolio_url_2,message,status,created_at,tier,requested_plan_price,top_projects,service_capabilities,fulfillment_speed,github_url,linkedin_url,certifications,credential_links,case_studies')
+      .select([
+        'id,full_name,email,tools,niches,experience,available_hours',
+        'portfolio_url,portfolio_url_2,message,status,created_at,updated_at',
+        'tier,requested_plan_price,top_projects,service_capabilities',
+        'fulfillment_speed,github_url,linkedin_url,certifications,credential_links,case_studies',
+        // Approval workflow columns (account-approval-workflow.sql)
+        'auth_user_id,user_profile_id,approval_status,admin_notes',
+        'admin_decision_at,rejected_reason,needs_info_reason,linked_creator_profile_id',
+      ].join(','))
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) { console.error('[Admin] creator_applications:', error); setAppError(true); }
-        else setApplications(((data ?? []) as Record<string, unknown>[]).map(normalizeCreatorApp));
+        else setApplications(((data ?? []) as unknown as Record<string, unknown>[]).map(normalizeCreatorApp));
         setAppLoading(false);
       });
 
@@ -1922,12 +2039,18 @@ export default function Admin() {
     );
   }
 
-  // Metrics
+  // Buyer metrics
   const highPriorityCount  = enriched.filter((e) => e.packet.priorityLabel === 'High').length;
   const needsFollowupCount = enriched.filter((e) => e.packet.missingInfoFlags.length > 2 || e.packet.leadQualityLabel === 'Needs Detail').length;
   const readyToQuoteCount  = enriched.filter((e) => e.packet.quoteReadiness.startsWith('Ready') || e.packet.quoteReadiness.startsWith('Nearly')).length;
   const newReqCount        = requests.filter((r) => r.status === 'new').length;
-  const newAppCount        = applications.filter((a) => a.status === 'new').length;
+
+  // Creator metrics
+  const pendingReviewCount     = applications.filter((a) => a.status === 'new' || a.status === 'reviewing').length;
+  const needsMoreInfoCount     = applications.filter((a) => a.status === 'needs_more_info').length;
+  const approvedPendingCount   = applications.filter((a) => a.status === 'approved_pending_payment').length;
+  const activeCreatorCount     = applications.filter((a) => a.status === 'active').length;
+  const rejectedSuspendedCount = applications.filter((a) => a.status === 'rejected' || a.status === 'suspended').length;
 
   return (
     <div className="admin-page">
@@ -1961,45 +2084,80 @@ export default function Admin() {
       <div className="container admin-body">
 
         {/* ── AI Ops Brief ─────────────────────────────────────────────────── */}
-        {!reqLoading && (
-          <AiOpsAssistant enriched={enriched} newApps={newAppCount} />
+        {(!reqLoading || !appLoading) && (
+          <AiOpsAssistant enriched={enriched} applications={applications} />
         )}
 
         {/* ── Metrics ──────────────────────────────────────────────────────── */}
-        <div className="admin-metrics">
-          <div className="metric-card">
-            <span className="metric-value">{reqLoading ? '…' : requests.length}</span>
-            <span className="metric-label">Total Requests</span>
+        <div className="admin-metrics-wrap">
+          <div className="admin-metrics-group">
+            <div className="admin-metrics-group-label">Buyer Requests</div>
+            <div className="admin-metrics">
+              <div className="metric-card">
+                <span className="metric-value">{reqLoading ? '…' : requests.length}</span>
+                <span className="metric-label">Total</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-value" style={{ color: newReqCount > 0 ? '#f9b032' : undefined }}>
+                  {reqLoading ? '…' : newReqCount}
+                </span>
+                <span className="metric-label">New</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-value" style={{ color: highPriorityCount > 0 ? '#ef4444' : undefined }}>
+                  {reqLoading ? '…' : highPriorityCount}
+                </span>
+                <span className="metric-label">High Priority</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-value" style={{ color: readyToQuoteCount > 0 ? '#00d478' : undefined }}>
+                  {reqLoading ? '…' : readyToQuoteCount}
+                </span>
+                <span className="metric-label">Ready to Quote</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-value" style={{ color: needsFollowupCount > 0 ? '#f9b032' : undefined }}>
+                  {reqLoading ? '…' : needsFollowupCount}
+                </span>
+                <span className="metric-label">Needs Follow-up</span>
+              </div>
+            </div>
           </div>
-          <div className="metric-card metric-card--alert">
-            <span className="metric-value" style={{ color: newReqCount > 0 ? '#f9b032' : undefined }}>
-              {reqLoading ? '…' : newReqCount}
-            </span>
-            <span className="metric-label">New Requests</span>
-          </div>
-          <div className="metric-card metric-card--alert">
-            <span className="metric-value" style={{ color: highPriorityCount > 0 ? '#ef4444' : undefined }}>
-              {reqLoading ? '…' : highPriorityCount}
-            </span>
-            <span className="metric-label">High Priority</span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-value" style={{ color: readyToQuoteCount > 0 ? '#00d478' : undefined }}>
-              {reqLoading ? '…' : readyToQuoteCount}
-            </span>
-            <span className="metric-label">Ready to Quote</span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-value" style={{ color: needsFollowupCount > 0 ? '#f9b032' : undefined }}>
-              {reqLoading ? '…' : needsFollowupCount}
-            </span>
-            <span className="metric-label">Needs Follow-up</span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-value" style={{ color: newAppCount > 0 ? '#63b3ed' : undefined }}>
-              {appLoading ? '…' : newAppCount}
-            </span>
-            <span className="metric-label">New Applications</span>
+
+          <div className="admin-metrics-group">
+            <div className="admin-metrics-group-label">Creator Applications</div>
+            <div className="admin-metrics">
+              <div className="metric-card">
+                <span className="metric-value" style={{ color: pendingReviewCount > 0 ? '#63b3ed' : undefined }}>
+                  {appLoading ? '…' : pendingReviewCount}
+                </span>
+                <span className="metric-label">Pending Review</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-value" style={{ color: needsMoreInfoCount > 0 ? '#f9b032' : undefined }}>
+                  {appLoading ? '…' : needsMoreInfoCount}
+                </span>
+                <span className="metric-label">Needs Info</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-value" style={{ color: approvedPendingCount > 0 ? '#63b3ed' : undefined }}>
+                  {appLoading ? '…' : approvedPendingCount}
+                </span>
+                <span className="metric-label">Pending Payment</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-value" style={{ color: activeCreatorCount > 0 ? '#00d478' : undefined }}>
+                  {appLoading ? '…' : activeCreatorCount}
+                </span>
+                <span className="metric-label">Active Creators</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-value" style={{ color: rejectedSuspendedCount > 0 ? '#ef4444' : undefined }}>
+                  {appLoading ? '…' : rejectedSuspendedCount}
+                </span>
+                <span className="metric-label">Rejected/Suspended</span>
+              </div>
+            </div>
           </div>
         </div>
 

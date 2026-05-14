@@ -54,8 +54,8 @@ function CreatorDashboard({ profile }: { profile: CreatorProfileRow }) {
             <span className="dash-tier-badge" style={{ color: tierColor, borderColor: tierColor + '44', background: tierColor + '10' }}>
               {tierLabel}
             </span>
-            <span className="dash-status-badge" style={{ color: approvalColors[profile.approval_status] ?? '#8a94a6' }}>
-              {profile.approval_status.replace(/_/g, ' ')}
+            <span className="dash-status-badge" style={{ color: approvalColors[profile.approval_status ?? 'draft'] ?? '#8a94a6' }}>
+              {(profile.approval_status ?? 'draft').replace(/_/g, ' ')}
             </span>
             {profile.public_profile_status === 'public' && (
               <span className="dash-status-badge" style={{ color: '#00d478' }}>🟢 Public</span>
@@ -417,6 +417,12 @@ export default function Dashboard() {
           const normalized = { ...cp } as Record<string, unknown>;
           ['tools','niches','badges','portfolio_links','credential_links','certifications','proof_links','skills']
             .forEach(k => { if (!Array.isArray(normalized[k])) normalized[k] = []; });
+          // Defensive defaults for string fields used in renders
+          if (!normalized.tier)              normalized.tier              = 'free';
+          if (!normalized.approval_status)   normalized.approval_status   = 'draft';
+          if (!normalized.public_profile_status) normalized.public_profile_status = 'hidden';
+          if (!normalized.verification_status)   normalized.verification_status   = 'unverified';
+          if (!normalized.full_name)         normalized.full_name         = 'Unknown Creator';
           setCreatorProfile(normalized as unknown as CreatorProfileRow);
         }
 

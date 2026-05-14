@@ -304,11 +304,15 @@ export default function DashboardProfile() {
         <div className="dp-status-bar">
           <div className="dp-status-item">
             <span className="dp-status-key">Tier</span>
-            <span className="dp-status-val">{profile.tier.charAt(0).toUpperCase() + profile.tier.slice(1)}</span>
+            <span className="dp-status-val">
+              {profile.tier ? profile.tier.charAt(0).toUpperCase() + profile.tier.slice(1) : 'Free'}
+            </span>
           </div>
           <div className="dp-status-item">
             <span className="dp-status-key">Approval</span>
-            <span className="dp-status-val">{profile.approval_status.replace(/_/g, ' ')}</span>
+            <span className="dp-status-val">
+              {(profile.approval_status ?? 'draft').replace(/_/g, ' ')}
+            </span>
           </div>
           <div className="dp-status-item">
             <span className="dp-status-key">Visibility</span>
