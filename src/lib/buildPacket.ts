@@ -89,17 +89,31 @@ export interface CreatorApplicationInput {
   portfolio_url: string | null;
   portfolio_url_2?: string | null;
   message: string | null;
+  // Tier fields (optional — Free tier applications may omit these)
+  tier?: 'free' | 'professional' | 'verified';
+  top_projects?: string | null;
+  service_capabilities?: string[];
+  fulfillment_speed?: string | null;
+  github_url?: string | null;
+  linkedin_url?: string | null;
+  certifications?: string | null;
+  credential_links?: string[];
+  case_studies?: string | null;
 }
 
 export interface CreatorApplicationReview {
   candidateFitScore: number;
   fitLabel: 'Strong' | 'Good' | 'Fair' | 'Weak';
+  tierFitAssessment: string;
+  suggestedBadge: string;
   strengths: string[];
   concerns: string[];
   missingPortfolioInfo: string[];
   bestFitNiches: string[];
   recommendedDecision: string;
   creatorFollowUpMessage: string;
+  approvalMessage: string;
+  rejectionMessage: string;
 }
 
 // ─── Static lookup tables ─────────────────────────────────────────────────────
@@ -684,14 +698,19 @@ function buildBuyerOutreachMessage(
 // ─── Creator review generator ─────────────────────────────────────────────────
 
 export function generateCreatorReview(app: CreatorApplicationInput): CreatorApplicationReview {
-  let score = 0;
+  const tier   = app.tier ?? 'free';
+  let score    = 0;
 
-  const toolCount  = app.tools.length;
-  const nicheCount = app.niches.length;
-  const hours      = parseInt(app.available_hours) || 0;
+  // Defensive: Supabase can return null for array columns on old rows
+  const tools  = Array.isArray(app.tools)  ? app.tools  : [];
+  const niches = Array.isArray(app.niches) ? app.niches : [];
+
+  const toolCount  = tools.length;
+  const nicheCount = niches.length;
+  const hours      = parseInt(app.available_hours ?? '0') || 0;
   const expLen     = (app.experience ?? '').trim().length;
 
-  // Scoring
+  // ── Base scoring (all tiers) ────────────────────────────────────────────────
   if (toolCount >= 3)       score += 25;
   else if (toolCount >= 2)  score += 15;
   else if (toolCount >= 1)  score += 8;
@@ -713,6 +732,22 @@ export function generateCreatorReview(app: CreatorApplicationInput): CreatorAppl
 
   if (app.message)          score += 5;
 
+  // ── Professional tier bonus ─────────────────────────────────────────────────
+  if (tier === 'professional' || tier === 'verified') {
+    if (app.top_projects)                                   score += 8;
+    if ((app.service_capabilities ?? []).length >= 3)       score += 6;
+    if (app.fulfillment_speed)                              score += 4;
+  }
+
+  // ── Verified tier bonus ─────────────────────────────────────────────────────
+  if (tier === 'verified') {
+    if (app.github_url)                                     score += 10;
+    if (app.linkedin_url)                                   score += 8;
+    if (app.certifications)                                 score += 8;
+    if ((app.credential_links ?? []).length > 0)            score += 8;
+    if (app.case_studies)                                   score += 8;
+  }
+
   score = Math.min(score, 100);
 
   const fitLabel: CreatorApplicationReview['fitLabel'] =
@@ -720,24 +755,32 @@ export function generateCreatorReview(app: CreatorApplicationInput): CreatorAppl
     score >= 50 ? 'Good'   :
     score >= 30 ? 'Fair'   : 'Weak';
 
-  // Strengths
-  const strengths: string[] = [];
-  const toolLower = app.tools.map((t) => t.toLowerCase());
+  // ── Tool detection ──────────────────────────────────────────────────────────
+  const toolLower       = tools.map((t) => t.toLowerCase());
   const hasFormBuilders = toolLower.some((t) => ['typeform', 'fillout', 'tally', 'jotform', 'paperform', 'formstack'].some(b => t.includes(b)));
   const hasWebBuilders  = toolLower.some((t) => ['webflow', 'framer', 'carrd', 'squarespace', 'wix', 'wordpress'].some(b => t.includes(b)));
   const hasBooking      = toolLower.some((t) => ['calendly', 'cal.com', 'square', 'acuity', 'jobber'].some(b => t.includes(b)));
 
-  if (hasFormBuilders)     strengths.push('Experienced with form builders — well-suited for Quote Funnels');
-  if (hasWebBuilders)      strengths.push('Experienced with web/page builders — well-suited for Trust Pages and Package Selectors');
-  if (hasBooking)          strengths.push('Familiar with booking/scheduling tools — ideal for Booking Pages');
-  if (toolCount >= 3)      strengths.push(`Broad tool stack (${toolCount} tools) — can handle varied build types`);
-  if (nicheCount >= 3)     strengths.push(`Multi-niche coverage (${nicheCount} niches) — versatile creator`);
-  if (app.portfolio_url)   strengths.push('Portfolio provided — work quality can be reviewed');
-  if (hours >= 15)         strengths.push(`High availability (${hours} hrs/week) — can handle fast turnarounds`);
-  if (expLen > 100)        strengths.push('Detailed professional background — shows clear communication skills');
-  if (strengths.length === 0) strengths.push('Application submitted — awaiting portfolio and detail review');
+  // ── Strengths ───────────────────────────────────────────────────────────────
+  const strengths: string[] = [];
+  if (hasFormBuilders)                           strengths.push('Experienced with form builders — well-suited for Quote Funnels');
+  if (hasWebBuilders)                            strengths.push('Experienced with web/page builders — well-suited for Trust Pages and Package Selectors');
+  if (hasBooking)                                strengths.push('Familiar with booking/scheduling tools — ideal for Booking Pages');
+  if (toolCount >= 3)                            strengths.push(`Broad tool stack (${toolCount} tools) — can handle varied build types`);
+  if (nicheCount >= 3)                           strengths.push(`Multi-niche coverage (${nicheCount} niches) — versatile creator`);
+  if (app.portfolio_url)                         strengths.push('Portfolio provided — work quality can be reviewed');
+  if (hours >= 15)                               strengths.push(`High availability (${hours} hrs/week) — can handle fast turnarounds`);
+  if (expLen > 100)                              strengths.push('Detailed professional background — shows clear communication skills');
+  if (tier !== 'free' && app.top_projects)       strengths.push('Top projects described — practical experience demonstrated');
+  if ((app.service_capabilities ?? []).length >= 3)  strengths.push(`Covers ${(app.service_capabilities ?? []).length} service capability types`);
+  if (app.github_url)                            strengths.push('GitHub profile provided — technical work can be verified');
+  if (app.linkedin_url)                          strengths.push('LinkedIn provided — professional background is verifiable');
+  if (app.certifications)                        strengths.push('Certifications listed — demonstrates formal training or credentials');
+  if ((app.credential_links ?? []).length > 0)   strengths.push(`${(app.credential_links ?? []).length} credential link(s) submitted for review`);
+  if (app.case_studies)                          strengths.push('Case studies provided — real-world results demonstrated');
+  if (strengths.length === 0)                    strengths.push('Application submitted — awaiting portfolio and detail review');
 
-  // Concerns
+  // ── Concerns ────────────────────────────────────────────────────────────────
   const concerns: string[] = [];
   if (!app.portfolio_url)  concerns.push('No portfolio URL — cannot verify work quality before approval');
   if (hours < 10)          concerns.push(`Low weekly availability (${hours || 'unspecified'} hrs) — may not meet deadlines`);
@@ -745,66 +788,167 @@ export function generateCreatorReview(app: CreatorApplicationInput): CreatorAppl
   if (nicheCount < 2)      concerns.push('Very narrow niche focus — may not be versatile enough for the marketplace');
   if (expLen < 30)         concerns.push('Experience description is brief — unclear depth of professional background');
   if (!app.message)        concerns.push('No personal statement — unable to gauge motivation and communication style');
+  if (tier === 'professional' && !app.top_projects)
+    concerns.push('No top projects described — expected for Professional tier applicants');
+  if (tier === 'verified') {
+    const missingVerifiedProof: string[] = [];
+    if (!app.github_url)    missingVerifiedProof.push('GitHub');
+    if (!app.linkedin_url)  missingVerifiedProof.push('LinkedIn');
+    if (!app.certifications && (app.credential_links ?? []).length === 0)
+      missingVerifiedProof.push('credentials or certifications');
+    if (!app.case_studies)  missingVerifiedProof.push('case studies');
+    if (missingVerifiedProof.length > 0)
+      concerns.push(`Missing verified-tier proof: ${missingVerifiedProof.join(', ')}`);
+  }
 
-  // Missing info
+  // ── Missing info ────────────────────────────────────────────────────────────
   const missing: string[] = [];
-  if (!app.portfolio_url)    missing.push('Portfolio URL — required before approval decision');
-  if (!app.message)          missing.push('Personal statement — why do they want to join MicroBuild?');
-  if (app.tools.length === 0) missing.push('Tool list is empty');
-  if (app.niches.length === 0) missing.push('Niche specializations are empty');
+  if (!app.portfolio_url)     missing.push('Portfolio URL — required before approval decision');
+  if (!app.message)           missing.push('Personal statement — why do they want to join MicroBuild?');
+  if (tools.length === 0) missing.push('Tool list is empty');
+  if (niches.length === 0) missing.push('Niche specializations are empty');
+  if (tier === 'professional' && !app.top_projects)
+    missing.push('Top projects description — expected for Professional tier');
+  if (tier === 'verified') {
+    if (!app.github_url && !app.linkedin_url)
+      missing.push('Professional profile link (GitHub or LinkedIn) — required for Verified tier');
+    if (!app.certifications && (app.credential_links ?? []).length === 0)
+      missing.push('Credentials or certifications — required for Verified tier');
+    if (!app.case_studies)
+      missing.push('Case studies or proof of real client work — required for Verified tier');
+  }
 
-  // Best fit niches (from application or inferred from tools)
-  const bestFitNiches = app.niches.length > 0
-    ? app.niches
-    : (hasFormBuilders ? ['Quote Funnel'] : []).concat(
-        hasWebBuilders  ? ['Trust Page', 'Package Selector'] : [],
-        hasBooking      ? ['Booking Page'] : []
-      );
+  // ── Tier fit assessment ─────────────────────────────────────────────────────
+  const verifiedProofCount = [
+    app.github_url, app.linkedin_url, app.certifications,
+    (app.credential_links ?? []).length > 0, app.case_studies,
+  ].filter(Boolean).length;
 
-  // Decision
+  let tierFitAssessment: string;
+  if (tier === 'verified') {
+    tierFitAssessment = verifiedProofCount >= 4
+      ? 'Strong Verified-tier evidence — credentials, professional links, and case studies provided'
+      : verifiedProofCount >= 2
+      ? 'Partial Verified evidence — some proof provided, but key items are missing'
+      : 'Weak Verified evidence — claimed Verified tier but insufficient proof submitted';
+  } else if (tier === 'professional') {
+    tierFitAssessment = score >= 60 && app.top_projects
+      ? 'Good Professional-tier evidence — portfolio and project history support this tier'
+      : score >= 40
+      ? 'Fair Professional evidence — consider requesting sample work before approving at Pro tier'
+      : 'Insufficient evidence for Professional tier — treat as Free tier application';
+  } else {
+    tierFitAssessment = score >= 65
+      ? 'Strong Free tier application — consider recommending upgrade to Professional tier'
+      : 'Standard Free tier application — basic requirements met';
+  }
+
+  // ── Suggested badge ─────────────────────────────────────────────────────────
+  const suggestedBadge =
+    tier === 'verified'     && verifiedProofCount >= 3 && score >= 65 ? 'Verified Creator ✓' :
+    tier === 'professional' && score >= 55                             ? 'MicroBuild Pro'     :
+    score >= 65                                                        ? 'Active Creator'     :
+                                                                         'Free Creator';
+
+  // ── Recommended decision ─────────────────────────────────────────────────────
   const recommendedDecision =
-    score >= 70
-      ? '✅ Approve — strong candidate, proceed to onboarding'
+    tier === 'verified' && verifiedProofCount >= 3 && score >= 65
+      ? '✅ Approve as Verified Creator — send approved_pending_payment status'
+      : tier === 'professional' && score >= 60 && app.top_projects
+      ? '✅ Approve as Professional Creator — send approved_pending_payment status'
+      : tier !== 'free' && missing.length > 2
+      ? '📋 Needs more info — flag as needs_more_info before approving at claimed tier'
+      : score >= 70
+      ? '✅ Approve as Free Creator — strong candidate for standard onboarding'
       : score >= 50
       ? '📋 Needs portfolio review — request 1–2 sample builds before approving'
       : score >= 30
       ? '📞 Conditional — schedule a brief call to assess fit before deciding'
       : '❌ Decline — insufficient information or availability to proceed';
 
-  // Follow-up message
-  const followUpMessage = app.portfolio_url
+  // ── Best fit niches ─────────────────────────────────────────────────────────
+  const bestFitNiches = niches.length > 0
+    ? niches
+    : (hasFormBuilders ? ['Quote Funnel'] : []).concat(
+        hasWebBuilders ? ['Trust Page', 'Package Selector'] : [],
+        hasBooking     ? ['Booking Page'] : []
+      );
+
+  // ── Messages ─────────────────────────────────────────────────────────────────
+  const tierDisplayName = tier === 'professional' ? 'Professional' : tier === 'verified' ? 'Verified' : 'Free';
+  const priceNote = tier === 'professional'
+    ? '\n\nTo activate your account, you will need to complete a $15/month subscription. We will send instructions separately.'
+    : tier === 'verified'
+    ? '\n\nTo activate your account, you will need to complete a $25/month subscription. We will send instructions separately.'
+    : '';
+
+  const creatorFollowUpMessage = app.portfolio_url
     ? [
         `Hi ${app.full_name},`,
-        ``,
-        `Thanks for applying to the MicroBuild creator program! We've reviewed your application.`,
-        ``,
-        score >= 70
-          ? `Your background looks like a strong fit. We'll be in touch within 1–2 business days with onboarding details.`
-          : `We'd love to see 1–2 examples of builds you've completed before moving forward. Can you share a portfolio link or a few live URLs?`,
-        ``,
-        `— MicroBuild Team`,
+        '',
+        `Thanks for applying to the MicroBuild creator program! We've reviewed your ${tierDisplayName} tier application.`,
+        '',
+        missing.length > 1
+          ? `Before we can make a final decision, we need a bit more from you:\n\n${missing.slice(0, 3).map((m) => `• ${m}`).join('\n')}`
+          : score >= 65
+          ? `Your background looks like a strong fit. We'll be in touch within 1–2 business days.`
+          : `We'd love to see 1–2 examples of recent builds. Could you share a live URL or project details?`,
+        '',
+        '— MicroBuild Team',
       ].join('\n')
     : [
         `Hi ${app.full_name},`,
-        ``,
-        `Thanks for applying to MicroBuild! We're excited to review your application.`,
-        ``,
+        '',
+        `Thanks for applying to MicroBuild as a ${tierDisplayName} creator!`,
+        '',
         `To move forward, could you share a portfolio link or 1–2 examples of builds you've completed? This helps us understand your work style and place you with the right clients.`,
-        ``,
-        `Looking forward to hearing from you.`,
-        ``,
-        `— MicroBuild Team`,
+        '',
+        'Looking forward to hearing from you.',
+        '',
+        '— MicroBuild Team',
       ].join('\n');
 
+  const approvalMessage = [
+    `Hi ${app.full_name},`,
+    '',
+    `Great news — we've reviewed your MicroBuild creator application and we'd love to have you on board as a ${tierDisplayName} Creator!`,
+    '',
+    priceNote
+      ? `Your application has been approved.${priceNote}`
+      : `Your account is now active. You can start receiving project briefs right away.`,
+    '',
+    `We'll send your first available project brief within the next few days. Welcome to MicroBuild!`,
+    '',
+    '— MicroBuild Team',
+  ].join('\n');
+
+  const rejectionMessage = [
+    `Hi ${app.full_name},`,
+    '',
+    `Thank you for applying to become a MicroBuild creator. We appreciate the time and effort you put into your application.`,
+    '',
+    concerns.length > 0
+      ? `After careful review, we are not able to move forward at this time. The main factors were:\n\n${concerns.slice(0, 2).map((c) => `• ${c}`).join('\n')}`
+      : `At this time, we do not have the right project fit for your current skill set.`,
+    '',
+    `If your situation changes — more portfolio work, additional availability, or new credentials — we would love to hear from you again. Feel free to reapply.`,
+    '',
+    '— MicroBuild Team',
+  ].join('\n');
+
   return {
-    candidateFitScore: score,
+    candidateFitScore:    score,
     fitLabel,
+    tierFitAssessment,
+    suggestedBadge,
     strengths,
     concerns,
     missingPortfolioInfo: missing,
     bestFitNiches: bestFitNiches.length > 0 ? bestFitNiches : ['General — needs portfolio review to confirm'],
     recommendedDecision,
-    creatorFollowUpMessage: followUpMessage,
+    creatorFollowUpMessage,
+    approvalMessage,
+    rejectionMessage,
   };
 }
 

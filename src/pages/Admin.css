@@ -926,6 +926,156 @@
   color: var(--accent) !important;
 }
 
+/* ─── Creator tier badge + plan price ──────────────────────────────────────── */
+.creator-header-left { display: flex; flex-direction: column; gap: 0.2rem; }
+.creator-tier-row    { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.creator-tier-badge  {
+  font-size: 0.63rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.07em; border: 1px solid; border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+}
+.creator-plan-price {
+  font-size: 0.65rem; color: var(--text-muted);
+}
+.creator-speed { color: var(--text-muted); }
+.creator-case-studies {
+  font-size: 0.8rem; color: var(--text-secondary); line-height: 1.55;
+  padding: 0.5rem; background: var(--bg-secondary); border-radius: 6px;
+  white-space: pre-wrap;
+}
+.creator-chip--capability {
+  background: rgba(99, 179, 237, 0.1) !important;
+  border-color: rgba(99, 179, 237, 0.25) !important;
+  color: #63b3ed !important;
+}
+
+/* ─── Creator toggle row ────────────────────────────────────────────────────── */
+.creator-toggle-row {
+  display: flex;
+  gap: 0;
+  border-top: 1px dashed var(--border);
+}
+.creator-toggle-row .creator-review-toggle {
+  flex: 1;
+  border-top: none;
+  border-right: 1px dashed var(--border);
+}
+.creator-toggle-row .creator-review-toggle:last-child { border-right: none; }
+
+/* ─── Creator review sub-tabs ────────────────────────────────────────────────── */
+.creator-review-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+.creator-review-tab {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.creator-review-tab:hover { color: var(--text-primary); }
+.creator-review-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+/* ─── Profile Preview ────────────────────────────────────────────────────────── */
+.profile-preview {
+  border-top: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+  background: var(--bg-secondary);
+}
+.pp-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+.pp-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  max-width: 500px;
+}
+.pp-header { display: flex; align-items: flex-start; gap: 0.75rem; }
+.pp-avatar {
+  width: 40px; height: 40px;
+  background: rgba(0, 212, 120, 0.15);
+  border: 1.5px solid rgba(0, 212, 120, 0.3);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.9rem; font-weight: 800; color: var(--accent);
+  flex-shrink: 0;
+}
+.pp-name-block { display: flex; flex-direction: column; gap: 0.3rem; }
+.pp-name {
+  font-size: 1rem; font-weight: 800; color: var(--text-primary); line-height: 1;
+}
+.pp-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+.pp-tier-badge {
+  font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em;
+  border: 1px solid; border-radius: 4px; padding: 0.1rem 0.45rem;
+}
+.pp-score-badge {
+  font-size: 0.62rem; font-weight: 700;
+  border: 1px solid; border-radius: 4px; padding: 0.1rem 0.4rem;
+}
+.pp-suggested {
+  font-size: 0.62rem; font-weight: 700; color: #f9b032;
+  background: rgba(249, 176, 50, 0.1); border: 1px solid rgba(249, 176, 50, 0.3);
+  border-radius: 4px; padding: 0.1rem 0.4rem;
+}
+.pp-plan-note {
+  font-size: 0.7rem; color: var(--text-muted);
+  background: rgba(99, 179, 237, 0.07);
+  border: 1px solid rgba(99, 179, 237, 0.2);
+  border-radius: 5px; padding: 0.3rem 0.6rem;
+}
+.pp-section { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.pp-chip {
+  font-size: 0.7rem; font-weight: 600; color: var(--text-secondary);
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: 4px; padding: 0.18rem 0.5rem;
+}
+.pp-chip--niche {
+  background: rgba(0, 212, 120, 0.06); border-color: rgba(0, 212, 120, 0.2);
+  color: var(--accent);
+}
+.pp-chip--more { color: var(--text-muted); font-style: italic; }
+.pp-meta {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  font-size: 0.73rem; color: var(--text-muted);
+}
+.pp-link {
+  color: var(--accent); font-size: 0.73rem; text-decoration: none;
+}
+.pp-link:hover { text-decoration: underline; }
+.pp-proof-links { display: flex; gap: 0.5rem; }
+.pp-proof-link {
+  font-size: 0.7rem; font-weight: 600; color: #63b3ed;
+  text-decoration: none; padding: 0.2rem 0.5rem;
+  background: rgba(99, 179, 237, 0.08); border: 1px solid rgba(99, 179, 237, 0.25);
+  border-radius: 4px;
+}
+.pp-proof-link:hover { background: rgba(99, 179, 237, 0.14); }
+.pp-tier-assessment {
+  font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;
+  padding-top: 0.35rem; border-top: 1px solid var(--border);
+}
+
 /* ─── Phase 2+ placeholder row ─────────────────────────────────────────────── */
 .admin-placeholders {
   display: grid;
@@ -950,6 +1100,43 @@
   .tpl-table-row span:nth-child(5) { display: none; }
   .admin-placeholders { grid-template-columns: 1fr; }
   .ops-scores-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ─── Error boundary fallback ──────────────────────────────────────────────── */
+.admin-section-crash {
+  background: #2a1a1a;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin: 0.75rem 0;
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+.admin-section-crash strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #ef4444;
+}
+.admin-section-crash p {
+  margin: 0 0 0.5rem;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+.admin-section-crash button {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.75rem;
+  background: #7f1d1d;
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.creator-chip--empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.75rem;
+  background: transparent;
+  border-color: var(--border);
 }
 
 @media (max-width: 640px) {

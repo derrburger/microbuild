@@ -233,13 +233,258 @@
   margin-bottom: 2rem !important;
 }
 
+/* ─── Tier selection ──────────────────────────────────────────────────────── */
+.tier-select-header {
+  text-align: center;
+  margin-bottom: 2.25rem;
+}
+.tier-select-header h2 {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+.tier-select-sub {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.tier-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.tier-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem 1.25rem;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.tier-card:hover {
+  border-color: var(--tier-color, var(--accent));
+  box-shadow: 0 0 0 1px var(--tier-color, var(--accent)) inset;
+}
+.tier-card--selected {
+  border-color: var(--tier-color, var(--accent));
+  box-shadow: 0 0 0 2px var(--tier-color, var(--accent)) inset, 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.tier-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.tier-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 0.18rem 0.55rem;
+  margin-bottom: 0.4rem;
+}
+.tier-name {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.tier-price-block {
+  text-align: right;
+  flex-shrink: 0;
+}
+.tier-price {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: var(--text-primary);
+}
+.tier-price-note {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+  white-space: nowrap;
+}
+.tier-description {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+.tier-highlights {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.tier-highlights li {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  padding-left: 1.1rem;
+  position: relative;
+}
+.tier-highlights li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-size: 0.7rem;
+}
+.tier-priority {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: auto;
+}
+.tier-select-btn {
+  width: 100%;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  padding: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.13s, color 0.13s;
+}
+.tier-select-btn:hover { border-color: var(--accent); color: var(--accent); }
+.tier-select-btn--active { border-color: inherit; color: inherit; }
+
+.tier-info-banner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem 1.25rem;
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* ─── Selected tier banner (top of form) ────────────────────────────────── */
+.selected-tier-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+.stb-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.stb-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.stb-price {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+}
+.stb-change-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s;
+}
+.stb-change-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+/* ─── Tier-gated form blocks ────────────────────────────────────────────── */
+.tier-gated-block {
+  border-color: rgba(99, 179, 237, 0.25) !important;
+  background: rgba(99, 179, 237, 0.03);
+}
+.tier-gated-block--verified {
+  border-color: rgba(249, 176, 50, 0.25) !important;
+  background: rgba(249, 176, 50, 0.03);
+}
+.tier-gated-label {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #63b3ed;
+  background: rgba(99, 179, 237, 0.12);
+  border: 1px solid rgba(99, 179, 237, 0.3);
+  border-radius: 4px;
+  padding: 0.08rem 0.4rem;
+  vertical-align: middle;
+}
+.tier-gated-label--verified {
+  color: #f9b032;
+  background: rgba(249, 176, 50, 0.1);
+  border-color: rgba(249, 176, 50, 0.3);
+}
+
+/* ─── Pricing notice ────────────────────────────────────────────────────── */
+.pricing-notice {
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 0.85rem 1.1rem;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.pricing-notice strong { color: var(--text-primary); }
+
+/* ─── Success tier badge ─────────────────────────────────────────────────── */
+.success-tier-badge {
+  display: inline-block;
+  border: 1px solid;
+  border-radius: 6px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
+}
+
+/* ─── Tier req card in sidebar ──────────────────────────────────────────── */
+.tier-req-card {
+  border-color: rgba(99, 179, 237, 0.2) !important;
+}
+
 @media (max-width: 900px) {
   .creators-grid {
     grid-template-columns: 1fr;
   }
-
   .creators-sidebar {
     position: static;
     order: -1;
+  }
+  .tier-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .tier-cards-grid {
+    grid-template-columns: 1fr;
   }
 }

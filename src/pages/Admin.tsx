@@ -1,10 +1,40 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { fetchTemplates } from '../lib/templates';
 import { generateBuildPacket, generateCreatorReview } from '../lib/buildPacket';
 import type { GeneratedBuildPacket, CreatorApplicationReview } from '../lib/buildPacket';
 import type { MicroBuildListing } from '../types';
 import './Admin.css';
+
+// ─── Defensive helpers ────────────────────────────────────────────────────────
+
+function safeArray<T>(v: unknown): T[] {
+  if (Array.isArray(v)) return v as T[];
+  return [];
+}
+
+function safeText(v: unknown, fallback = ''): string {
+  if (typeof v === 'string') return v;
+  if (v == null) return fallback;
+  return String(v);
+}
+
+function safeNumber(v: unknown, fallback = 0): number {
+  if (typeof v === 'number' && isFinite(v)) return v;
+  const n = Number(v);
+  return isFinite(n) ? n : fallback;
+}
+
+function safeDate(v: unknown): string {
+  if (!v) return 'Unknown date';
+  try {
+    const d = new Date(v as string);
+    if (isNaN(d.getTime())) return 'Unknown date';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return 'Unknown date';
+  }
+}
 
 // ─── Row types ────────────────────────────────────────────────────────────────
 
@@ -38,6 +68,17 @@ interface CreatorApplicationRow {
   message: string | null;
   status: string;
   created_at: string;
+  // Tier fields (from migration: add_creator_tiers.sql)
+  tier: string;
+  requested_plan_price: number;
+  top_projects: string | null;
+  service_capabilities: string[];
+  fulfillment_speed: string | null;
+  github_url: string | null;
+  linkedin_url: string | null;
+  certifications: string | null;
+  credential_links: string[];
+  case_studies: string | null;
 }
 
 interface EnrichedRequest {
@@ -47,21 +88,86 @@ interface EnrichedRequest {
 
 type RequestFilter = 'all' | 'new' | 'high-priority' | 'needs-followup' | 'ready-to-quote';
 
+// ─── Row normalizers (guard against null fields from Supabase) ─────────────────
+
+function normalizeBuyerRequest(raw: Record<string, unknown>): BuyerRequestRow {
+  return {
+    id:              safeText(raw.id, 'unknown'),
+    full_name:       safeText(raw.full_name, 'Unknown'),
+    email:           safeText(raw.email, ''),
+    business_name:   safeText(raw.business_name, 'Unknown Business'),
+    industry:        safeText(raw.industry, 'Unknown'),
+    website_social:  raw.website_social != null ? safeText(raw.website_social) : null,
+    build_type:      safeText(raw.build_type, 'Quote Funnel'),
+    main_goal:       safeText(raw.main_goal, ''),
+    current_problem: safeText(raw.current_problem, ''),
+    budget:          raw.budget != null ? safeText(raw.budget) : null,
+    deadline:        raw.deadline != null ? safeText(raw.deadline) : null,
+    style_notes:     raw.style_notes != null ? safeText(raw.style_notes) : null,
+    status:          safeText(raw.status, 'new'),
+    created_at:      safeText(raw.created_at, new Date().toISOString()),
+  };
+}
+
+function normalizeCreatorApp(raw: Record<string, unknown>): CreatorApplicationRow {
+  return {
+    id:                   safeText(raw.id, 'unknown'),
+    full_name:            safeText(raw.full_name, 'Unknown Applicant'),
+    email:                safeText(raw.email, ''),
+    tools:                safeArray<string>(raw.tools),
+    niches:               safeArray<string>(raw.niches),
+    experience:           safeText(raw.experience, ''),
+    available_hours:      safeText(raw.available_hours, '0'),
+    portfolio_url:        raw.portfolio_url != null ? safeText(raw.portfolio_url) : null,
+    portfolio_url_2:      raw.portfolio_url_2 != null ? safeText(raw.portfolio_url_2) : null,
+    message:              raw.message != null ? safeText(raw.message) : null,
+    status:               safeText(raw.status, 'new'),
+    created_at:           safeText(raw.created_at, new Date().toISOString()),
+    tier:                 safeText(raw.tier, 'free'),
+    requested_plan_price: safeNumber(raw.requested_plan_price, 0),
+    top_projects:         raw.top_projects != null ? safeText(raw.top_projects) : null,
+    service_capabilities: safeArray<string>(raw.service_capabilities),
+    fulfillment_speed:    raw.fulfillment_speed != null ? safeText(raw.fulfillment_speed) : null,
+    github_url:           raw.github_url != null ? safeText(raw.github_url) : null,
+    linkedin_url:         raw.linkedin_url != null ? safeText(raw.linkedin_url) : null,
+    certifications:       raw.certifications != null ? safeText(raw.certifications) : null,
+    credential_links:     safeArray<string>(raw.credential_links),
+    case_studies:         raw.case_studies != null ? safeText(raw.case_studies) : null,
+  };
+}
+
 // ─── Color maps ───────────────────────────────────────────────────────────────
 
 const statusColors: Record<string, string> = {
-  new:             '#f9b032',
-  'in-review':     '#63b3ed',
-  'proposal-sent': '#00d478',
-  accepted:        '#00d478',
-  rejected:        '#ef4444',
-  reviewing:       '#63b3ed',
-  approved:        '#00d478',
-  'in-progress':   '#f9b032',
-  delivered:       '#00d478',
-  available:       '#00d478',
-  popular:         '#f9b032',
-  'coming-soon':   '#63b3ed',
+  new:                        '#f9b032',
+  'in-review':                '#63b3ed',
+  'proposal-sent':            '#00d478',
+  accepted:                   '#00d478',
+  rejected:                   '#ef4444',
+  reviewing:                  '#63b3ed',
+  needs_portfolio_review:     '#f9b032',
+  needs_more_info:            '#f9b032',
+  approved_pending_payment:   '#63b3ed',
+  active:                     '#00d478',
+  approved:                   '#00d478',
+  suspended:                  '#ef4444',
+  'in-progress':              '#f9b032',
+  delivered:                  '#00d478',
+  available:                  '#00d478',
+  popular:                    '#f9b032',
+  'coming-soon':              '#63b3ed',
+};
+
+const tierColors: Record<string, string> = {
+  free:         '#8a94a6',
+  professional: '#63b3ed',
+  verified:     '#f9b032',
+};
+
+const tierLabels: Record<string, string> = {
+  free:         'Free',
+  professional: 'Pro',
+  verified:     'Verified ✓',
 };
 
 const priorityColors: Record<string, string> = {
@@ -148,10 +254,8 @@ async function saveBuiltPacket(
 
 // ─── Utility helpers ──────────────────────────────────────────────────────────
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
+function fmtDate(iso: unknown): string {
+  return safeDate(iso);
 }
 
 function fixEncoding(s: string): string {
@@ -182,9 +286,9 @@ function rowToRequest(row: BuyerRequestRow) {
 
 function buildCreatorSummary(app: CreatorApplicationRow, review: CreatorApplicationReview): string {
   return [
-    `Creator: ${app.full_name} (${app.email})`,
-    `Tools: ${app.tools.join(', ')}`,
-    `Niches: ${app.niches.join(', ')}`,
+    `Creator: ${safeText(app.full_name, 'Unknown')} (${safeText(app.email)})`,
+    `Tools: ${safeArray<string>(app.tools).join(', ') || 'None listed'}`,
+    `Niches: ${safeArray<string>(app.niches).join(', ') || 'None listed'}`,
     `Experience: ${app.experience}`,
     `Availability: ${app.available_hours} hours/week`,
     `Portfolio: ${app.portfolio_url ?? 'Not provided'}`,
@@ -827,12 +931,88 @@ function AiOpsAssistant({
 
 // ─── Creator Application Card ─────────────────────────────────────────────────
 
-const APP_STATUS_ACTIONS: { status: string; label: string }[] = [
-  { status: 'reviewing', label: 'Mark Reviewed'    },
-  { status: 'approved',  label: 'Approve'          },
-  { status: 'rejected',  label: 'Reject'           },
-  { status: 'new',       label: 'Reset to New'     },
+const APP_STATUS_OPTIONS: { status: string; label: string }[] = [
+  { status: 'new',                      label: 'New'                      },
+  { status: 'reviewing',                label: 'In Review'                },
+  { status: 'needs_portfolio_review',   label: 'Needs Portfolio'          },
+  { status: 'needs_more_info',          label: 'Needs More Info'          },
+  { status: 'approved_pending_payment', label: 'Approved — Pending Payment'},
+  { status: 'active',                   label: 'Active'                   },
+  { status: 'rejected',                 label: 'Rejected'                 },
+  { status: 'suspended',                label: 'Suspended'                },
 ];
+
+// ─── Profile Preview ──────────────────────────────────────────────────────────
+
+function ProfilePreview({ app, review }: { app: CreatorApplicationRow; review: CreatorApplicationReview }) {
+  const name     = safeText(app.full_name, 'Unknown');
+  const initials = name.split(' ').map((n) => n[0] ?? '').join('').slice(0, 2).toUpperCase() || '??';
+  const tColor   = tierColors[app.tier] ?? '#8a94a6';
+  const tLabel   = tierLabels[app.tier] ?? app.tier;
+  const fitColor = fitColors[review.fitLabel] ?? '#8a94a6';
+
+  return (
+    <div className="profile-preview">
+      <div className="pp-label">Profile Preview — how this creator would appear if approved</div>
+      <div className="pp-card">
+        <div className="pp-header">
+          <div className="pp-avatar">{initials}</div>
+          <div className="pp-name-block">
+            <div className="pp-name">{name}</div>
+            <div className="pp-badges">
+              <span className="pp-tier-badge" style={{ color: tColor, borderColor: tColor + '55', backgroundColor: tColor + '15' }}>
+                {tLabel}
+              </span>
+              <span className="pp-score-badge" style={{ color: fitColor, borderColor: fitColor + '55', backgroundColor: fitColor + '12' }}>
+                {review.candidateFitScore}/100 · {review.fitLabel}
+              </span>
+              {review.suggestedBadge !== 'Free Creator' && (
+                <span className="pp-suggested">{review.suggestedBadge}</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {app.tier !== 'free' && app.requested_plan_price > 0 && (
+          <div className="pp-plan-note">
+            Subscription: ${app.requested_plan_price}/month — pending payment after approval
+          </div>
+        )}
+
+        <div className="pp-section">
+          {safeArray<string>(app.tools).slice(0, 6).map((t) => <span key={t} className="pp-chip">{t}</span>)}
+          {safeArray<string>(app.tools).length > 6 && <span className="pp-chip pp-chip--more">+{safeArray<string>(app.tools).length - 6}</span>}
+        </div>
+
+        <div className="pp-section">
+          {safeArray<string>(app.niches).slice(0, 4).map((n) => <span key={n} className="pp-chip pp-chip--niche">{n}</span>)}
+          {safeArray<string>(app.niches).length > 4 && <span className="pp-chip pp-chip--more">+{safeArray<string>(app.niches).length - 4}</span>}
+        </div>
+
+        <div className="pp-meta">
+          <span>{app.available_hours} hrs/week</span>
+          {app.fulfillment_speed && <span>· {app.fulfillment_speed}</span>}
+          {app.portfolio_url && (
+            <a className="pp-link" href={app.portfolio_url} target="_blank" rel="noopener noreferrer">
+              Portfolio ↗
+            </a>
+          )}
+        </div>
+
+        {(app.github_url || app.linkedin_url) && (
+          <div className="pp-proof-links">
+            {app.github_url && <a href={app.github_url} target="_blank" rel="noopener noreferrer" className="pp-proof-link">GitHub ↗</a>}
+            {app.linkedin_url && <a href={app.linkedin_url} target="_blank" rel="noopener noreferrer" className="pp-proof-link">LinkedIn ↗</a>}
+          </div>
+        )}
+
+        <div className="pp-tier-assessment">{review.tierFitAssessment}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Creator Card ─────────────────────────────────────────────────────────────
 
 function CreatorCard({
   app,
@@ -845,38 +1025,68 @@ function CreatorCard({
   const [updating, setUpdating]       = useState(false);
   const [updateError, setUpdateError] = useState(false);
   const [reviewOpen, setReviewOpen]   = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [activeReviewTab, setActiveReviewTab] = useState<'review' | 'messages'>('review');
 
-  const review = useMemo<CreatorApplicationReview>(
-    () => generateCreatorReview({
-      full_name:       app.full_name,
-      email:           app.email,
-      tools:           app.tools,
-      niches:          app.niches,
-      experience:      app.experience,
-      available_hours: app.available_hours,
-      portfolio_url:   app.portfolio_url,
-      portfolio_url_2: app.portfolio_url_2,
-      message:         app.message,
-    }),
-    [app]
-  );
+  const review = useMemo<CreatorApplicationReview>(() => {
+    try {
+      return generateCreatorReview({
+        full_name:            safeText(app.full_name, 'Unknown'),
+        email:                safeText(app.email),
+        tools:                safeArray<string>(app.tools),
+        niches:               safeArray<string>(app.niches),
+        experience:           safeText(app.experience),
+        available_hours:      safeText(app.available_hours, '0'),
+        portfolio_url:        app.portfolio_url,
+        portfolio_url_2:      app.portfolio_url_2,
+        message:              app.message,
+        tier:                 (safeText(app.tier, 'free')) as 'free' | 'professional' | 'verified',
+        top_projects:         app.top_projects,
+        service_capabilities: safeArray<string>(app.service_capabilities),
+        fulfillment_speed:    app.fulfillment_speed,
+        github_url:           app.github_url,
+        linkedin_url:         app.linkedin_url,
+        certifications:       app.certifications,
+        credential_links:     safeArray<string>(app.credential_links),
+        case_studies:         app.case_studies,
+      });
+    } catch (err) {
+      console.error('[Admin] generateCreatorReview failed for', app.id, err);
+      return {
+        candidateFitScore: 0,
+        fitLabel: 'Weak' as const,
+        strengths: ['Review data is incomplete or malformed'],
+        concerns: ['Could not generate review — check console'],
+        missingPortfolioInfo: [],
+        bestFitNiches: [],
+        recommendedDecision: '⚠ Review skipped — data error',
+        tierFitAssessment: 'Unable to assess — data missing',
+        suggestedBadge: 'Free Creator',
+        creatorFollowUpMessage: '',
+        approvalMessage: '',
+        rejectionMessage: '',
+      };
+    }
+  }, [app]);
 
   const reviewFitColor = fitColors[review.fitLabel] ?? '#8a94a6';
+  const tColor         = tierColors[app.tier] ?? '#8a94a6';
 
-  async function handleAction(newStatus: string) {
-    if (newStatus === status) return;
+  async function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const next = e.target.value;
+    if (next === status) return;
     const prev = status;
-    setStatus(newStatus);
+    setStatus(next);
     setUpdating(true);
     setUpdateError(false);
-    const ok = await updateApplicationStatus(app.id, newStatus);
+    const ok = await updateApplicationStatus(app.id, next);
     setUpdating(false);
     if (!ok) {
       setStatus(prev);
       setUpdateError(true);
       setTimeout(() => setUpdateError(false), 3000);
     } else {
-      onStatusChange(app.id, newStatus);
+      onStatusChange(app.id, next);
     }
   }
 
@@ -884,9 +1094,17 @@ function CreatorCard({
     <div className={`creator-card${updateError ? ' creator-card--error' : ''}`}>
 
       <div className="creator-card-header">
-        <div>
+        <div className="creator-header-left">
           <div className="creator-name">{app.full_name}</div>
           <div className="creator-email">{app.email}</div>
+          <div className="creator-tier-row">
+            <span className="creator-tier-badge" style={{ color: tColor, borderColor: tColor + '55', backgroundColor: tColor + '15' }}>
+              {tierLabels[app.tier] ?? app.tier}
+            </span>
+            {(app.requested_plan_price ?? 0) > 0 && (
+              <span className="creator-plan-price">${app.requested_plan_price}/mo after approval</span>
+            )}
+          </div>
         </div>
         <div className="creator-card-right">
           <span
@@ -895,9 +1113,21 @@ function CreatorCard({
           >
             {review.fitLabel} · {review.candidateFitScore}/100
           </span>
-          <span className="creator-status" style={{ color: statusColors[status] ?? '#8a94a6' }}>
-            ● {status}
-          </span>
+          <div className={`status-dropdown-wrap${updateError ? ' status-dropdown--error' : ''}`}>
+            <select
+              className="status-dropdown"
+              value={status}
+              onChange={handleStatusChange}
+              disabled={updating}
+              style={{ color: statusColors[status] ?? '#8a94a6' }}
+            >
+              {APP_STATUS_OPTIONS.map((o) => (
+                <option key={o.status} value={o.status}>{o.label}</option>
+              ))}
+            </select>
+            {updating && <span className="status-saving">Saving…</span>}
+            {updateError && <span className="status-error-label">Failed</span>}
+          </div>
         </div>
       </div>
 
@@ -905,101 +1135,183 @@ function CreatorCard({
         <div className="creator-detail">
           <span className="creator-detail-label">Tools</span>
           <div className="creator-chips">
-            {app.tools.map((t) => <span key={t} className="creator-chip">{t}</span>)}
+            {safeArray<string>(app.tools).map((t) => <span key={t} className="creator-chip">{t}</span>)}
+            {safeArray<string>(app.tools).length === 0 && <span className="creator-chip creator-chip--empty">None listed</span>}
           </div>
         </div>
         <div className="creator-detail">
           <span className="creator-detail-label">Niches</span>
           <div className="creator-chips">
-            {app.niches.map((n) => <span key={n} className="creator-chip">{n}</span>)}
+            {safeArray<string>(app.niches).map((n) => <span key={n} className="creator-chip">{n}</span>)}
+            {safeArray<string>(app.niches).length === 0 && <span className="creator-chip creator-chip--empty">None listed</span>}
           </div>
         </div>
         <div className="creator-detail">
           <span className="creator-detail-label">Availability</span>
-          <span className="creator-detail-value">{app.available_hours} hrs/week</span>
+          <span className="creator-detail-value">{app.available_hours} hrs/week
+            {app.fulfillment_speed && <span className="creator-speed"> · {app.fulfillment_speed}</span>}
+          </span>
         </div>
         <div className="creator-detail">
           <span className="creator-detail-label">Applied</span>
           <span className="creator-detail-value">{fmtDate(app.created_at)}</span>
         </div>
+        {app.service_capabilities && app.service_capabilities.length > 0 && (
+          <div className="creator-detail" style={{ gridColumn: '1 / -1' }}>
+            <span className="creator-detail-label">Capabilities</span>
+            <div className="creator-chips">
+              {app.service_capabilities.map((c) => <span key={c} className="creator-chip creator-chip--capability">{c}</span>)}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Decision */}
       <div className="creator-decision">{review.recommendedDecision}</div>
 
-      {/* Action buttons */}
-      <div className="creator-actions">
-        {APP_STATUS_ACTIONS.filter((a) => a.status !== status).map((a) => (
-          <button
-            key={a.status}
-            className={`creator-action-btn creator-action-btn--${a.status}`}
-            onClick={() => handleAction(a.status)}
-            disabled={updating}
-          >
-            {a.label}
-          </button>
-        ))}
-        {updating && <span className="status-saving">Saving…</span>}
-        {updateError && <span className="status-error-label">Failed — retry</span>}
+      {/* Expandable toggles */}
+      <div className="creator-toggle-row">
+        <button
+          className="creator-review-toggle"
+          onClick={() => { setReviewOpen((v) => !v); setPreviewOpen(false); }}
+          aria-expanded={reviewOpen}
+        >
+          {reviewOpen ? '▲ Hide AI Review' : '▼ AI Review'}
+        </button>
+        <button
+          className="creator-review-toggle"
+          onClick={() => { setPreviewOpen((v) => !v); setReviewOpen(false); }}
+          aria-expanded={previewOpen}
+        >
+          {previewOpen ? '▲ Hide Preview' : '▼ Profile Preview'}
+        </button>
       </div>
 
-      {/* AI Review toggle */}
-      <button
-        className="creator-review-toggle"
-        onClick={() => setReviewOpen((v) => !v)}
-        aria-expanded={reviewOpen}
-      >
-        {reviewOpen ? '▲ Hide AI Review' : '▼ View AI Review'}
-      </button>
+      {/* Profile preview */}
+      {previewOpen && <ProfilePreview app={app} review={review} />}
 
+      {/* AI Review panel */}
       {reviewOpen && (
         <div className="creator-review-panel">
           <div className="ai-ops-label">
             ⚡ AI-style candidate review — rules-based MVP version. No AI API called.
           </div>
 
-          {review.strengths.length > 0 && (
-            <div className="ops-field">
-              <div className="ops-field-label">Strengths ({review.strengths.length})</div>
-              <ul className="ops-flag-list" style={{ '--flag-bg': 'rgba(0,212,120,0.06)', '--flag-color': '#00d478', '--flag-border': 'rgba(0,212,120,0.18)' } as React.CSSProperties}>
-                {review.strengths.map((s) => <li key={s} className="creator-strength-item">{s}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {review.concerns.length > 0 && (
-            <div className="ops-field">
-              <div className="ops-field-label">Concerns ({review.concerns.length})</div>
-              <ul className="ops-flag-list ops-flags-warn">
-                {review.concerns.map((c) => <li key={c}>{c}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {review.missingPortfolioInfo.length > 0 && (
-            <div className="ops-field">
-              <div className="ops-field-label">Missing Info</div>
-              <ul className="ops-flag-list ops-flags-risk">
-                {review.missingPortfolioInfo.map((m) => <li key={m}>{m}</li>)}
-              </ul>
-            </div>
-          )}
-
-          <div className="ops-field">
-            <div className="ops-field-label">Best Fit Niches</div>
-            <div className="creator-chips" style={{ marginTop: '0.25rem' }}>
-              {review.bestFitNiches.map((n) => <span key={n} className="creator-chip creator-chip--accent">{n}</span>)}
-            </div>
+          {/* Review sub-tabs */}
+          <div className="creator-review-tabs">
+            <button
+              className={`creator-review-tab${activeReviewTab === 'review' ? ' active' : ''}`}
+              onClick={() => setActiveReviewTab('review')}
+            >Analysis</button>
+            <button
+              className={`creator-review-tab${activeReviewTab === 'messages' ? ' active' : ''}`}
+              onClick={() => setActiveReviewTab('messages')}
+            >Messages</button>
           </div>
 
-          <div className="ops-copy-row">
-            <CopyBtn text={review.creatorFollowUpMessage} label="Copy Follow-up Message" />
-            <CopyBtn text={buildCreatorSummary(app, review)} label="Copy Candidate Summary" />
-          </div>
+          {activeReviewTab === 'review' && (
+            <>
+              <div className="ops-field">
+                <div className="ops-field-label">Tier Fit Assessment</div>
+                <p>{review.tierFitAssessment}</p>
+              </div>
+
+              {review.strengths.length > 0 && (
+                <div className="ops-field">
+                  <div className="ops-field-label">Strengths ({review.strengths.length})</div>
+                  <ul className="ops-flag-list">
+                    {review.strengths.map((s) => <li key={s} className="creator-strength-item">{s}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {review.concerns.length > 0 && (
+                <div className="ops-field">
+                  <div className="ops-field-label">Concerns ({review.concerns.length})</div>
+                  <ul className="ops-flag-list ops-flags-warn">
+                    {review.concerns.map((c) => <li key={c}>{c}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {review.missingPortfolioInfo.length > 0 && (
+                <div className="ops-field">
+                  <div className="ops-field-label">Missing Info</div>
+                  <ul className="ops-flag-list ops-flags-risk">
+                    {review.missingPortfolioInfo.map((m) => <li key={m}>{m}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              <div className="ops-field">
+                <div className="ops-field-label">Best Fit Niches</div>
+                <div className="creator-chips" style={{ marginTop: '0.25rem' }}>
+                  {review.bestFitNiches.map((n) => <span key={n} className="creator-chip creator-chip--accent">{n}</span>)}
+                </div>
+              </div>
+
+              {app.case_studies && (
+                <div className="ops-field">
+                  <div className="ops-field-label">Case Studies (submitted)</div>
+                  <p className="creator-case-studies">{app.case_studies.slice(0, 300)}{app.case_studies.length > 300 ? '…' : ''}</p>
+                </div>
+              )}
+
+              <div className="ops-copy-row">
+                <CopyBtn text={review.creatorFollowUpMessage} label="Copy Follow-up Message" />
+                <CopyBtn text={buildCreatorSummary(app, review)} label="Copy Candidate Summary" />
+              </div>
+            </>
+          )}
+
+          {activeReviewTab === 'messages' && (
+            <>
+              <div className="ops-field">
+                <div className="ops-field-label">Approval Message</div>
+                <pre className="ops-proposal-draft">{review.approvalMessage}</pre>
+                <div className="ops-copy-row" style={{ marginTop: '0.5rem' }}>
+                  <CopyBtn text={review.approvalMessage} label="Copy Approval Message" />
+                </div>
+              </div>
+              <div className="ops-field">
+                <div className="ops-field-label">Rejection Message</div>
+                <pre className="ops-proposal-draft">{review.rejectionMessage}</pre>
+                <div className="ops-copy-row" style={{ marginTop: '0.5rem' }}>
+                  <CopyBtn text={review.rejectionMessage} label="Copy Rejection Message" />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+// ─── Error boundary ───────────────────────────────────────────────────────────
+
+interface EBState { error: Error | null }
+class SectionErrorBoundary extends React.Component<{ name: string; children: React.ReactNode }, EBState> {
+  constructor(props: { name: string; children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error): EBState { return { error }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error(`[Admin] ${this.props.name} crashed:`, error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="admin-section-crash">
+          <strong>⚠ Section error ({this.props.name})</strong>
+          <p>{this.state.error.message}</p>
+          <button onClick={() => this.setState({ error: null })}>Retry</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -1022,17 +1334,17 @@ export default function Admin() {
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) { console.error('[Admin] buyer_requests:', error); setReqError(true); }
-        else setRequests((data as BuyerRequestRow[]) ?? []);
+        else setRequests(((data ?? []) as Record<string, unknown>[]).map(normalizeBuyerRequest));
         setReqLoading(false);
       });
 
     supabase
       .from('creator_applications')
-      .select('id,full_name,email,tools,niches,experience,available_hours,portfolio_url,portfolio_url_2,message,status,created_at')
+      .select('id,full_name,email,tools,niches,experience,available_hours,portfolio_url,portfolio_url_2,message,status,created_at,tier,requested_plan_price,top_projects,service_capabilities,fulfillment_speed,github_url,linkedin_url,certifications,credential_links,case_studies')
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) { console.error('[Admin] creator_applications:', error); setAppError(true); }
-        else setApplications((data as CreatorApplicationRow[]) ?? []);
+        else setApplications(((data ?? []) as Record<string, unknown>[]).map(normalizeCreatorApp));
         setAppLoading(false);
       });
 
@@ -1042,11 +1354,17 @@ export default function Admin() {
     });
   }, []);
 
-  // Enriched requests with AI packets
-  const enriched = useMemo<EnrichedRequest[]>(
-    () => requests.map((row) => ({ row, packet: generateBuildPacket(rowToRequest(row)) })),
-    [requests]
-  );
+  // Enriched requests with AI packets — per-row isolation so one bad row can't crash
+  const enriched = useMemo<EnrichedRequest[]>(() => {
+    return requests.flatMap((row) => {
+      try {
+        return [{ row, packet: generateBuildPacket(rowToRequest(row)) }];
+      } catch (err) {
+        console.error('[Admin] generateBuildPacket failed for row', row.id, err);
+        return [];
+      }
+    });
+  }, [requests]);
 
   const filtered = useMemo(() => applyFilter(enriched, reqFilter), [enriched, reqFilter]);
 
@@ -1157,6 +1475,7 @@ export default function Admin() {
           />
 
           {!reqLoading && !reqError && requests.length > 0 && (
+            <SectionErrorBoundary name="Buyer Requests">
             <>
               <div className="req-filter-bar">
                 {FILTER_TABS.map((t) => {
@@ -1180,14 +1499,16 @@ export default function Admin() {
 
               <div className="req-card-list">
                 {filtered.map((e) => (
-                  <RequestCard
-                    key={e.row.id}
-                    enriched={e}
-                    onStatusChange={handleRequestStatusChange}
-                  />
+                  <SectionErrorBoundary key={e.row.id} name={`Request ${e.row.id}`}>
+                    <RequestCard
+                      enriched={e}
+                      onStatusChange={handleRequestStatusChange}
+                    />
+                  </SectionErrorBoundary>
                 ))}
               </div>
             </>
+            </SectionErrorBoundary>
           )}
         </section>
 
@@ -1206,15 +1527,18 @@ export default function Admin() {
           />
 
           {!appLoading && !appError && applications.length > 0 && (
-            <div className="creator-card-list">
-              {applications.map((a) => (
-                <CreatorCard
-                  key={a.id}
-                  app={a}
-                  onStatusChange={handleAppStatusChange}
-                />
-              ))}
-            </div>
+            <SectionErrorBoundary name="Creator Applications">
+              <div className="creator-card-list">
+                {applications.map((a) => (
+                  <SectionErrorBoundary key={a.id} name={`Creator ${a.id}`}>
+                    <CreatorCard
+                      app={a}
+                      onStatusChange={handleAppStatusChange}
+                    />
+                  </SectionErrorBoundary>
+                ))}
+              </div>
+            </SectionErrorBoundary>
           )}
         </section>
 

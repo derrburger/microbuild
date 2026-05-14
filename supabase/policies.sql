@@ -63,8 +63,15 @@ CREATE POLICY "buyer_requests_anon_insert"
   WITH CHECK (true);
 
 
--- ─── creator_applications — anonymous insert ─────────────────────────────────
--- Same pattern as buyer_requests.
+-- ─── creator_applications — all required policies ───────────────────────────
+-- Three policies are needed for the creator application system to work:
+--   1. creator_applications_anon_insert      — public form submission (/creators/apply)
+--   2. creator_applications_dev_admin_read   — admin dashboard reads (defined below in DEV section)
+--   3. creator_applications_dev_admin_update — admin status updates  (defined below in DEV section)
+--
+-- All three are DROP IF EXISTS / CREATE so this file is safe to rerun.
+-- See also: supabase/migrations/creator-tier-fields.sql for the required
+-- ALTER TABLE adding tier, credential, and proof columns.
 
 ALTER TABLE public.creator_applications ENABLE ROW LEVEL SECURITY;
 

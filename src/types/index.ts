@@ -1,3 +1,5 @@
+export type CreatorTier = 'free' | 'professional' | 'verified';
+
 export type MicroBuildCategory =
   | 'Quote Funnel'
   | 'Booking Page'

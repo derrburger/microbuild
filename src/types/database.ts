@@ -22,7 +22,21 @@ export type RequestStatus =
   | 'accepted'
   | 'rejected';
 
-export type ApplicationStatus = 'new' | 'reviewing' | 'approved' | 'rejected';
+export type CreatorTier = 'free' | 'professional' | 'verified';
+
+export type ApplicationStatus =
+  | 'new'
+  | 'reviewing'
+  | 'needs_portfolio_review'
+  | 'needs_more_info'
+  | 'approved_pending_payment'
+  | 'active'
+  | 'rejected'
+  | 'suspended';
+
+export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'revoked';
+export type PublicProfileStatus = 'hidden' | 'pending' | 'active' | 'suspended';
+export type SubscriptionStatus = 'none' | 'pending_payment' | 'active' | 'past_due' | 'cancelled';
 
 export type OrderStatus =
   | 'pending'
@@ -130,6 +144,17 @@ export interface CreatorApplicationRow {
   message: string | null;
   status: ApplicationStatus;
   created_at: string;
+  // Tier fields (added by migration: add_creator_tiers.sql)
+  tier: CreatorTier;
+  requested_plan_price: number;
+  top_projects: string | null;
+  service_capabilities: string[];
+  fulfillment_speed: string | null;
+  github_url: string | null;
+  linkedin_url: string | null;
+  certifications: string | null;
+  credential_links: string[];
+  case_studies: string | null;
 }
 
 export interface OrderRow {
@@ -223,6 +248,17 @@ export interface CreatorApplicationInsert {
   message?: string | null;
   status?: ApplicationStatus;
   created_at?: string;
+  // Tier fields (optional — pre-migration rows will default to 'free')
+  tier?: CreatorTier;
+  requested_plan_price?: number;
+  top_projects?: string | null;
+  service_capabilities?: string[];
+  fulfillment_speed?: string | null;
+  github_url?: string | null;
+  linkedin_url?: string | null;
+  certifications?: string | null;
+  credential_links?: string[];
+  case_studies?: string | null;
 }
 
 export interface OrderInsert {
@@ -324,7 +360,7 @@ export type Database = {
       creator_applications: {
         Row: CreatorApplicationRow;
         Insert: CreatorApplicationInsert;
-        Update: Partial<Omit<CreatorApplicationRow, 'id'>>;
+        Update: Partial<Omit<CreatorApplicationRow, 'id' | 'created_at'>>;
         Relationships: [];
       };
       orders: {

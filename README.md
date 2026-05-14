@@ -199,16 +199,21 @@ The file also includes commented-out "dev admin read" policies. Uncomment these 
 - [x] All 9 public pages
 - [x] Supabase connected (templates, buyer requests, creator applications)
 - [x] RLS policies for public reads and anonymous inserts
-- [x] Admin dashboard with live data
-- [x] AI Operations Command Center with filter tabs, cards, AI Ops panel, copy buttons
+- [x] Admin dashboard with live data + AI Ops Command Center
 - [x] Rules-based AI build packet system (no external AI API)
+- [x] Admin status updates write back to Supabase (buyer requests + creator applications)
+- [x] Creator tier application system (Free, Professional, Verified)
+- [x] Approval-before-payment model for paid tiers
+- [x] Admin AI review with tier-aware scoring, profile preview, copy messages
+- [x] Save Build Packet to Supabase from admin panel
 
 ### Phase 2 — Auth + Admin Operations
 - [ ] Supabase Auth (email/password or magic link)
-- [ ] Admin role check on `/admin`
+- [ ] Admin role check on `/admin` — replace temp dev policies with JWT-scoped RLS
 - [ ] Buyers can view their own request status
-- [ ] Admins can update request status
-- [ ] Creator profiles created from approved applications
+- [ ] Creator profiles created from approved applications (using `creator_profiles` table)
+- [ ] Creator login + dashboard to view assigned project briefs
+- [ ] Replace dev anon UPDATE/INSERT policies with service-role key in server-side routes
 
 ### Phase 3 — Build Packets + AI
 - [ ] Supabase Edge Function: `generate-build-packet` (server-side, no API key in frontend)
@@ -218,10 +223,71 @@ The file also includes commented-out "dev admin read" policies. Uncomment these 
 - [ ] `GeneratedBuildPacket` interface shape stays the same — only the generator changes
 
 ### Phase 4 — Payments
-- [ ] Stripe Checkout
-- [ ] Payment link generated per accepted request
-- [ ] Webhook handler updates `orders.status`
+- [ ] Stripe Checkout for buyer project fees
+- [ ] Stripe Subscriptions for Professional ($15/mo) and Verified ($25/mo) creator tiers
+- [ ] Payment link generated per accepted request; `approved_pending_payment` status triggers subscription activation email
+- [ ] Webhook handler updates `creator_applications.status` → `active` after payment
 - [ ] Creator payout via Stripe Connect
+
+---
+
+## Creator Tier System
+
+### Overview
+
+MicroBuild uses a three-tier creator system with approval-before-payment:
+
+| Tier | Monthly Price | Requirements | Marketplace Priority |
+|---|---|---|---|
+| **Free** | $0 | Basic portfolio, tools, niches | Standard |
+| **Professional** | $15/mo (after approval) | Strong portfolio, top projects, service capabilities, fulfillment speed | Priority |
+| **Verified** | $25/mo (after approval) | Credentials, certifications, GitHub/LinkedIn, case studies with real results | Top-tier |
+
+### Approval Workflow
+
+1. Creator selects tier and submits application via `/creators/apply`
+2. Application stored with `status: 'new'` and `tier: 'free' | 'professional' | 'verified'`
+3. Admin reviews in dashboard — AI Review panel shows tier-specific scoring, missing info, and suggested decision
+4. Admin sets status to one of:
+   - `needs_portfolio_review` — request more samples
+   - `needs_more_info` — specific clarifications needed
+   - `approved_pending_payment` — approved; subscription activation sent (Pro/Verified only)
+   - `active` — account is live and eligible for projects
+   - `rejected` — not a fit at this time
+   - `suspended` — temporarily deactivated
+5. Free tier goes directly to `active` on approval; paid tiers require subscription payment first
+
+### Pricing Transparency
+
+- Pricing is shown on the tier selection cards before submission
+- Pricing notice shown again at the bottom of the application form
+- Applicants are **not charged during application**
+- On `approved_pending_payment`, subscription activation instructions are sent separately
+- Applicants can decline the subscription at no cost
+
+### Database Schema
+
+The `creator_applications` table includes all tier fields after running `supabase/migrations/add_creator_tiers.sql`:
+- `tier`, `requested_plan_price`, `top_projects`, `service_capabilities`, `fulfillment_speed`
+- `github_url`, `linkedin_url`, `certifications`, `credential_links`, `case_studies`
+
+The `creator_profiles` table includes tier + subscription fields after the same migration.
+
+**See `supabase/migrations/add_creator_tiers.sql` for the full migration SQL.**
+
+### Admin AI Review (Creator Applications)
+
+For each creator application, the admin dashboard generates:
+- **Candidate Fit Score** (0–100) — tier-aware scoring based on tools, niches, portfolio, availability, and tier-specific proof
+- **Tier Fit Assessment** — how well evidence matches the claimed tier
+- **Suggested Badge** — Free Creator / MicroBuild Pro / Verified Creator ✓
+- **Strengths / Concerns / Missing Info** — rule-based flags for review
+- **Recommended Decision** — derived from score + tier + evidence completeness
+- **Copy-ready messages** — approval message, rejection message, follow-up message
+
+No AI API is called. All analysis is deterministic. Phase 3 may replace this with a Supabase Edge Function call.
+
+⚠️ **Security rule: No AI API keys ever go in the frontend.** All future AI integrations will be server-side only (Supabase Edge Functions).
 
 ---
 
