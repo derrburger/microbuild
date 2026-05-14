@@ -68,6 +68,38 @@ export interface GeneratedBuildPacket {
   missingInfoFlags: string[];
   riskFlags: string[];
   followUpQuestions: string[];
+
+  // ── Operational signals ───────────────────────────────────────────────────
+  quoteReadiness: string;
+  suggestedPriceRange: string;
+  estimatedFulfillmentDifficulty: string;
+  creatorFitRecommendation: string;
+  buyerOutreachMessage: string;
+}
+
+// ─── Creator Application Review ───────────────────────────────────────────────
+
+export interface CreatorApplicationInput {
+  full_name: string;
+  email: string;
+  tools: string[];
+  niches: string[];
+  experience: string;
+  available_hours: string;
+  portfolio_url: string | null;
+  portfolio_url_2?: string | null;
+  message: string | null;
+}
+
+export interface CreatorApplicationReview {
+  candidateFitScore: number;
+  fitLabel: 'Strong' | 'Good' | 'Fair' | 'Weak';
+  strengths: string[];
+  concerns: string[];
+  missingPortfolioInfo: string[];
+  bestFitNiches: string[];
+  recommendedDecision: string;
+  creatorFollowUpMessage: string;
 }
 
 // ─── Static lookup tables ─────────────────────────────────────────────────────
@@ -577,6 +609,205 @@ function buildProposalDraft(
   ].join('\n');
 }
 
+// ─── Operational signal helpers ───────────────────────────────────────────────
+
+function deriveQuoteReadiness(score: number, form: BuyerRequest): string {
+  if (!form.buildType || form.buildType === 'Not sure')
+    return 'Not ready — build type unknown';
+  if (score < 40)
+    return 'Not ready — too many unknowns';
+  if (score >= 80 && form.budget && form.budget !== 'Not sure yet')
+    return 'Ready to quote';
+  if (score >= 80)
+    return 'Nearly ready — confirm budget';
+  if (score >= 60 && form.budget && form.budget !== 'Not sure yet')
+    return 'Nearly ready — minor clarifications needed';
+  return 'Needs 1–2 more details before quoting';
+}
+
+function deriveSuggestedPriceRange(
+  complexity: ComplexityRating,
+  budget: string
+): string {
+  const base =
+    complexity === 'High'   ? '$400–$800' :
+    complexity === 'Medium' ? '$250–$500' : '$150–$300';
+  if (budget && budget !== 'Not sure yet' && budget !== '')
+    return `${base} (buyer indicated: ${budget})`;
+  return base;
+}
+
+function deriveEstimatedFulfillmentDifficulty(complexity: ComplexityRating): string {
+  return complexity === 'High'   ? 'Complex — 5–7 business days' :
+         complexity === 'Medium' ? 'Standard — 3–5 business days' :
+                                   'Easy — 1–3 business days';
+}
+
+function deriveCreatorFitRecommendation(buildType: string, industry: string): string {
+  const map: Record<string, string> = {
+    'Quote Funnel':
+      `Best fit: Creator experienced with multi-step form builders (Typeform, Fillout, Tally) and local ${industry} lead capture. Strong mobile UX skills required.`,
+    'Booking Page':
+      `Best fit: Creator familiar with scheduling integrations (Calendly, Cal.com, Square Appointments) and ${industry} calendar workflows. Calendar embed experience essential.`,
+    'Review Booster':
+      `Best fit: Creator who can handle conditional URL routing, minimal mobile UI, and email trigger setup. ${industry} industry context is a plus but not required.`,
+    'Trust Page':
+      `Best fit: Creator with image-heavy landing page experience and OpenGraph/SEO meta skills. Client will supply ${industry} before/after photos.`,
+    'Package Selector':
+      `Best fit: Creator experienced in pricing UI with dynamic calculators and CTA-driven layouts. Familiarity with ${industry} service tiers preferred.`,
+  };
+  return map[buildType] ?? `Best fit: Creator with full-stack MicroBuild experience and familiarity with ${industry} service businesses.`;
+}
+
+function buildBuyerOutreachMessage(
+  form: BuyerRequest,
+  followUpQuestions: string[],
+  missingInfoFlags: string[]
+): string {
+  const firstFollowUp = followUpQuestions[0] ?? 'Could you tell us more about your timeline and budget?';
+  const hasKey = missingInfoFlags.length > 0;
+  return [
+    `Hi ${form.fullName},`,
+    ``,
+    `Thanks for submitting your ${form.buildType || 'MicroBuild'} request for ${form.businessName}! We've reviewed it and it looks like a strong match for our service.`,
+    ``,
+    hasKey
+      ? `Before we send a formal proposal, there's one quick thing we'd love to confirm:\n\n${firstFollowUp}`
+      : `We have availability in the next 1–2 weeks and we're ready to move forward.\n\nWould you like us to send a full scope and price proposal?`,
+    ``,
+    `Reply to this message or let us know a good time to connect briefly — we'll have a proposal to you the same day.`,
+    ``,
+    `— MicroBuild Team`,
+  ].join('\n');
+}
+
+// ─── Creator review generator ─────────────────────────────────────────────────
+
+export function generateCreatorReview(app: CreatorApplicationInput): CreatorApplicationReview {
+  let score = 0;
+
+  const toolCount  = app.tools.length;
+  const nicheCount = app.niches.length;
+  const hours      = parseInt(app.available_hours) || 0;
+  const expLen     = (app.experience ?? '').trim().length;
+
+  // Scoring
+  if (toolCount >= 3)       score += 25;
+  else if (toolCount >= 2)  score += 15;
+  else if (toolCount >= 1)  score += 8;
+
+  if (nicheCount >= 3)      score += 20;
+  else if (nicheCount >= 2) score += 12;
+  else if (nicheCount >= 1) score += 6;
+
+  if (app.portfolio_url)    score += 20;
+  if (app.portfolio_url_2)  score += 5;
+
+  if (expLen > 100)         score += 15;
+  else if (expLen > 50)     score += 8;
+  else if (expLen > 10)     score += 3;
+
+  if (hours >= 20)          score += 10;
+  else if (hours >= 10)     score += 6;
+  else if (hours >= 5)      score += 2;
+
+  if (app.message)          score += 5;
+
+  score = Math.min(score, 100);
+
+  const fitLabel: CreatorApplicationReview['fitLabel'] =
+    score >= 70 ? 'Strong' :
+    score >= 50 ? 'Good'   :
+    score >= 30 ? 'Fair'   : 'Weak';
+
+  // Strengths
+  const strengths: string[] = [];
+  const toolLower = app.tools.map((t) => t.toLowerCase());
+  const hasFormBuilders = toolLower.some((t) => ['typeform', 'fillout', 'tally', 'jotform', 'paperform', 'formstack'].some(b => t.includes(b)));
+  const hasWebBuilders  = toolLower.some((t) => ['webflow', 'framer', 'carrd', 'squarespace', 'wix', 'wordpress'].some(b => t.includes(b)));
+  const hasBooking      = toolLower.some((t) => ['calendly', 'cal.com', 'square', 'acuity', 'jobber'].some(b => t.includes(b)));
+
+  if (hasFormBuilders)     strengths.push('Experienced with form builders — well-suited for Quote Funnels');
+  if (hasWebBuilders)      strengths.push('Experienced with web/page builders — well-suited for Trust Pages and Package Selectors');
+  if (hasBooking)          strengths.push('Familiar with booking/scheduling tools — ideal for Booking Pages');
+  if (toolCount >= 3)      strengths.push(`Broad tool stack (${toolCount} tools) — can handle varied build types`);
+  if (nicheCount >= 3)     strengths.push(`Multi-niche coverage (${nicheCount} niches) — versatile creator`);
+  if (app.portfolio_url)   strengths.push('Portfolio provided — work quality can be reviewed');
+  if (hours >= 15)         strengths.push(`High availability (${hours} hrs/week) — can handle fast turnarounds`);
+  if (expLen > 100)        strengths.push('Detailed professional background — shows clear communication skills');
+  if (strengths.length === 0) strengths.push('Application submitted — awaiting portfolio and detail review');
+
+  // Concerns
+  const concerns: string[] = [];
+  if (!app.portfolio_url)  concerns.push('No portfolio URL — cannot verify work quality before approval');
+  if (hours < 10)          concerns.push(`Low weekly availability (${hours || 'unspecified'} hrs) — may not meet deadlines`);
+  if (toolCount < 2)       concerns.push('Limited tool stack — may lack flexibility for all build types');
+  if (nicheCount < 2)      concerns.push('Very narrow niche focus — may not be versatile enough for the marketplace');
+  if (expLen < 30)         concerns.push('Experience description is brief — unclear depth of professional background');
+  if (!app.message)        concerns.push('No personal statement — unable to gauge motivation and communication style');
+
+  // Missing info
+  const missing: string[] = [];
+  if (!app.portfolio_url)    missing.push('Portfolio URL — required before approval decision');
+  if (!app.message)          missing.push('Personal statement — why do they want to join MicroBuild?');
+  if (app.tools.length === 0) missing.push('Tool list is empty');
+  if (app.niches.length === 0) missing.push('Niche specializations are empty');
+
+  // Best fit niches (from application or inferred from tools)
+  const bestFitNiches = app.niches.length > 0
+    ? app.niches
+    : (hasFormBuilders ? ['Quote Funnel'] : []).concat(
+        hasWebBuilders  ? ['Trust Page', 'Package Selector'] : [],
+        hasBooking      ? ['Booking Page'] : []
+      );
+
+  // Decision
+  const recommendedDecision =
+    score >= 70
+      ? '✅ Approve — strong candidate, proceed to onboarding'
+      : score >= 50
+      ? '📋 Needs portfolio review — request 1–2 sample builds before approving'
+      : score >= 30
+      ? '📞 Conditional — schedule a brief call to assess fit before deciding'
+      : '❌ Decline — insufficient information or availability to proceed';
+
+  // Follow-up message
+  const followUpMessage = app.portfolio_url
+    ? [
+        `Hi ${app.full_name},`,
+        ``,
+        `Thanks for applying to the MicroBuild creator program! We've reviewed your application.`,
+        ``,
+        score >= 70
+          ? `Your background looks like a strong fit. We'll be in touch within 1–2 business days with onboarding details.`
+          : `We'd love to see 1–2 examples of builds you've completed before moving forward. Can you share a portfolio link or a few live URLs?`,
+        ``,
+        `— MicroBuild Team`,
+      ].join('\n')
+    : [
+        `Hi ${app.full_name},`,
+        ``,
+        `Thanks for applying to MicroBuild! We're excited to review your application.`,
+        ``,
+        `To move forward, could you share a portfolio link or 1–2 examples of builds you've completed? This helps us understand your work style and place you with the right clients.`,
+        ``,
+        `Looking forward to hearing from you.`,
+        ``,
+        `— MicroBuild Team`,
+      ].join('\n');
+
+  return {
+    candidateFitScore: score,
+    fitLabel,
+    strengths,
+    concerns,
+    missingPortfolioInfo: missing,
+    bestFitNiches: bestFitNiches.length > 0 ? bestFitNiches : ['General — needs portfolio review to confirm'],
+    recommendedDecision,
+    creatorFollowUpMessage: followUpMessage,
+  };
+}
+
 // ─── Generator ────────────────────────────────────────────────────────────────
 
 export function generateBuildPacket(
@@ -699,5 +930,11 @@ export function generateBuildPacket(
     missingInfoFlags,
     riskFlags,
     followUpQuestions,
+
+    quoteReadiness:                  deriveQuoteReadiness(score, form),
+    suggestedPriceRange:             deriveSuggestedPriceRange(complexity, form.budget),
+    estimatedFulfillmentDifficulty:  deriveEstimatedFulfillmentDifficulty(complexity),
+    creatorFitRecommendation:        deriveCreatorFitRecommendation(buildType, form.industry),
+    buyerOutreachMessage:            buildBuyerOutreachMessage(form, followUpQuestions, missingInfoFlags),
   };
 }

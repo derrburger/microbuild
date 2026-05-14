@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { fetchTemplates } from '../lib/templates';
-import { generateBuildPacket } from '../lib/buildPacket';
-import type { GeneratedBuildPacket } from '../lib/buildPacket';
+import { generateBuildPacket, generateCreatorReview } from '../lib/buildPacket';
+import type { GeneratedBuildPacket, CreatorApplicationReview } from '../lib/buildPacket';
 import type { MicroBuildListing } from '../types';
 import './Admin.css';
 
@@ -33,6 +33,9 @@ interface CreatorApplicationRow {
   niches: string[];
   experience: string;
   available_hours: string;
+  portfolio_url: string | null;
+  portfolio_url_2: string | null;
+  message: string | null;
   status: string;
   created_at: string;
 }
@@ -88,6 +91,61 @@ const fitColors: Record<string, string> = {
   Weak:   '#ef4444',
 };
 
+const quoteReadinessColors: Record<string, string> = {
+  'Ready to quote':                   '#00d478',
+  'Nearly ready — confirm budget':    '#00d478',
+  'Nearly ready — minor clarifications needed': '#63b3ed',
+  'Needs 1–2 more details before quoting': '#f9b032',
+  'Not ready — too many unknowns':    '#ef4444',
+  'Not ready — build type unknown':   '#ef4444',
+};
+
+// ─── Supabase action helpers ──────────────────────────────────────────────────
+
+async function updateRequestStatus(id: string, status: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('buyer_requests')
+    .update({ status })
+    .eq('id', id);
+  if (error) { console.error('[Admin] update buyer_request status:', error); return false; }
+  return true;
+}
+
+async function updateApplicationStatus(id: string, status: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('creator_applications')
+    .update({ status })
+    .eq('id', id);
+  if (error) { console.error('[Admin] update application status:', error); return false; }
+  return true;
+}
+
+async function saveBuiltPacket(
+  requestId: string,
+  packet: GeneratedBuildPacket
+): Promise<{ id: string } | null> {
+  const { data, error } = await (supabase
+    .from('build_packets')
+    .insert({
+      request_id:           requestId,
+      order_id:             null,
+      business_summary:     packet.businessSummary,
+      recommended_build:    packet.recommendedBuild,
+      customer_problem:     packet.problem,
+      suggested_copy:       { direction: packet.suggestedCopyDirection, cta: packet.ctaStrategy },
+      form_fields:          packet.formFields.map((f) => ({ field: f })),
+      design_direction:     packet.designDirection,
+      automation_needs:     packet.automationNeeds,
+      creator_instructions: packet.creatorInstructions,
+      quality_checklist:    packet.qualityChecklist,
+      generated_by:         'manual',
+    })
+    .select('id')
+    .single() as unknown as Promise<{ data: { id: string } | null; error: unknown }>);
+  if (error) { console.error('[Admin] save build_packet:', error); return null; }
+  return data;
+}
+
 // ─── Utility helpers ──────────────────────────────────────────────────────────
 
 function fmtDate(iso: string) {
@@ -122,26 +180,22 @@ function rowToRequest(row: BuyerRequestRow) {
   };
 }
 
-function deriveCreatorFit(app: CreatorApplicationRow): { label: string; color: string } {
-  const tools = app.tools.length;
-  const niches = app.niches.length;
-  const hours = parseInt(app.available_hours) || 0;
-  if (tools >= 3 && niches >= 2 && hours >= 10)
-    return { label: 'Strong candidate', color: '#00d478' };
-  if (tools >= 2 && niches >= 1)
-    return { label: 'Needs portfolio review', color: '#f9b032' };
-  return { label: 'Limited fit', color: '#ef4444' };
-}
-
-function buildCreatorSummary(app: CreatorApplicationRow): string {
+function buildCreatorSummary(app: CreatorApplicationRow, review: CreatorApplicationReview): string {
   return [
     `Creator: ${app.full_name} (${app.email})`,
     `Tools: ${app.tools.join(', ')}`,
     `Niches: ${app.niches.join(', ')}`,
     `Experience: ${app.experience}`,
     `Availability: ${app.available_hours} hours/week`,
+    `Portfolio: ${app.portfolio_url ?? 'Not provided'}`,
     `Status: ${app.status}`,
     `Applied: ${fmtDate(app.created_at)}`,
+    ``,
+    `AI REVIEW`,
+    `Fit Score: ${review.candidateFitScore}/100 (${review.fitLabel})`,
+    `Decision: ${review.recommendedDecision}`,
+    `Strengths: ${review.strengths.join('; ')}`,
+    `Concerns: ${review.concerns.length > 0 ? review.concerns.join('; ') : 'None'}`,
   ].join('\n');
 }
 
@@ -156,16 +210,16 @@ function buildPacketSummaryText(row: BuyerRequestRow, packet: GeneratedBuildPack
     ``,
     `SCORES`,
     `Lead Quality: ${packet.leadQualityLabel} (${packet.leadQualityScore}/100)`,
-    `Priority: ${packet.priorityLabel}`,
-    `Fit Rating: ${packet.fitRating}`,
-    `Urgency: ${packet.urgencyRating}`,
-    `Complexity: ${packet.complexityRating}`,
-    `Revenue Potential: ${packet.revenuePotentialRating}`,
+    `Priority: ${packet.priorityLabel}  |  Fit: ${packet.fitRating}  |  Urgency: ${packet.urgencyRating}`,
+    `Complexity: ${packet.complexityRating}  |  Revenue Potential: ${packet.revenuePotentialRating}`,
+    `Quote Readiness: ${packet.quoteReadiness}`,
+    `Price Range: ${packet.suggestedPriceRange}`,
+    `Fulfillment: ${packet.estimatedFulfillmentDifficulty}`,
     ``,
     `RECOMMENDED NEXT ACTION`,
     packet.adminNextAction,
     ``,
-    `MISSING INFO FLAGS`,
+    `MISSING INFO`,
     packet.missingInfoFlags.length > 0 ? packet.missingInfoFlags.map(f => `• ${f}`).join('\n') : 'None',
     ``,
     `RISK FLAGS`,
@@ -173,7 +227,7 @@ function buildPacketSummaryText(row: BuyerRequestRow, packet: GeneratedBuildPack
   ].join('\n');
 }
 
-// ─── Small shared components ──────────────────────────────────────────────────
+// ─── Shared components ────────────────────────────────────────────────────────
 
 function SectionState({
   loading, error, empty, emptyMsg,
@@ -199,18 +253,111 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
   );
 }
 
+// ─── Status Dropdown (buyer requests) ────────────────────────────────────────
+
+const REQ_STATUS_OPTIONS = [
+  { value: 'new',           label: '● New'           },
+  { value: 'in-review',     label: '● In Review'     },
+  { value: 'proposal-sent', label: '● Proposal Sent' },
+  { value: 'accepted',      label: '● Accepted'      },
+  { value: 'rejected',      label: '● Rejected'      },
+];
+
+function StatusDropdown({
+  id, initialStatus, onStatusChange,
+}: {
+  id: string;
+  initialStatus: string;
+  onStatusChange?: (id: string, newStatus: string) => void;
+}) {
+  const [current, setCurrent] = useState(initialStatus);
+  const [saving, setSaving]   = useState(false);
+  const [failed, setFailed]   = useState(false);
+
+  async function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const next = e.target.value;
+    const prev = current;
+    setCurrent(next);
+    setSaving(true);
+    setFailed(false);
+    const ok = await updateRequestStatus(id, next);
+    setSaving(false);
+    if (!ok) {
+      setCurrent(prev);
+      setFailed(true);
+      setTimeout(() => setFailed(false), 3000);
+    } else {
+      onStatusChange?.(id, next);
+    }
+  }
+
+  return (
+    <div className={`status-dropdown-wrap${failed ? ' status-dropdown--error' : ''}`}>
+      <select
+        className="status-dropdown"
+        value={current}
+        onChange={handleChange}
+        disabled={saving}
+        style={{ color: statusColors[current] ?? '#8a94a6' }}
+      >
+        {REQ_STATUS_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      {saving && <span className="status-saving">Saving…</span>}
+      {failed && <span className="status-error-label">Failed — retry</span>}
+    </div>
+  );
+}
+
+// ─── Save Build Packet button ─────────────────────────────────────────────────
+
+function SavePacketButton({ requestId, packet }: { requestId: string; packet: GeneratedBuildPacket }) {
+  const [state, setState]   = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [savedId, setSavedId] = useState<string | null>(null);
+
+  async function handleSave() {
+    setState('saving');
+    const result = await saveBuiltPacket(requestId, packet);
+    if (result) {
+      setState('saved');
+      setSavedId(result.id);
+    } else {
+      setState('error');
+      setTimeout(() => setState('idle'), 4000);
+    }
+  }
+
+  if (state === 'saved') {
+    return (
+      <div className="save-packet-success">
+        ✓ Packet saved{savedId ? ` · ID: ${savedId.slice(0, 8)}…` : ''}
+      </div>
+    );
+  }
+  return (
+    <button
+      className={`save-packet-btn${state === 'error' ? ' save-packet-btn--error' : ''}`}
+      onClick={handleSave}
+      disabled={state === 'saving'}
+    >
+      {state === 'saving' ? 'Saving…' : state === 'error' ? 'Failed — retry' : '⬇ Save to Supabase'}
+    </button>
+  );
+}
+
 // ─── AI Operations Panel ──────────────────────────────────────────────────────
 
 type AiTab = 'summary' | 'missing' | 'followup' | 'brief' | 'proposal' | 'checklists' | 'automation';
 
 const AI_TABS: { id: AiTab; label: string }[] = [
-  { id: 'summary',    label: 'AI Summary'     },
-  { id: 'missing',    label: 'Missing Info'   },
-  { id: 'followup',   label: 'Follow-up Qs'  },
-  { id: 'brief',      label: 'Creator Brief'  },
-  { id: 'proposal',   label: 'Proposal'       },
-  { id: 'checklists', label: 'Checklists'     },
-  { id: 'automation', label: 'Automation'     },
+  { id: 'summary',    label: 'AI Summary'    },
+  { id: 'missing',    label: 'Missing Info'  },
+  { id: 'followup',   label: 'Follow-up Qs' },
+  { id: 'brief',      label: 'Creator Brief' },
+  { id: 'proposal',   label: 'Proposal'      },
+  { id: 'checklists', label: 'Checklists'    },
+  { id: 'automation', label: 'Automation'    },
 ];
 
 function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBuildPacket }) {
@@ -237,6 +384,7 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
       </div>
 
       <div className="ai-ops-content">
+
         {tab === 'summary' && (
           <>
             <div className="ops-scores-grid">
@@ -265,14 +413,25 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
                 </span>
               </div>
               <div className="ops-score-cell">
+                <span className="ops-score-label">Quote Readiness</span>
+                <span className="ops-score-value" style={{ color: quoteReadinessColors[packet.quoteReadiness] ?? '#8a94a6' }}>
+                  {packet.quoteReadiness}
+                </span>
+              </div>
+              <div className="ops-score-cell">
+                <span className="ops-score-label">Price Range</span>
+                <span className="ops-score-value">{packet.suggestedPriceRange}</span>
+              </div>
+              <div className="ops-score-cell">
                 <span className="ops-score-label">Complexity</span>
                 <span className="ops-score-value">{packet.complexityRating}</span>
               </div>
               <div className="ops-score-cell">
-                <span className="ops-score-label">Revenue Potential</span>
-                <span className="ops-score-value">{packet.revenuePotentialRating}</span>
+                <span className="ops-score-label">Fulfillment</span>
+                <span className="ops-score-value">{packet.estimatedFulfillmentDifficulty}</span>
               </div>
             </div>
+
             <div className="ops-field">
               <div className="ops-field-label">AI Overview</div>
               <p>{packet.aiSummary}</p>
@@ -282,8 +441,8 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
               <p>{packet.whyThisBuildFits}</p>
             </div>
             <div className="ops-field">
-              <div className="ops-field-label">Target Audience</div>
-              <p>{packet.targetAudience}</p>
+              <div className="ops-field-label">Creator Fit Recommendation</div>
+              <p>{packet.creatorFitRecommendation}</p>
             </div>
             <div className="ops-copy-row">
               <CopyBtn text={buildPacketSummaryText(row, packet)} label="Copy Packet Summary" />
@@ -327,6 +486,7 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
                 text={`Follow-up questions for ${row.business_name}:\n\n` + packet.followUpQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
                 label="Copy Follow-up Questions"
               />
+              <CopyBtn text={packet.buyerOutreachMessage} label="Copy Buyer Outreach Message" />
             </div>
           </>
         )}
@@ -361,13 +521,13 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
                   packet.creatorInstructions,
                   '',
                   'Page Sections:',
-                  ...packet.suggestedPageSections.map(s => `• ${s}`),
+                  ...packet.suggestedPageSections.map((s) => `• ${s}`),
                   '',
                   'Design Direction:',
                   packet.designDirection,
                   '',
                   'Suggested Form Fields:',
-                  ...packet.formFields.map(f => `• ${f}`),
+                  ...packet.formFields.map((f) => `• ${f}`),
                 ].join('\n')}
                 label="Copy Creator Brief"
               />
@@ -391,6 +551,7 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
             </div>
             <div className="ops-copy-row">
               <CopyBtn text={packet.proposalDraft} label="Copy Proposal Draft" />
+              <SavePacketButton requestId={row.id} packet={packet} />
             </div>
           </>
         )}
@@ -422,8 +583,13 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
               <div className="ops-field-label">CTA Strategy</div>
               <p>{packet.ctaStrategy}</p>
             </div>
+            <div className="ops-field">
+              <div className="ops-field-label">Target Audience</div>
+              <p>{packet.targetAudience}</p>
+            </div>
           </>
         )}
+
       </div>
     </div>
   );
@@ -431,47 +597,62 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
 
 // ─── Request Card ─────────────────────────────────────────────────────────────
 
-function RequestCard({ enriched }: { enriched: EnrichedRequest }) {
+function RequestCard({
+  enriched,
+  onStatusChange,
+}: {
+  enriched: EnrichedRequest;
+  onStatusChange: (id: string, newStatus: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const { row, packet } = enriched;
 
   return (
     <div className={`req-card${expanded ? ' req-card--open' : ''}`}>
-      {/* Header row */}
+
+      {/* Header */}
       <div className="req-card-header">
         <div className="req-card-badges">
           <span
             className="req-priority-pill"
-            style={{ backgroundColor: priorityColors[packet.priorityLabel] + '22',
-                     color: priorityColors[packet.priorityLabel],
-                     borderColor: priorityColors[packet.priorityLabel] + '55' }}
+            style={{
+              backgroundColor: priorityColors[packet.priorityLabel] + '22',
+              color:            priorityColors[packet.priorityLabel],
+              borderColor:      priorityColors[packet.priorityLabel] + '55',
+            }}
           >
             {packet.priorityLabel} Priority
           </span>
           <span
             className="req-fit-pill"
-            style={{ backgroundColor: fitColors[packet.fitRating] + '22',
-                     color: fitColors[packet.fitRating],
-                     borderColor: fitColors[packet.fitRating] + '55' }}
+            style={{
+              backgroundColor: fitColors[packet.fitRating] + '22',
+              color:            fitColors[packet.fitRating],
+              borderColor:      fitColors[packet.fitRating] + '55',
+            }}
           >
             {packet.fitRating} Fit
           </span>
           <span
-            className="req-status-pill"
-            style={{ color: statusColors[row.status] ?? '#8a94a6' }}
+            className="req-quote-pill"
+            style={{ color: quoteReadinessColors[packet.quoteReadiness] ?? '#8a94a6' }}
           >
-            ● {row.status}
+            {packet.quoteReadiness}
           </span>
         </div>
         <div className="req-card-meta-right">
           <span
             className="req-quality-score"
             style={{ color: qualityColors[packet.leadQualityLabel] }}
-            title={`Lead quality: ${packet.leadQualityLabel}`}
           >
             {packet.leadQualityScore}/100
           </span>
           <span className="req-date">{fmtDate(row.created_at)}</span>
+          <StatusDropdown
+            id={row.id}
+            initialStatus={row.status}
+            onStatusChange={onStatusChange}
+          />
         </div>
       </div>
 
@@ -495,12 +676,13 @@ function RequestCard({ enriched }: { enriched: EnrichedRequest }) {
           </div>
           <div className="req-detail-item">
             <span className="req-detail-label">Deadline</span>
-            <span
-              className="req-detail-value"
-              style={{ color: urgencyColors[packet.urgencyRating] }}
-            >
+            <span className="req-detail-value" style={{ color: urgencyColors[packet.urgencyRating] }}>
               {row.deadline || '—'}
             </span>
+          </div>
+          <div className="req-detail-item">
+            <span className="req-detail-label">Price est.</span>
+            <span className="req-detail-value">{packet.suggestedPriceRange}</span>
           </div>
         </div>
 
@@ -519,11 +701,15 @@ function RequestCard({ enriched }: { enriched: EnrichedRequest }) {
         </div>
       </div>
 
-      {/* Goal/Problem summary */}
+      {/* Goal/problem summary */}
       <div className="req-card-summary">
         <span className="req-summary-label">Goal:</span> {row.main_goal}
         {row.current_problem && (
-          <><br /><span className="req-summary-label">Problem:</span> {row.current_problem.slice(0, 160)}{row.current_problem.length > 160 ? '…' : ''}</>
+          <>
+            <br />
+            <span className="req-summary-label">Problem:</span>{' '}
+            {row.current_problem.slice(0, 180)}{row.current_problem.length > 180 ? '…' : ''}
+          </>
         )}
       </div>
 
@@ -544,29 +730,159 @@ function RequestCard({ enriched }: { enriched: EnrichedRequest }) {
 // ─── Filter tabs ──────────────────────────────────────────────────────────────
 
 const FILTER_TABS: { id: RequestFilter; label: string; getCount: (e: EnrichedRequest[]) => number }[] = [
-  { id: 'all',           label: 'All',           getCount: (e) => e.length },
-  { id: 'new',           label: 'New',           getCount: (e) => e.filter(r => r.row.status === 'new').length },
-  { id: 'high-priority', label: 'High Priority', getCount: (e) => e.filter(r => r.packet.priorityLabel === 'High').length },
-  { id: 'needs-followup',label: 'Needs Follow-up',getCount: (e) => e.filter(r => r.packet.missingInfoFlags.length > 2 || r.packet.leadQualityLabel === 'Needs Detail').length },
-  { id: 'ready-to-quote',label: 'Ready to Quote',getCount: (e) => e.filter(r => (r.packet.leadQualityLabel === 'Strong' || r.packet.leadQualityLabel === 'Good') && r.packet.missingInfoFlags.length <= 2).length },
+  { id: 'all',            label: 'All',            getCount: (e) => e.length },
+  { id: 'new',            label: 'New',            getCount: (e) => e.filter((r) => r.row.status === 'new').length },
+  { id: 'high-priority',  label: 'High Priority',  getCount: (e) => e.filter((r) => r.packet.priorityLabel === 'High').length },
+  { id: 'needs-followup', label: 'Needs Follow-up',getCount: (e) => e.filter((r) => r.packet.missingInfoFlags.length > 2 || r.packet.leadQualityLabel === 'Needs Detail').length },
+  { id: 'ready-to-quote', label: 'Ready to Quote', getCount: (e) => e.filter((r) => r.packet.quoteReadiness.startsWith('Ready') || r.packet.quoteReadiness.startsWith('Nearly')).length },
 ];
 
 function applyFilter(enriched: EnrichedRequest[], filter: RequestFilter): EnrichedRequest[] {
   switch (filter) {
-    case 'new':           return enriched.filter((r) => r.row.status === 'new');
-    case 'high-priority': return enriched.filter((r) => r.packet.priorityLabel === 'High');
-    case 'needs-followup':return enriched.filter((r) => r.packet.missingInfoFlags.length > 2 || r.packet.leadQualityLabel === 'Needs Detail');
-    case 'ready-to-quote':return enriched.filter((r) => (r.packet.leadQualityLabel === 'Strong' || r.packet.leadQualityLabel === 'Good') && r.packet.missingInfoFlags.length <= 2);
-    default:              return enriched;
+    case 'new':            return enriched.filter((r) => r.row.status === 'new');
+    case 'high-priority':  return enriched.filter((r) => r.packet.priorityLabel === 'High');
+    case 'needs-followup': return enriched.filter((r) => r.packet.missingInfoFlags.length > 2 || r.packet.leadQualityLabel === 'Needs Detail');
+    case 'ready-to-quote': return enriched.filter((r) => r.packet.quoteReadiness.startsWith('Ready') || r.packet.quoteReadiness.startsWith('Nearly'));
+    default:               return enriched;
   }
+}
+
+// ─── AI Ops Assistant panel ───────────────────────────────────────────────────
+
+function AiOpsAssistant({
+  enriched,
+  newApps,
+}: {
+  enriched: EnrichedRequest[];
+  newApps: number;
+}) {
+  const highPriority  = enriched.filter((e) => e.packet.priorityLabel === 'High');
+  const readyToQuote  = enriched.filter((e) => e.packet.quoteReadiness.startsWith('Ready') || e.packet.quoteReadiness.startsWith('Nearly'));
+  const needsFollowup = enriched.filter((e) => e.packet.missingInfoFlags.length > 2 || e.packet.leadQualityLabel === 'Needs Detail');
+
+  let focus: string;
+  if (highPriority.length > 0 && readyToQuote.length > 0) {
+    focus = `Review ${highPriority.length} high-priority request${highPriority.length > 1 ? 's' : ''} — ${readyToQuote.length} ${readyToQuote.length === 1 ? 'is' : 'are'} ready to quote`;
+  } else if (highPriority.length > 0) {
+    focus = `Review and respond to ${highPriority.length} high-priority request${highPriority.length > 1 ? 's' : ''} today`;
+  } else if (readyToQuote.length > 0) {
+    focus = `Send quote proposals for ${readyToQuote.length} request${readyToQuote.length > 1 ? 's' : ''} that are ready to scope`;
+  } else if (needsFollowup.length > 0) {
+    focus = `Follow up on ${needsFollowup.length} request${needsFollowup.length > 1 ? 's' : ''} — clarify details before scoping`;
+  } else if (newApps > 0) {
+    focus = `Review ${newApps} new creator application${newApps > 1 ? 's' : ''}`;
+  } else if (enriched.length === 0) {
+    focus = 'No requests yet — share the buyer request URL to start receiving submissions';
+  } else {
+    focus = 'All clear — no urgent items. Good time to review open requests and update statuses';
+  }
+
+  return (
+    <div className="ops-assistant">
+      <div className="ops-assistant-header">
+        <span className="ops-assistant-title">⚡ AI Ops Brief</span>
+        <span className="ops-assistant-note">Rules-based · live data · no AI API</span>
+      </div>
+      <div className="ops-assistant-focus">{focus}</div>
+      <div className="ops-assistant-signals">
+        <span
+          className="ops-signal"
+          style={{ color: highPriority.length > 0 ? '#ef4444' : undefined }}
+        >
+          {highPriority.length} High Priority
+        </span>
+        <span
+          className="ops-signal"
+          style={{ color: readyToQuote.length > 0 ? '#00d478' : undefined }}
+        >
+          {readyToQuote.length} Ready to Quote
+        </span>
+        <span
+          className="ops-signal"
+          style={{ color: needsFollowup.length > 0 ? '#f9b032' : undefined }}
+        >
+          {needsFollowup.length} Needs Follow-up
+        </span>
+        <span
+          className="ops-signal"
+          style={{ color: newApps > 0 ? '#63b3ed' : undefined }}
+        >
+          {newApps} New Applications
+        </span>
+      </div>
+      {highPriority.length > 0 && (
+        <div className="ops-assistant-toplist">
+          <span className="ops-tl-label">High Priority:</span>
+          {highPriority.slice(0, 3).map((e) => (
+            <span key={e.row.id} className="ops-tl-item">
+              {e.row.business_name} ({e.row.build_type})
+            </span>
+          ))}
+          {highPriority.length > 3 && <span className="ops-tl-more">+{highPriority.length - 3} more</span>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Creator Application Card ─────────────────────────────────────────────────
 
-function CreatorCard({ app }: { app: CreatorApplicationRow }) {
-  const fit = deriveCreatorFit(app);
+const APP_STATUS_ACTIONS: { status: string; label: string }[] = [
+  { status: 'reviewing', label: 'Mark Reviewed'    },
+  { status: 'approved',  label: 'Approve'          },
+  { status: 'rejected',  label: 'Reject'           },
+  { status: 'new',       label: 'Reset to New'     },
+];
+
+function CreatorCard({
+  app,
+  onStatusChange,
+}: {
+  app: CreatorApplicationRow;
+  onStatusChange: (id: string, newStatus: string) => void;
+}) {
+  const [status, setStatus]           = useState(app.status);
+  const [updating, setUpdating]       = useState(false);
+  const [updateError, setUpdateError] = useState(false);
+  const [reviewOpen, setReviewOpen]   = useState(false);
+
+  const review = useMemo<CreatorApplicationReview>(
+    () => generateCreatorReview({
+      full_name:       app.full_name,
+      email:           app.email,
+      tools:           app.tools,
+      niches:          app.niches,
+      experience:      app.experience,
+      available_hours: app.available_hours,
+      portfolio_url:   app.portfolio_url,
+      portfolio_url_2: app.portfolio_url_2,
+      message:         app.message,
+    }),
+    [app]
+  );
+
+  const reviewFitColor = fitColors[review.fitLabel] ?? '#8a94a6';
+
+  async function handleAction(newStatus: string) {
+    if (newStatus === status) return;
+    const prev = status;
+    setStatus(newStatus);
+    setUpdating(true);
+    setUpdateError(false);
+    const ok = await updateApplicationStatus(app.id, newStatus);
+    setUpdating(false);
+    if (!ok) {
+      setStatus(prev);
+      setUpdateError(true);
+      setTimeout(() => setUpdateError(false), 3000);
+    } else {
+      onStatusChange(app.id, newStatus);
+    }
+  }
+
   return (
-    <div className="creator-card">
+    <div className={`creator-card${updateError ? ' creator-card--error' : ''}`}>
+
       <div className="creator-card-header">
         <div>
           <div className="creator-name">{app.full_name}</div>
@@ -575,12 +891,12 @@ function CreatorCard({ app }: { app: CreatorApplicationRow }) {
         <div className="creator-card-right">
           <span
             className="creator-fit-badge"
-            style={{ color: fit.color, borderColor: fit.color + '55', backgroundColor: fit.color + '15' }}
+            style={{ color: reviewFitColor, borderColor: reviewFitColor + '55', backgroundColor: reviewFitColor + '15' }}
           >
-            {fit.label}
+            {review.fitLabel} · {review.candidateFitScore}/100
           </span>
-          <span className="creator-status" style={{ color: statusColors[app.status] ?? '#8a94a6' }}>
-            ● {app.status}
+          <span className="creator-status" style={{ color: statusColors[status] ?? '#8a94a6' }}>
+            ● {status}
           </span>
         </div>
       </div>
@@ -608,9 +924,80 @@ function CreatorCard({ app }: { app: CreatorApplicationRow }) {
         </div>
       </div>
 
-      <div className="creator-card-footer">
-        <CopyBtn text={buildCreatorSummary(app)} label="Copy Candidate Summary" />
+      {/* Decision */}
+      <div className="creator-decision">{review.recommendedDecision}</div>
+
+      {/* Action buttons */}
+      <div className="creator-actions">
+        {APP_STATUS_ACTIONS.filter((a) => a.status !== status).map((a) => (
+          <button
+            key={a.status}
+            className={`creator-action-btn creator-action-btn--${a.status}`}
+            onClick={() => handleAction(a.status)}
+            disabled={updating}
+          >
+            {a.label}
+          </button>
+        ))}
+        {updating && <span className="status-saving">Saving…</span>}
+        {updateError && <span className="status-error-label">Failed — retry</span>}
       </div>
+
+      {/* AI Review toggle */}
+      <button
+        className="creator-review-toggle"
+        onClick={() => setReviewOpen((v) => !v)}
+        aria-expanded={reviewOpen}
+      >
+        {reviewOpen ? '▲ Hide AI Review' : '▼ View AI Review'}
+      </button>
+
+      {reviewOpen && (
+        <div className="creator-review-panel">
+          <div className="ai-ops-label">
+            ⚡ AI-style candidate review — rules-based MVP version. No AI API called.
+          </div>
+
+          {review.strengths.length > 0 && (
+            <div className="ops-field">
+              <div className="ops-field-label">Strengths ({review.strengths.length})</div>
+              <ul className="ops-flag-list" style={{ '--flag-bg': 'rgba(0,212,120,0.06)', '--flag-color': '#00d478', '--flag-border': 'rgba(0,212,120,0.18)' } as React.CSSProperties}>
+                {review.strengths.map((s) => <li key={s} className="creator-strength-item">{s}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {review.concerns.length > 0 && (
+            <div className="ops-field">
+              <div className="ops-field-label">Concerns ({review.concerns.length})</div>
+              <ul className="ops-flag-list ops-flags-warn">
+                {review.concerns.map((c) => <li key={c}>{c}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {review.missingPortfolioInfo.length > 0 && (
+            <div className="ops-field">
+              <div className="ops-field-label">Missing Info</div>
+              <ul className="ops-flag-list ops-flags-risk">
+                {review.missingPortfolioInfo.map((m) => <li key={m}>{m}</li>)}
+              </ul>
+            </div>
+          )}
+
+          <div className="ops-field">
+            <div className="ops-field-label">Best Fit Niches</div>
+            <div className="creator-chips" style={{ marginTop: '0.25rem' }}>
+              {review.bestFitNiches.map((n) => <span key={n} className="creator-chip creator-chip--accent">{n}</span>)}
+            </div>
+          </div>
+
+          <div className="ops-copy-row">
+            <CopyBtn text={review.creatorFollowUpMessage} label="Copy Follow-up Message" />
+            <CopyBtn text={buildCreatorSummary(app, review)} label="Copy Candidate Summary" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -641,7 +1028,7 @@ export default function Admin() {
 
     supabase
       .from('creator_applications')
-      .select('id,full_name,email,tools,niches,experience,available_hours,status,created_at')
+      .select('id,full_name,email,tools,niches,experience,available_hours,portfolio_url,portfolio_url_2,message,status,created_at')
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) { console.error('[Admin] creator_applications:', error); setAppError(true); }
@@ -655,7 +1042,7 @@ export default function Admin() {
     });
   }, []);
 
-  // Enrich requests with packets (memoized — only recomputes when requests change)
+  // Enriched requests with AI packets
   const enriched = useMemo<EnrichedRequest[]>(
     () => requests.map((row) => ({ row, packet: generateBuildPacket(rowToRequest(row)) })),
     [requests]
@@ -663,16 +1050,29 @@ export default function Admin() {
 
   const filtered = useMemo(() => applyFilter(enriched, reqFilter), [enriched, reqFilter]);
 
-  // Metric counts
-  const highPriorityCount = enriched.filter((e) => e.packet.priorityLabel === 'High').length;
+  // Optimistic status update helpers
+  function handleRequestStatusChange(id: string, newStatus: string) {
+    setRequests((prev) =>
+      prev.map((r) => r.id === id ? { ...r, status: newStatus } : r)
+    );
+  }
+  function handleAppStatusChange(id: string, newStatus: string) {
+    setApplications((prev) =>
+      prev.map((a) => a.id === id ? { ...a, status: newStatus } : a)
+    );
+  }
+
+  // Metrics
+  const highPriorityCount  = enriched.filter((e) => e.packet.priorityLabel === 'High').length;
   const needsFollowupCount = enriched.filter((e) => e.packet.missingInfoFlags.length > 2 || e.packet.leadQualityLabel === 'Needs Detail').length;
-  const newReqCount  = requests.filter((r) => r.status === 'new').length;
-  const newAppCount  = applications.filter((a) => a.status === 'new').length;
+  const readyToQuoteCount  = enriched.filter((e) => e.packet.quoteReadiness.startsWith('Ready') || e.packet.quoteReadiness.startsWith('Nearly')).length;
+  const newReqCount        = requests.filter((r) => r.status === 'new').length;
+  const newAppCount        = applications.filter((a) => a.status === 'new').length;
 
   return (
     <div className="admin-page">
 
-      {/* ── Command center header ──────────────────────────────────────────── */}
+      {/* ── Command center header ────────────────────────────────────────── */}
       <div className="admin-command-header">
         <div className="container">
           <div className="admin-header-top">
@@ -680,7 +1080,7 @@ export default function Admin() {
               <div className="admin-eyebrow">MicroBuild Operations</div>
               <h1 className="admin-title">Admin Dashboard</h1>
               <p className="admin-sub">
-                Live data from Supabase. AI-style analysis is rules-based (no external API).
+                Live Supabase data · Rule-based AI analysis · Status updates write to database
               </p>
             </div>
             <span className="admin-badge-internal">Internal Only</span>
@@ -688,18 +1088,23 @@ export default function Admin() {
         </div>
       </div>
 
-      {/* ── Security warning ───────────────────────────────────────────────── */}
+      {/* ── Auth warning ─────────────────────────────────────────────────── */}
       <div className="admin-auth-warning">
         <div className="container">
-          <strong>⚠️ No authentication required to view this page.</strong>{' '}
-          Add Supabase Auth and admin role checks before this URL is made public.
-          Dev read policies are active — see <code>supabase/policies.sql</code>.
+          <strong>⚠️ No authentication required.</strong>{' '}
+          Dev policies active — status writes use anon key. See <code>supabase/policies.sql</code>.
+          Replace with Supabase Auth + admin role checks before going public.
         </div>
       </div>
 
       <div className="container admin-body">
 
-        {/* ── Metric cards ──────────────────────────────────────────────────── */}
+        {/* ── AI Ops Brief ─────────────────────────────────────────────────── */}
+        {!reqLoading && (
+          <AiOpsAssistant enriched={enriched} newApps={newAppCount} />
+        )}
+
+        {/* ── Metrics ──────────────────────────────────────────────────────── */}
         <div className="admin-metrics">
           <div className="metric-card">
             <span className="metric-value">{reqLoading ? '…' : requests.length}</span>
@@ -718,6 +1123,12 @@ export default function Admin() {
             <span className="metric-label">High Priority</span>
           </div>
           <div className="metric-card">
+            <span className="metric-value" style={{ color: readyToQuoteCount > 0 ? '#00d478' : undefined }}>
+              {reqLoading ? '…' : readyToQuoteCount}
+            </span>
+            <span className="metric-label">Ready to Quote</span>
+          </div>
+          <div className="metric-card">
             <span className="metric-value" style={{ color: needsFollowupCount > 0 ? '#f9b032' : undefined }}>
               {reqLoading ? '…' : needsFollowupCount}
             </span>
@@ -728,10 +1139,6 @@ export default function Admin() {
               {appLoading ? '…' : newAppCount}
             </span>
             <span className="metric-label">New Applications</span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-value">{tplLoading ? '…' : templates.length}</span>
-            <span className="metric-label">Active Listings</span>
           </div>
         </div>
 
@@ -751,7 +1158,6 @@ export default function Admin() {
 
           {!reqLoading && !reqError && requests.length > 0 && (
             <>
-              {/* Filter tabs */}
               <div className="req-filter-bar">
                 {FILTER_TABS.map((t) => {
                   const count = t.getCount(enriched);
@@ -774,7 +1180,11 @@ export default function Admin() {
 
               <div className="req-card-list">
                 {filtered.map((e) => (
-                  <RequestCard key={e.row.id} enriched={e} />
+                  <RequestCard
+                    key={e.row.id}
+                    enriched={e}
+                    onStatusChange={handleRequestStatusChange}
+                  />
                 ))}
               </div>
             </>
@@ -797,7 +1207,13 @@ export default function Admin() {
 
           {!appLoading && !appError && applications.length > 0 && (
             <div className="creator-card-list">
-              {applications.map((a) => <CreatorCard key={a.id} app={a} />)}
+              {applications.map((a) => (
+                <CreatorCard
+                  key={a.id}
+                  app={a}
+                  onStatusChange={handleAppStatusChange}
+                />
+              ))}
             </div>
           )}
         </section>
@@ -848,8 +1264,8 @@ export default function Admin() {
               <span className="admin-placeholder-tag">Phase 2</span>
             </div>
             <div className="admin-placeholder">
-              Orders are created when an admin accepts a buyer request and assigns a creator.
-              This section will be built in Phase 2 alongside Supabase Auth and admin role checks.
+              Orders are created when admin accepts a request and assigns a creator.
+              Built in Phase 2 alongside Supabase Auth and admin role checks.
             </div>
           </section>
 
@@ -859,8 +1275,8 @@ export default function Admin() {
               <span className="admin-placeholder-tag">Phase 3</span>
             </div>
             <div className="admin-placeholder">
-              Real AI-generated build packets (GPT-4o via Supabase Edge Function, server-side only — no API keys in frontend)
-              will appear here in Phase 3. The AI Operations panels above use deterministic rules as a placeholder.
+              Real GPT-4o packets via Supabase Edge Function (server-side, no frontend API keys) in Phase 3.
+              Use "Save to Supabase" in the Proposal tab of each request to store the rules-based packet now.
             </div>
           </section>
         </div>

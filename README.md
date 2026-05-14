@@ -163,15 +163,27 @@ The file also includes commented-out "dev admin read" policies. Uncomment these 
 
 > ⚠️ The `/admin` route has no authentication. Dev admin read policies are active in `supabase/policies.sql`. Use this URL internally only until Phase 2 adds auth.
 
-#### Admin Dashboard Features
+#### Admin Dashboard Features (v2 — Actionable Ops)
 
-- **Metric cards:** Total requests, new requests, high-priority count, needs-follow-up count, new applications, active listings.
-- **Buyer request cards:** Each request shows business name, industry, build type, budget, deadline, status, lead quality score (0–100), priority label, fit rating, next recommended action, missing info warnings, and risk flag warnings.
-- **Filter tabs:** All / New / High Priority / Needs Follow-up / Ready to Quote — computed from the rules-based AI analysis of each request.
-- **AI Operations Panel:** Expandable per-request panel with 7 tabs: AI Summary (scores + overview), Missing Info (flags + risk flags), Follow-up Questions, Creator Brief (instructions + page sections + design direction + form fields), Proposal Draft (copy-ready email), Checklists (quality + launch), Automation Ideas.
-- **Copy buttons:** Copy Packet Summary, Copy Follow-up Questions, Copy Creator Brief, Copy Proposal Draft — no backend writes required.
-- **Creator Applications:** Card layout with auto-derived fit label (Strong candidate / Needs portfolio review / Limited fit), chips for tools and niches, and Copy Candidate Summary button.
+- **AI Ops Brief:** Compact panel at the top with today's operational focus, derived from live data: high-priority requests, ready-to-quote count, needs-follow-up count, new applications.
+- **Metric cards:** Total requests, new, high-priority, ready-to-quote, needs follow-up, new applications — with color alerts.
+- **Buyer request cards:** Each request shows business, industry, build type, budget, deadline, price estimate, lead quality (0–100), priority, fit rating, quote readiness, next action, missing info count, risk flags.
+- **Status dropdown (writes to Supabase):** Change buyer request status directly from the card — New / In Review / Proposal Sent / Accepted / Rejected. Uses optimistic update with revert on failure.
+- **Filter tabs:** All / New / High Priority / Needs Follow-up / Ready to Quote.
+- **AI Operations Panel (7 tabs):** AI Summary (8 signal scores), Missing Info + Risk Flags, Follow-up Questions, Creator Brief, Proposal Draft, Checklists, Automation.
+- **Copy buttons:** Copy Packet Summary, Follow-up Questions, Buyer Outreach Message, Creator Brief, Proposal Draft.
+- **Save Build Packet (writes to Supabase):** In the Proposal tab, saves the rules-based build packet to the `build_packets` table linked to the buyer request. Shows saved ID on success.
+- **Creator Applications:** Action buttons (Mark Reviewed / Approve / Reject / Reset) that write to Supabase. Expandable AI Review panel with candidate fit score, strengths, concerns, missing info, best-fit niches, recommended decision, and Copy Follow-up Message button.
 - **MicroBuild Listings:** Clean table with encoding-safe turnaround display.
+
+#### Temporary Dev Policies Warning
+
+`supabase/policies.sql` contains clearly marked `DEVELOPMENT ONLY` policies that allow:
+- Anonymous `SELECT` on `buyer_requests` and `creator_applications` (admin reads)
+- Anonymous `UPDATE` on `buyer_requests` and `creator_applications` (status updates)
+- Anonymous `INSERT` on `build_packets` (save packet action)
+
+**These must be removed or replaced with Supabase Auth + admin role checks before the app is made publicly accessible.** See the policy file for exact comments and Phase 2 instructions.
 
 ### Data behavior
 
@@ -276,10 +288,43 @@ The generated `GeneratedBuildPacket` includes:
 | `missingInfoFlags` | List of missing or weak fields that should be followed up |
 | `riskFlags` | List of risk signals (low budget, urgent + vague, no build type) |
 | `followUpQuestions` | Suggested questions to ask the buyer before scoping |
+| `quoteReadiness` | Ready / Nearly Ready / Needs Details / Not Ready — from score + budget |
+| `suggestedPriceRange` | Estimated price range from complexity + buyer's stated budget |
+| `estimatedFulfillmentDifficulty` | Easy 1–3d / Standard 3–5d / Complex 5–7d from complexity |
+| `creatorFitRecommendation` | Which creator profile and tools best match this request |
+| `buyerOutreachMessage` | Copy-ready message for following up with the buyer directly |
+
+`generateCreatorReview()` is also exported and generates a `CreatorApplicationReview` from a creator application, including:
+- `candidateFitScore` (0–100), `fitLabel` (Strong / Good / Fair / Weak)
+- `strengths`, `concerns`, `missingPortfolioInfo`
+- `bestFitNiches`, `recommendedDecision`
+- `creatorFollowUpMessage` (copy-ready outreach)
 
 **Where it appears:**
-- `/admin` AI Operations Panel — 7 tabs per request: AI Summary, Missing Info, Follow-up Questions, Creator Brief, Proposal Draft, Checklists, Automation Ideas
-- `/request` success state — buyer-safe summary only (goal, build, problem, budget, deadline — no admin-level detail)
+- `/admin` AI Ops Brief — top panel summarizing today's operational focus
+- `/admin` per-request AI Operations Panel — 7 tabs including new Quote Readiness, Price Range, Fulfillment, Creator Fit Recommendation, and Buyer Outreach Message copy button
+- `/admin` per-creator AI Review panel — expandable with full review output and copy buttons
+- `/admin` Proposal tab — "Save to Supabase" button that writes to `build_packets` table
+- `/request` success state — buyer-safe summary only (goal, build, problem, budget, deadline)
+
+### Admin Ops v2 — Supabase Status Updates
+
+The admin dashboard can now write status updates back to Supabase:
+
+**Buyer requests** — status dropdown per card with 5 states:
+- `new` → `in-review` → `proposal-sent` → `accepted` / `rejected`
+- Fires `UPDATE buyer_requests SET status = ? WHERE id = ?` via anon key
+- Optimistic UI update with revert on failure
+
+**Creator applications** — action buttons per card:
+- Mark Reviewed (`reviewing`), Approve (`approved`), Reject (`rejected`), Reset (`new`)
+- Fires `UPDATE creator_applications SET status = ? WHERE id = ?` via anon key
+
+**Build packets** — "Save to Supabase" in the Proposal tab:
+- Inserts a full rules-based packet into `build_packets` linked to `buyer_request.id`
+- Uses `generated_by = 'manual'`; Phase 3 will change this to `'gpt-4o'`
+
+**These all require the dev UPDATE/INSERT policies from `supabase/policies.sql` to be active in your project. They are NOT safe for a public deployment.** See policy file for replacement instructions.
 
 **Phase 3 upgrade path:**
 `generateBuildPacket()` on the frontend will be replaced by a Supabase Edge Function call (`/functions/v1/generate-build-packet`) that invokes GPT-4o server-side. The `GeneratedBuildPacket` interface shape stays the same — the UI does not need to change.

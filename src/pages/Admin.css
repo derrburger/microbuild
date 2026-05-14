@@ -702,6 +702,230 @@
   color: var(--text-primary);
 }
 
+/* ─── AI Ops Assistant brief ────────────────────────────────────────────────── */
+.ops-assistant {
+  background: var(--surface);
+  border: 1px solid rgba(0, 212, 120, 0.2);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.ops-assistant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.ops-assistant-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.ops-assistant-note {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+.ops-assistant-focus {
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.ops-assistant-signals {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+.ops-signal {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.ops-assistant-toplist {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.ops-tl-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.ops-tl-item {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 5px;
+  padding: 0.15rem 0.5rem;
+}
+.ops-tl-more {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* ─── Status dropdown ───────────────────────────────────────────────────────── */
+.status-dropdown-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.status-dropdown {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.12s;
+  min-width: 130px;
+}
+.status-dropdown:hover { border-color: var(--text-muted); }
+.status-dropdown:disabled { opacity: 0.6; cursor: not-allowed; }
+.status-dropdown--error .status-dropdown { border-color: #ef4444; }
+.status-saving {
+  font-size: 0.68rem;
+  color: var(--accent);
+  font-style: italic;
+}
+.status-error-label {
+  font-size: 0.68rem;
+  color: #ef4444;
+  font-weight: 600;
+}
+
+/* Quote readiness pill in header */
+.req-quote-pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* Ops scores grid — extend to 8 columns */
+.ops-scores-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* ─── Save Packet button ────────────────────────────────────────────────────── */
+.save-packet-btn {
+  background: rgba(0, 212, 120, 0.08);
+  border: 1px solid rgba(0, 212, 120, 0.3);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.3rem 0.75rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.save-packet-btn:hover { background: rgba(0, 212, 120, 0.14); }
+.save-packet-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.save-packet-btn--error {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef9494;
+  background: rgba(239, 68, 68, 0.07);
+}
+.save-packet-success {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 0.3rem 0.5rem;
+  background: rgba(0, 212, 120, 0.07);
+  border: 1px solid rgba(0, 212, 120, 0.25);
+  border-radius: 5px;
+}
+
+/* ─── Creator action buttons ────────────────────────────────────────────────── */
+.creator-card--error { border-color: rgba(239, 68, 68, 0.3); }
+.creator-decision {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 0.35rem 1.25rem 0;
+  line-height: 1.4;
+}
+.creator-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0.5rem 1.25rem 0.6rem;
+}
+.creator-action-btn {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.28rem 0.65rem;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.creator-action-btn:hover { opacity: 0.85; }
+.creator-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.creator-action-btn--reviewing {
+  background: rgba(99, 179, 237, 0.12);
+  border-color: rgba(99, 179, 237, 0.3);
+  color: #63b3ed;
+}
+.creator-action-btn--approved {
+  background: rgba(0, 212, 120, 0.1);
+  border-color: rgba(0, 212, 120, 0.3);
+  color: var(--accent);
+}
+.creator-action-btn--rejected {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #ef9494;
+}
+.creator-action-btn--new {
+  background: rgba(249, 176, 50, 0.08);
+  border-color: rgba(249, 176, 50, 0.25);
+  color: #f9b032;
+}
+.creator-review-toggle {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px dashed var(--border);
+  padding: 0.5rem 1.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.creator-review-toggle:hover { color: var(--accent); }
+.creator-review-panel {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.creator-strength-item {
+  background: rgba(0, 212, 120, 0.06) !important;
+  color: #00d478 !important;
+  border: 1px solid rgba(0, 212, 120, 0.15) !important;
+}
+.creator-chip--accent {
+  background: rgba(0, 212, 120, 0.08) !important;
+  border-color: rgba(0, 212, 120, 0.2) !important;
+  color: var(--accent) !important;
+}
+
 /* ─── Phase 2+ placeholder row ─────────────────────────────────────────────── */
 .admin-placeholders {
   display: grid;
@@ -712,7 +936,7 @@
 /* ─── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .admin-metrics { grid-template-columns: repeat(3, 1fr); }
-  .ops-scores-grid { grid-template-columns: repeat(3, 1fr); }
+  .ops-scores-grid { grid-template-columns: repeat(4, 1fr); }
 }
 
 @media (max-width: 900px) {

@@ -136,6 +136,50 @@ CREATE POLICY "creator_applications_dev_admin_read"
   USING (true);
 
 
+-- ─── DEVELOPMENT ONLY — Admin status update access ───────────────────────────
+-- These policies allow the anon key to UPDATE status on buyer_requests and
+-- creator_applications, and INSERT into build_packets.
+--
+-- ⚠️  SECURITY WARNING: These let any anonymous client update statuses and
+--     insert build packets. For LOCAL MVP TESTING ONLY.
+--
+-- STATUS: ACTIVE — Applied to the development Supabase project so the
+--     admin dashboard can update request and application statuses without auth.
+--
+-- BEFORE GOING PUBLIC:
+--     1. Remove or comment out these policies.
+--     2. Replace with auth.uid() = admin_id scoped policies (Phase 2).
+--     3. Use service-role key in a server-side Edge Function for admin writes.
+
+ALTER TABLE public.buyer_requests ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "buyer_requests_dev_admin_update" ON public.buyer_requests;
+CREATE POLICY "buyer_requests_dev_admin_update"
+  ON public.buyer_requests
+  FOR UPDATE
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+ALTER TABLE public.creator_applications ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "creator_applications_dev_admin_update" ON public.creator_applications;
+CREATE POLICY "creator_applications_dev_admin_update"
+  ON public.creator_applications
+  FOR UPDATE
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+-- build_packets INSERT — allows saving rules-based packets from /admin
+-- The generated_by column is set to 'manual' from the frontend.
+ALTER TABLE public.build_packets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "build_packets_dev_admin_insert" ON public.build_packets;
+CREATE POLICY "build_packets_dev_admin_insert"
+  ON public.build_packets
+  FOR INSERT
+  TO anon, authenticated
+  WITH CHECK (true);
+
+
 -- ─── Verification query (uncomment to check active policies) ─────────────────
 -- SELECT tablename, policyname, permissive, roles, cmd
 -- FROM   pg_policies
