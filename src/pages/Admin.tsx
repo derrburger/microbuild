@@ -3,8 +3,9 @@ import { supabase } from '../lib/supabase';
 import { fetchTemplates } from '../lib/templates';
 import { generateBuildPacket, generateCreatorReview } from '../lib/buildPacket';
 import type { GeneratedBuildPacket, CreatorApplicationReview } from '../lib/buildPacket';
-import { buildCreatorProfileInsert } from '../lib/profiles';
-import type { CreatorApplicationRow as DBCreatorApplicationRow } from '../types/database';
+import { buildCreatorProfileInsert, normalizeCreatorProfile } from '../lib/profiles';
+import { analyzeProfileStrength, getStrengthColor as psGetStrengthColor } from '../lib/profileAI';
+import type { CreatorApplicationRow as DBCreatorApplicationRow, CreatorProfileRow as DBCreatorProfileRow } from '../types/database';
 import type { MicroBuildListing } from '../types';
 import './Admin.css';
 
@@ -895,18 +896,31 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
 function RequestCard({
   enriched,
   onStatusChange,
+  selected,
+  onSelect,
 }: {
   enriched: EnrichedRequest;
   onStatusChange: (id: string, newStatus: string) => void;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { row, packet } = enriched;
 
   return (
-    <div className={`req-card${expanded ? ' req-card--open' : ''}`}>
+    <div className={`req-card${expanded ? ' req-card--open' : ''}${selected ? ' req-card--selected' : ''}`}>
 
       {/* Header */}
       <div className="req-card-header">
+        {onSelect && (
+          <input
+            type="checkbox"
+            className="card-select-checkbox"
+            checked={!!selected}
+            onChange={() => onSelect(row.id)}
+            aria-label={`Select ${row.business_name}`}
+          />
+        )}
         <div className="req-card-badges">
           <span
             className="req-priority-pill"
@@ -1088,13 +1102,54 @@ function AiOpsAssistant({
     focus = 'All clear — no urgent items. Review open applications and pending requests';
   }
 
+  // Build prioritized action list
+  const actionItems: { icon: string; text: string; color: string }[] = [];
+  if (profilelessApproved.length > 0) {
+    actionItems.push({ icon: '🔧', text: `Create profiles for ${profilelessApproved.length} approved creator${profilelessApproved.length !== 1 ? 's' : ''} — check Creator section`, color: '#ef4444' });
+  }
+  if (highPriority.length > 0) {
+    actionItems.push({ icon: '🔥', text: `${highPriority.length} high-priority buyer request${highPriority.length !== 1 ? 's' : ''} need attention`, color: '#ef4444' });
+  }
+  if (pendingReview.length > 0) {
+    actionItems.push({ icon: '📋', text: `Review ${pendingReview.length} creator application${pendingReview.length !== 1 ? 's' : ''} in the queue`, color: '#63b3ed' });
+  }
+  if (readyToQuote.length > 0) {
+    actionItems.push({ icon: '✍️', text: `Send proposals for ${readyToQuote.length} buyer request${readyToQuote.length !== 1 ? 's' : ''} ready to quote`, color: '#00d478' });
+  }
+  if (needsFollowup.length > 0) {
+    actionItems.push({ icon: '💬', text: `Follow up on ${needsFollowup.length} buyer request${needsFollowup.length !== 1 ? 's' : ''} with missing info`, color: '#f9b032' });
+  }
+  if (needsMoreInfo.length > 0) {
+    actionItems.push({ icon: '❓', text: `${needsMoreInfo.length} creator application${needsMoreInfo.length !== 1 ? 's' : ''} waiting on more info from applicant`, color: '#f9b032' });
+  }
+  if (approvedPending.length > 0) {
+    actionItems.push({ icon: '💳', text: `${approvedPending.length} creator${approvedPending.length !== 1 ? 's' : ''} approved and awaiting payment setup`, color: '#63b3ed' });
+  }
+  if (unlinkedApps.length > 0) {
+    actionItems.push({ icon: 'ℹ️', text: `${unlinkedApps.length} application${unlinkedApps.length !== 1 ? 's' : ''} not linked to an auth account`, color: '#8a94a6' });
+  }
+  if (actionItems.length === 0) {
+    actionItems.push({ icon: '✅', text: 'All clear — no urgent items queued', color: '#00d478' });
+  }
+
   return (
-    <div className="ops-assistant">
+    <div className="ops-assistant" id="section-focus">
       <div className="ops-assistant-header">
-        <span className="ops-assistant-title">⚡ AI Ops Brief</span>
-        <span className="ops-assistant-note">Rules-based · live data · no AI API</span>
+        <span className="ops-assistant-title">⚡ Today&rsquo;s AI Focus</span>
+        <span className="ops-assistant-note">Rules-based · live data · no external AI API</span>
       </div>
       <div className="ops-assistant-focus">{focus}</div>
+
+      {/* Prioritized action items */}
+      <div className="ops-action-items">
+        {actionItems.map((item, i) => (
+          <div key={i} className="ops-action-item">
+            <span className="ops-action-num" style={{ color: item.color }}>{i + 1}</span>
+            <span className="ops-action-icon">{item.icon}</span>
+            <span className="ops-action-text">{item.text}</span>
+          </div>
+        ))}
+      </div>
 
       {/* Buyer signals */}
       <div className="ops-assistant-group">
@@ -1566,9 +1621,13 @@ function ProfilePreview({ app, review }: { app: CreatorApplicationRow; review: C
 function CreatorCard({
   app,
   onStatusChange,
+  selected,
+  onSelect,
 }: {
   app: CreatorApplicationRow;
   onStatusChange: (id: string, newStatus: string) => void;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
 }) {
   const [status, setStatus]           = useState(app.status);
   const [reviewOpen, setReviewOpen]   = useState(false);
@@ -1626,9 +1685,18 @@ function CreatorCard({
   }
 
   return (
-    <div className="creator-card">
+    <div className={`creator-card${selected ? ' creator-card--selected' : ''}`}>
 
       <div className="creator-card-header">
+        {onSelect && (
+          <input
+            type="checkbox"
+            className="card-select-checkbox"
+            checked={!!selected}
+            onChange={() => onSelect(app.id)}
+            aria-label={`Select ${app.full_name}`}
+          />
+        )}
         <div className="creator-header-left">
           <div className="creator-name">{app.full_name || '—'}</div>
           <div className="creator-email">{app.email || '—'}</div>
@@ -1927,6 +1995,24 @@ const WORKFLOW_TEMPLATES = [
     tag: 'Creator',
     text: `Hi [Creator Name],\n\nThank you for applying for Verified Creator status.\n\nTo complete verification, please provide:\n- A link to your professional portfolio\n- Certifications or credentials\n- At least one case study with business outcomes\n- GitHub or LinkedIn profile\n\nSend these to [contact] and we'll complete your verification review.\n\nBest,\nMicroBuild Team`,
   },
+  {
+    id: 'profile-improvement',
+    label: 'Profile Improvement Request',
+    tag: 'Creator',
+    text: `Hi [Creator Name],\n\nYour MicroBuild creator profile is live but could be stronger. A few improvements would significantly increase your project match rate:\n\n- Add a detailed bio (aim for 80+ characters)\n- Include at least 2 portfolio examples\n- List the tools and platforms you work with\n- Add your GitHub or LinkedIn profile\n\nLog in to update your profile.\n\nBest,\nMicroBuild Team`,
+  },
+  {
+    id: 'profile-published',
+    label: 'Profile Approved & Published',
+    tag: 'Creator',
+    text: `Hi [Creator Name],\n\nGreat news — your MicroBuild creator profile is now live and visible to buyers!\n\nNext steps:\n- Keep your availability updated\n- Add new portfolio examples as you complete work\n- Respond quickly when matched — speed improves your ranking\n\nWelcome to the marketplace!\n\nBest,\nMicroBuild Team`,
+  },
+  {
+    id: 'buyer-handoff',
+    label: 'Buyer → Creator Handoff',
+    tag: 'Project',
+    text: `Hi [Creator Name],\n\nWe have a new project match for you!\n\nBuyer: [Business Name]\nBuild Type: [Build Type]\nBudget: [Budget]\nTimeline: [Timeline]\n\nProject brief:\n[Paste build packet summary here]\n\nTo accept this project, reply to this message. The buyer has been notified of the match.\n\nBest,\nMicroBuild Ops`,
+  },
 ] as const;
 
 function WorkflowTemplates() {
@@ -1967,16 +2053,411 @@ function WorkflowTemplates() {
   );
 }
 
+// ─── Section navigation ───────────────────────────────────────────────────────
+
+function AdminSectionNav() {
+  const NAV = [
+    { id: 'focus',     label: '⚡ Focus'     },
+    { id: 'creators',  label: '👤 Creators'  },
+    { id: 'buyers',    label: '📋 Buyers'    },
+    { id: 'profiles',  label: '🔍 Profiles'  },
+    { id: 'templates', label: '📝 Templates' },
+    { id: 'health',    label: '📊 Health'    },
+  ];
+  return (
+    <nav className="admin-section-nav" aria-label="Admin sections">
+      {NAV.map((s) => (
+        <a key={s.id} href={`#section-${s.id}`} className="admin-section-nav-link">
+          {s.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+// ─── Batch action bar ─────────────────────────────────────────────────────────
+
+function BatchActionBar({
+  type,
+  count,
+  summaries,
+  onClear,
+}: {
+  type: string;
+  count: number;
+  summaries: string[];
+  onClear: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopySummaries() {
+    const text = summaries.join('\n\n' + '─'.repeat(40) + '\n\n');
+    copyToClipboard(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleExport() {
+    const text = summaries.join('\n\n' + '─'.repeat(40) + '\n\n');
+    try {
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `microbuild-${type}-export-${Date.now()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('[Admin] export failed:', err);
+    }
+  }
+
+  return (
+    <div className="batch-action-bar">
+      <span className="batch-count">{count} selected</span>
+      <button
+        className={`batch-btn${copied ? ' batch-btn--copied' : ''}`}
+        onClick={handleCopySummaries}
+      >
+        {copied ? '✓ Copied' : `Copy ${count} Summar${count !== 1 ? 'ies' : 'y'}`}
+      </button>
+      <button className="batch-btn batch-btn--export" onClick={handleExport}>
+        Export as .txt
+      </button>
+      <button className="batch-btn batch-btn--clear" onClick={onClear}>
+        ✕ Clear
+      </button>
+    </div>
+  );
+}
+
+// ─── Profile Quality Card ─────────────────────────────────────────────────────
+
+function ProfileQualityCard({ profile }: { profile: DBCreatorProfileRow }) {
+  const strength   = useMemo(() => analyzeProfileStrength(profile), [profile]);
+  const scoreColor = psGetStrengthColor(strength.score);
+  const tierColors: Record<string, string> = {
+    free: '#8a94a6', professional: '#63b3ed', verified: '#f9b032',
+  };
+  const tColor = tierColors[profile.tier] ?? '#8a94a6';
+
+  const [copied,    setCopied]   = useState(false);
+  const [vis,       setVis]      = useState(profile.public_profile_status);
+  const [toggling,  setToggling] = useState(false);
+
+  const improvementMsg = [
+    `Hi ${profile.display_name ?? profile.full_name},`,
+    ``,
+    `Your MicroBuild creator profile could be stronger. Here's what would help most:`,
+    ``,
+    ...strength.improvements.slice(0, 4).map((i) => `• ${i}`),
+    ``,
+    `Log in to update your profile and improve your match rate.`,
+    ``,
+    `Best,`,
+    `MicroBuild Team`,
+  ].join('\n');
+
+  function handleCopy() {
+    copyToClipboard(improvementMsg);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleToggleVis() {
+    const next = vis === 'public' ? 'hidden' : 'public';
+    setToggling(true);
+    const ok = await setProfileVisibility_v2(profile.id, next);
+    if (ok) setVis(next);
+    setToggling(false);
+  }
+
+  return (
+    <div className={`pq-card${strength.score < 40 ? ' pq-card--critical' : strength.score < 60 ? ' pq-card--warn' : ''}`}>
+      <div className="pq-card-header">
+        <div className="pq-identity">
+          <span className="pq-name">{profile.display_name ?? profile.full_name}</span>
+          <span className="pq-tier-badge" style={{ color: tColor, borderColor: tColor + '44', background: tColor + '10' }}>
+            {profile.tier.charAt(0).toUpperCase() + profile.tier.slice(1)}
+          </span>
+          <span className={`pq-vis-status${vis === 'public' ? ' pq-vis-status--public' : ' pq-vis-status--hidden'}`}>
+            {vis === 'public' ? '🟢 Public' : '🔴 Hidden'}
+          </span>
+        </div>
+        <div className="pq-score">
+          <span className="pq-score-num" style={{ color: scoreColor }}>{strength.score}</span>
+          <span className="pq-score-label" style={{ color: scoreColor }}>{strength.label}</span>
+        </div>
+      </div>
+
+      {strength.riskFlags.length > 0 && (
+        <div className="pq-risks">
+          {strength.riskFlags.map((f) => (
+            <span key={f} className="pq-risk-flag">⚠ {f}</span>
+          ))}
+        </div>
+      )}
+
+      {strength.missingItems.length > 0 && (
+        <div className="pq-missing">
+          <span className="pq-missing-label">Top gaps:</span>
+          {strength.missingItems.slice(0, 3).map((m) => (
+            <span key={m} className="pq-missing-item">{m}</span>
+          ))}
+          {strength.missingItems.length > 3 && (
+            <span className="pq-missing-more">+{strength.missingItems.length - 3} more</span>
+          )}
+        </div>
+      )}
+
+      {strength.strengths.length > 0 && (
+        <div className="pq-strengths">
+          {strength.strengths.slice(0, 2).map((s) => (
+            <span key={s} className="pq-strength-chip">✓ {s}</span>
+          ))}
+        </div>
+      )}
+
+      <div className="pq-actions">
+        <button
+          className={`pq-vis-btn${vis === 'public' ? ' pq-vis-btn--hide' : ' pq-vis-btn--publish'}`}
+          onClick={handleToggleVis}
+          disabled={toggling}
+        >
+          {toggling ? 'Saving…' : vis === 'public' ? 'Hide Profile' : 'Make Public'}
+        </button>
+        <button className={`pq-copy-btn${copied ? ' copied' : ''}`} onClick={handleCopy}>
+          {copied ? '✓ Copied' : 'Copy Improvement Msg'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Profile Quality Queue ────────────────────────────────────────────────────
+
+type PQFilter = 'all' | 'weak' | 'hidden-active' | 'public-risks';
+
+function ProfileQualityQueue({
+  profiles, loading, error,
+}: {
+  profiles: DBCreatorProfileRow[];
+  loading: boolean;
+  error: boolean;
+}) {
+  const [filter, setFilter] = useState<PQFilter>('all');
+
+  // Pre-compute strength per profile once
+  const enriched = useMemo(
+    () => profiles.map((p) => ({ p, s: analyzeProfileStrength(p) })),
+    [profiles],
+  );
+
+  const weakCount      = enriched.filter(({ s }) => s.score < 50).length;
+  const hiddenActive   = enriched.filter(({ p }) =>
+    p.public_profile_status !== 'public' &&
+    (p.approval_status === 'active' || p.approval_status === 'approved_pending_payment'),
+  ).length;
+  const publicRisks    = enriched.filter(({ p, s }) =>
+    p.public_profile_status === 'public' && (s.score < 60 || s.riskFlags.length > 0),
+  ).length;
+
+  const filtered = useMemo(() => {
+    switch (filter) {
+      case 'weak':         return enriched.filter(({ s }) => s.score < 50);
+      case 'hidden-active':return enriched.filter(({ p }) =>
+        p.public_profile_status !== 'public' &&
+        (p.approval_status === 'active' || p.approval_status === 'approved_pending_payment'),
+      );
+      case 'public-risks': return enriched.filter(({ p, s }) =>
+        p.public_profile_status === 'public' && (s.score < 60 || s.riskFlags.length > 0),
+      );
+      default:             return enriched;
+    }
+  }, [enriched, filter]);
+
+  const TABS: { id: PQFilter; label: string; count: number }[] = [
+    { id: 'all',           label: 'All Profiles',   count: profiles.length },
+    { id: 'weak',          label: 'Low Strength',   count: weakCount        },
+    { id: 'hidden-active', label: 'Hidden Active',  count: hiddenActive     },
+    { id: 'public-risks',  label: 'Public Risks',   count: publicRisks      },
+  ];
+
+  return (
+    <section className="admin-section" id="section-profiles">
+      <div className="admin-section-header">
+        <h2>Profile Quality Queue</h2>
+        {!loading && <span className="admin-count">{profiles.length}</span>}
+      </div>
+
+      <SectionState
+        loading={loading}
+        error={error}
+        empty={!loading && !error && profiles.length === 0}
+        emptyMsg="No creator profiles yet. Approve a creator application and create their profile."
+      />
+
+      {!loading && !error && profiles.length > 0 && (
+        <>
+          <div className="pq-filter-bar">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                className={`pq-filter-btn${filter === t.id ? ' active' : ''}`}
+                onClick={() => setFilter(t.id)}
+              >
+                {t.label}
+                <span className="pq-filter-count">{t.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="admin-state-row admin-empty">No profiles match this filter.</div>
+          ) : (
+            <div className="pq-card-grid">
+              {filtered.map(({ p }) => (
+                <SectionErrorBoundary key={p.id} name={`Profile ${p.id}`}>
+                  <ProfileQualityCard profile={p} />
+                </SectionErrorBoundary>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+// ─── Platform Health Snapshot ─────────────────────────────────────────────────
+
+function PlatformHealthSnapshot({
+  requests, applications, profiles, loading,
+}: {
+  requests: BuyerRequestRow[];
+  applications: CreatorApplicationRow[];
+  profiles: DBCreatorProfileRow[];
+  loading: boolean;
+}) {
+  const activeCreators  = applications.filter((a) => a.status === 'active').length;
+  const publicProfiles  = profiles.filter((p) => p.public_profile_status === 'public').length;
+  const pendingReview   = applications.filter((a) => a.status === 'new' || a.status === 'reviewing').length;
+  const pendingPayment  = applications.filter((a) => a.status === 'approved_pending_payment').length;
+  const noProfileActive = applications.filter((a) => a.status === 'active' && !a.linked_creator_profile_id).length;
+  const weakPublic      = profiles.filter((p) =>
+    p.public_profile_status === 'public' && analyzeProfileStrength(p).score < 50,
+  ).length;
+
+  const healthScore = Math.min(
+    100,
+    (activeCreators   > 0 ? 30 : 0) +
+    (publicProfiles   > 0 ? 25 : 0) +
+    (noProfileActive === 0 ? 20 : Math.max(0, 15 - noProfileActive * 5)) +
+    (weakPublic      === 0 ? 15 : Math.max(0, 10 - weakPublic * 3)) +
+    (pendingReview   === 0 ? 10 : 5),
+  );
+  const healthLabel =
+    healthScore >= 85 ? '✅ Healthy'          :
+    healthScore >= 60 ? '⚡ Needs Attention'   :
+                        '⚠ Action Required';
+  const healthColor =
+    healthScore >= 85 ? '#00d478' :
+    healthScore >= 60 ? '#f9b032' :
+                        '#ef4444';
+
+  return (
+    <section className="admin-section admin-section--dim" id="section-health">
+      <div className="admin-section-header">
+        <h2>Platform Health Snapshot</h2>
+        {!loading && (
+          <span
+            className="health-score-badge"
+            style={{ color: healthColor, borderColor: healthColor + '44', background: healthColor + '10' }}
+          >
+            {healthLabel} · {healthScore}/100
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="admin-state-row admin-loading">Computing health…</div>
+      ) : (
+        <>
+          <div className="health-grid">
+            <div className="health-cell">
+              <span className="health-val">{requests.length}</span>
+              <span className="health-label">Buyer Requests</span>
+            </div>
+            <div className="health-cell">
+              <span className="health-val" style={{ color: applications.length > 0 ? '#63b3ed' : undefined }}>
+                {applications.length}
+              </span>
+              <span className="health-label">Creator Apps</span>
+            </div>
+            <div className="health-cell">
+              <span className="health-val" style={{ color: activeCreators > 0 ? '#00d478' : '#8a94a6' }}>
+                {activeCreators}
+              </span>
+              <span className="health-label">Active Creators</span>
+            </div>
+            <div className="health-cell">
+              <span className="health-val" style={{ color: publicProfiles > 0 ? '#00d478' : '#8a94a6' }}>
+                {publicProfiles}
+              </span>
+              <span className="health-label">Public Profiles</span>
+            </div>
+            <div className="health-cell">
+              <span className="health-val" style={{ color: pendingReview > 0 ? '#f9b032' : '#8a94a6' }}>
+                {pendingReview}
+              </span>
+              <span className="health-label">Pending Review</span>
+            </div>
+            <div className="health-cell">
+              <span className="health-val" style={{ color: pendingPayment > 0 ? '#63b3ed' : '#8a94a6' }}>
+                {pendingPayment}
+              </span>
+              <span className="health-label">Pending Payment</span>
+            </div>
+          </div>
+
+          {(noProfileActive > 0 || weakPublic > 0) && (
+            <div className="health-flags">
+              {noProfileActive > 0 && (
+                <span className="health-flag health-flag--warn">
+                  ⚠ {noProfileActive} active creator{noProfileActive !== 1 ? 's' : ''} without a profile — create from approval panel
+                </span>
+              )}
+              {weakPublic > 0 && (
+                <span className="health-flag health-flag--info">
+                  ℹ {weakPublic} public profile{weakPublic !== 1 ? 's' : ''} scoring below 50 — review Profile Quality Queue
+                </span>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function Admin() {
-  const [requests, setRequests]         = useState<BuyerRequestRow[]>([]);
-  const [applications, setApplications] = useState<CreatorApplicationRow[]>([]);
-  const [templates, setTemplates]       = useState<MicroBuildListing[]>([]);
-  const [reqLoading, setReqLoading]     = useState(true);
-  const [appLoading, setAppLoading]     = useState(true);
-  const [tplLoading, setTplLoading]     = useState(true);
-  const [reqError, setReqError]         = useState(false);
-  const [appError, setAppError]         = useState(false);
-  const [reqFilter, setReqFilter]       = useState<RequestFilter>('all');
+  const [requests, setRequests]             = useState<BuyerRequestRow[]>([]);
+  const [applications, setApplications]     = useState<CreatorApplicationRow[]>([]);
+  const [creatorProfiles, setCreatorProfiles] = useState<DBCreatorProfileRow[]>([]);
+  const [templates, setTemplates]           = useState<MicroBuildListing[]>([]);
+  const [reqLoading, setReqLoading]         = useState(true);
+  const [appLoading, setAppLoading]         = useState(true);
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  const [tplLoading, setTplLoading]         = useState(true);
+  const [reqError, setReqError]             = useState(false);
+  const [appError, setAppError]             = useState(false);
+  const [profilesError, setProfilesError]   = useState(false);
+  const [reqFilter, setReqFilter]           = useState<RequestFilter>('all');
+  // Creator app status filter
+  const [appStatusFilter, setAppStatusFilter] = useState<'all' | 'pending' | 'approved' | 'terminal'>('all');
+  // Batch selection
+  const [selectedApps, setSelectedApps]     = useState<Set<string>>(new Set());
+  const [selectedReqs, setSelectedReqs]     = useState<Set<string>>(new Set());
 
   useEffect(() => {
     supabase
@@ -2011,6 +2492,33 @@ export default function Admin() {
       setTemplates(listings);
       setTplLoading(false);
     });
+
+    supabase
+      .from('creator_profiles')
+      .select([
+        'id, user_id, auth_user_id, user_profile_id, creator_application_id',
+        'display_name, full_name, tier, approval_status, public_profile_status',
+        'bio, tools, niches, portfolio_links, github_url, linkedin_url',
+        'available_hours, certifications, credential_links, proof_links',
+        'case_studies, education_or_coursework, skills, badges',
+        'completed_builds_count, average_rating, created_at, updated_at',
+        'verification_status, subscription_status, profile_photo_url, slug',
+        'is_active, rating, builds_completed',
+      ].join(', '))
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[Admin] creator_profiles:', error);
+          setProfilesError(true);
+        } else {
+          setCreatorProfiles(
+            ((data ?? []) as unknown as Record<string, unknown>[]).map(
+              (r) => normalizeCreatorProfile(r) as unknown as DBCreatorProfileRow,
+            ),
+          );
+        }
+        setProfilesLoading(false);
+      });
   }, []);
 
   // Enriched requests with AI packets — per-row isolation so one bad row can't crash
@@ -2039,6 +2547,24 @@ export default function Admin() {
     );
   }
 
+  // Batch selection helpers
+  function toggleSelectApp(id: string) {
+    setSelectedApps((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectReq(id: string) {
+    setSelectedReqs((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function clearAppSelection()  { setSelectedApps(new Set()); }
+  function clearReqSelection()  { setSelectedReqs(new Set()); }
+
   // Buyer metrics
   const highPriorityCount  = enriched.filter((e) => e.packet.priorityLabel === 'High').length;
   const needsFollowupCount = enriched.filter((e) => e.packet.missingInfoFlags.length > 2 || e.packet.leadQualityLabel === 'Needs Detail').length;
@@ -2051,6 +2577,54 @@ export default function Admin() {
   const approvedPendingCount   = applications.filter((a) => a.status === 'approved_pending_payment').length;
   const activeCreatorCount     = applications.filter((a) => a.status === 'active').length;
   const rejectedSuspendedCount = applications.filter((a) => a.status === 'rejected' || a.status === 'suspended').length;
+
+  // Creator app status filter
+  const filteredApps = useMemo(() => {
+    switch (appStatusFilter) {
+      case 'pending':  return applications.filter((a) => a.status === 'new' || a.status === 'reviewing' || a.status === 'needs_more_info');
+      case 'approved': return applications.filter((a) => a.status === 'active' || a.status === 'approved_pending_payment');
+      case 'terminal': return applications.filter((a) => a.status === 'rejected' || a.status === 'suspended');
+      default:         return applications;
+    }
+  }, [applications, appStatusFilter]);
+
+  // Batch summaries (built from enriched/review data)
+  const selectedAppSummaries = useMemo(
+    () => applications
+      .filter((a) => selectedApps.has(a.id))
+      .map((a) => {
+        const tools   = safeArray<string>(a.tools).join(', ') || 'None listed';
+        const niches  = safeArray<string>(a.niches).join(', ') || 'None listed';
+        return [
+          `=== Creator Application: ${safeText(a.full_name, 'Unknown')} ===`,
+          `Email: ${safeText(a.email)}`,
+          `Tier: ${safeText(a.tier, 'free')} | Status: ${safeText(a.status)}`,
+          `Tools: ${tools}`,
+          `Niches: ${niches}`,
+          `Portfolio: ${a.portfolio_url ?? 'Not provided'}`,
+          `Applied: ${fmtDate(a.created_at)}`,
+        ].join('\n');
+      }),
+    [applications, selectedApps],
+  );
+
+  const selectedReqSummaries = useMemo(
+    () => enriched
+      .filter((e) => selectedReqs.has(e.row.id))
+      .map((e) => {
+        const { row, packet } = e;
+        return [
+          `=== Buyer Request: ${safeText(row.business_name)} ===`,
+          `Industry: ${safeText(row.industry)} | Build: ${safeText(row.build_type)}`,
+          `Budget: ${row.budget ?? 'Not specified'} | Deadline: ${row.deadline ?? 'Not specified'}`,
+          `Lead Quality: ${packet.leadQualityLabel} (${packet.leadQualityScore}/100)`,
+          `Quote Readiness: ${packet.quoteReadiness}`,
+          `Priority: ${packet.priorityLabel} | Fit: ${packet.fitRating}`,
+          `Submitted: ${fmtDate(row.created_at)}`,
+        ].join('\n');
+      }),
+    [enriched, selectedReqs],
+  );
 
   return (
     <div className="admin-page">
@@ -2083,7 +2657,10 @@ export default function Admin() {
 
       <div className="container admin-body">
 
-        {/* ── AI Ops Brief ─────────────────────────────────────────────────── */}
+        {/* ── Section navigation ───────────────────────────────────────────── */}
+        <AdminSectionNav />
+
+        {/* ── Today's AI Focus ─────────────────────────────────────────────── */}
         {(!reqLoading || !appLoading) && (
           <AiOpsAssistant enriched={enriched} applications={applications} />
         )}
@@ -2162,9 +2739,9 @@ export default function Admin() {
         </div>
 
         {/* ── Buyer Requests ────────────────────────────────────────────────── */}
-        <section className="admin-section">
+        <section className="admin-section" id="section-buyers">
           <div className="admin-section-header">
-            <h2>Buyer Requests</h2>
+            <h2>Buyer Request Queue</h2>
             {!reqLoading && <span className="admin-count">{requests.length}</span>}
           </div>
 
@@ -2194,6 +2771,16 @@ export default function Admin() {
                 })}
               </div>
 
+              {/* Batch bar */}
+              {selectedReqs.size > 0 && (
+                <BatchActionBar
+                  type="buyers"
+                  count={selectedReqs.size}
+                  summaries={selectedReqSummaries}
+                  onClear={clearReqSelection}
+                />
+              )}
+
               {filtered.length === 0 && (
                 <div className="admin-state-row admin-empty">No requests match this filter.</div>
               )}
@@ -2204,6 +2791,8 @@ export default function Admin() {
                     <RequestCard
                       enriched={e}
                       onStatusChange={handleRequestStatusChange}
+                      selected={selectedReqs.has(e.row.id)}
+                      onSelect={toggleSelectReq}
                     />
                   </SectionErrorBoundary>
                 ))}
@@ -2214,9 +2803,9 @@ export default function Admin() {
         </section>
 
         {/* ── Creator Applications ──────────────────────────────────────────── */}
-        <section className="admin-section">
+        <section className="admin-section" id="section-creators">
           <div className="admin-section-header">
-            <h2>Creator Applications</h2>
+            <h2>Creator Review Queue</h2>
             {!appLoading && <span className="admin-count">{applications.length}</span>}
           </div>
 
@@ -2229,16 +2818,52 @@ export default function Admin() {
 
           {!appLoading && !appError && applications.length > 0 && (
             <SectionErrorBoundary name="Creator Applications">
-              <div className="creator-card-list">
-                {applications.map((a) => (
-                  <SectionErrorBoundary key={a.id} name={`Creator ${a.id}`}>
-                    <CreatorCard
-                      app={a}
-                      onStatusChange={handleAppStatusChange}
-                    />
-                  </SectionErrorBoundary>
-                ))}
-              </div>
+              <>
+                {/* Status filter bar */}
+                <div className="app-status-filter-bar">
+                  {([
+                    { id: 'all',      label: 'All',           count: applications.length },
+                    { id: 'pending',  label: 'Pending Review', count: pendingReviewCount + needsMoreInfoCount },
+                    { id: 'approved', label: 'Approved',       count: approvedPendingCount + activeCreatorCount },
+                    { id: 'terminal', label: 'Closed',         count: rejectedSuspendedCount },
+                  ] as const).map((tab) => (
+                    <button
+                      key={tab.id}
+                      className={`app-filter-tab${appStatusFilter === tab.id ? ' active' : ''}`}
+                      onClick={() => setAppStatusFilter(tab.id)}
+                    >
+                      {tab.label}
+                      <span className="app-filter-count">{tab.count}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Batch bar */}
+                {selectedApps.size > 0 && (
+                  <BatchActionBar
+                    type="creators"
+                    count={selectedApps.size}
+                    summaries={selectedAppSummaries}
+                    onClear={clearAppSelection}
+                  />
+                )}
+
+                <div className="creator-card-list">
+                  {filteredApps.map((a) => (
+                    <SectionErrorBoundary key={a.id} name={`Creator ${a.id}`}>
+                      <CreatorCard
+                        app={a}
+                        onStatusChange={handleAppStatusChange}
+                        selected={selectedApps.has(a.id)}
+                        onSelect={toggleSelectApp}
+                      />
+                    </SectionErrorBoundary>
+                  ))}
+                  {filteredApps.length === 0 && (
+                    <div className="admin-state-row admin-empty">No applications match this filter.</div>
+                  )}
+                </div>
+              </>
             </SectionErrorBoundary>
           )}
         </section>
@@ -2281,9 +2906,30 @@ export default function Admin() {
           )}
         </section>
 
+        {/* ── Profile Quality Queue ─────────────────────────────────────────── */}
+        <SectionErrorBoundary name="Profile Quality Queue">
+          <ProfileQualityQueue
+            profiles={creatorProfiles}
+            loading={profilesLoading}
+            error={profilesError}
+          />
+        </SectionErrorBoundary>
+
         {/* ── Workflow Templates ────────────────────────────────────────────── */}
         <SectionErrorBoundary name="Workflow Templates">
-          <WorkflowTemplates />
+          <div id="section-templates">
+            <WorkflowTemplates />
+          </div>
+        </SectionErrorBoundary>
+
+        {/* ── Platform Health Snapshot ──────────────────────────────────────── */}
+        <SectionErrorBoundary name="Platform Health Snapshot">
+          <PlatformHealthSnapshot
+            requests={requests}
+            applications={applications}
+            profiles={creatorProfiles}
+            loading={reqLoading || appLoading || profilesLoading}
+          />
         </SectionErrorBoundary>
 
         {/* ── Phase 2+ placeholders ─────────────────────────────────────────── */}

@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses — quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Admin Dashboard Polish v1 — operations command center with creator + buyer metrics, AI ops brief with creator signals, human-readable status labels, auth-link indicators, profile-link indicators, admin reason callouts, and full approval workflow. Build passes. Stripe and GitHub OAuth deferred.
+**Status:** Admin AI Ops v3 — full admin command center with AI Focus Panel, Creator Review Queue with batch selection, Buyer Request Queue, Profile Quality Queue, Reusable Workflow Templates (10), and Platform Health Snapshot. Rules-based AI operations throughout. Build passes. Stripe and GitHub OAuth deferred.
 
 ---
 
@@ -286,17 +286,60 @@ GitHub sign-in is intentionally **not implemented yet**. It will be added once M
 3. In `src/App.tsx`, re-wrap the `admin` index route with `<AdminRouteGuard>`.
 4. Replace all `USING (true)` dev policies per `supabase/migrations/admin-auth-notes.sql`.
 
-#### Admin Dashboard Features (v2 — Actionable Ops)
+#### Admin Dashboard Features (v3 — AI Ops Command Center)
 
-- **AI Ops Brief:** Compact panel at the top with today's operational focus, derived from live data: high-priority requests, ready-to-quote count, needs-follow-up count, new applications.
-- **Metric cards:** Total requests, new, high-priority, ready-to-quote, needs follow-up, new applications — with color alerts.
-- **Buyer request cards:** Each request shows business, industry, build type, budget, deadline, price estimate, lead quality (0–100), priority, fit rating, quote readiness, next action, missing info count, risk flags.
-- **Status dropdown (writes to Supabase):** Change buyer request status directly from the card — New / In Review / Proposal Sent / Accepted / Rejected. Uses optimistic update with revert on failure.
-- **Filter tabs:** All / New / High Priority / Needs Follow-up / Ready to Quote.
-- **AI Operations Panel (7 tabs):** AI Summary (8 signal scores), Missing Info + Risk Flags, Follow-up Questions, Creator Brief, Proposal Draft, Checklists, Automation.
-- **Copy buttons:** Copy Packet Summary, Follow-up Questions, Buyer Outreach Message, Creator Brief, Proposal Draft.
-- **Save Build Packet (writes to Supabase):** In the Proposal tab, saves the rules-based build packet to the `build_packets` table linked to the buyer request. Shows saved ID on success.
-- **Creator Applications:** Action buttons (Mark Reviewed / Approve / Reject / Reset) that write to Supabase. Expandable AI Review panel with candidate fit score, strengths, concerns, missing info, best-fit niches, recommended decision, and Copy Follow-up Message button.
+**Section navigation:** Sticky top nav with anchor links to all 6 sections — Focus, Creators, Buyers, Profiles, Templates, Health.
+
+**Today's AI Focus Panel:**
+- Numbered, prioritized action list computed from live Supabase data (rules-based, no external AI API)
+- Signals: profiles missing / high-priority buyers / pending review / ready to quote / needs follow-up / needs more info / pending payment / unlinked apps
+- Signal groups: Buyer Requests and Creator Applications with color-coded counts
+- Warning alerts for approved creators without profiles and unlinked applications
+
+**Creator Review Queue:**
+- Status filter bar: All / Pending Review / Approved / Closed
+- Batch selection with checkboxes — copy summaries or export as `.txt`
+- Creator cards showing: name, email, tier, approval status, auth-link badge, profile-link badge, decision date, reason callout
+- AI fit score (0–100), strengths, concerns, missing proof, best-fit niches, recommended decision
+- Action buttons: Approve Free, Approve Professional Pending Payment, Approve Verified Pending Payment, Needs More Info, Reject, Suspend, Create/Update Profile, Make Public, Hide Profile
+- Reason input fields for reject/suspend/needs-more-info actions
+- Copyable messages: approval, rejection, follow-up, candidate summary
+
+**Buyer Request Queue:**
+- Filter tabs: All / New / High Priority / Needs Follow-up / Ready to Quote
+- Batch selection with checkboxes — copy summaries or export as `.txt`
+- Request cards showing: business, industry, build type, budget, deadline, lead quality score (0–100), priority, fit rating, quote readiness, price range, missing info flags
+- AI Operations Panel (7 tabs): AI Summary (8 scores), Missing Info + Risk Flags, Follow-up Questions, Creator Brief, Proposal Draft, Checklists, Automation
+- Copy buttons: Packet Summary, Follow-up Questions, Buyer Outreach, Creator Brief, Proposal Draft
+- Save Build Packet to Supabase (shows saved ID on success)
+
+**Profile Quality Queue:**
+- Fetches all `creator_profiles` from Supabase
+- Profile strength score (0–100) computed rules-based using `analyzeProfileStrength()`
+- Filter tabs: All Profiles / Low Strength (<50) / Hidden Active / Public Risks
+- Each card shows: tier, visibility status, score + label, risk flags, top missing fields, strengths
+- Actions: Toggle public/hidden (writes to Supabase), Copy profile improvement message
+
+**Reusable Workflow Templates (10):**
+- New Buyer Follow-up, Missing Info Request, Quote Proposal Starter
+- Creator Approval, Creator Rejection, Professional Payment Pending, Verified Proof Request
+- Profile Improvement Request, Profile Approved & Published, Buyer → Creator Handoff
+- Each card shows template preview and one-click copy with copied state
+
+**Platform Health Snapshot:**
+- Overall health score (0–100) with label: Healthy / Needs Attention / Action Required
+- 6 health metrics: Total Buyers, Creator Apps, Active Creators, Public Profiles, Pending Review, Pending Payment
+- Warning flags for actionable issues (creators without profiles, weak public profiles)
+
+**Copy button reliability:** All copy buttons use a consistent `copyToClipboard()` helper with textarea fallback. Every button shows a "✓ Copied" state for 2 seconds, then resets. No crashes if Clipboard API is unavailable.
+
+**Defensive UI:** `SectionErrorBoundary` wraps every section and every individual card. All data access uses `safeText()`, `safeArray()`, `safeNumber()` helpers. No blank screens. Loading and error states have readable messages.
+
+**Rules-based AI — no external API keys:**
+- `src/lib/buildPacket.ts` — buyer lead quality, priority, fit rating, quote readiness, proposal draft, creator brief
+- `src/lib/profileAI.ts` — profile strength score, missing fields, improvements, risk flags, badges, readiness verdict
+
+> **⚠ Never expose external AI API keys in the frontend.** If real GPT-4o / Claude AI is added in a future phase, it must go through a **Supabase Edge Function** (server-side). The frontend calls the Edge Function, not the AI API directly. API keys must be stored as Supabase secrets, not in `.env` or frontend code.
 - **MicroBuild Listings:** Clean table with encoding-safe turnaround display.
 
 #### Temporary Dev Policies Warning
