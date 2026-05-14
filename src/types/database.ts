@@ -34,9 +34,10 @@ export type ApplicationStatus =
   | 'rejected'
   | 'suspended';
 
-export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'revoked';
-export type PublicProfileStatus = 'hidden' | 'pending' | 'active' | 'suspended';
-export type SubscriptionStatus = 'none' | 'pending_payment' | 'active' | 'past_due' | 'cancelled';
+export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
+export type ProfileApprovalStatus = 'draft' | 'approved_pending_payment' | 'active' | 'hidden' | 'suspended' | 'rejected';
+export type PublicProfileStatus = 'hidden' | 'public' | 'paused';
+export type SubscriptionStatus = 'not_required' | 'not_started' | 'pending_payment' | 'active' | 'past_due' | 'canceled';
 
 export type OrderStatus =
   | 'pending'
@@ -57,13 +58,21 @@ export interface UserRow {
 
 export interface BusinessProfileRow {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  contact_name: string | null;
   business_name: string;
   industry: string;
   city: string | null;
   state: string | null;
   website: string | null;
   phone: string | null;
+  // Extended (added by profile-system-foundation.sql)
+  website_url: string | null;
+  instagram_url: string | null;
+  google_business_url: string | null;
+  main_goal: string | null;
+  preferred_microbuild_type: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -119,16 +128,88 @@ export interface BuyerRequestRow {
 
 export interface CreatorProfileRow {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  creator_application_id: string | null;
+  // Display
+  display_name: string | null;
   full_name: string;
+  profile_photo_url: string | null;
+  slug: string | null;
   bio: string | null;
+  // Tier & status
+  tier: CreatorTier;
+  verification_status: VerificationStatus;
+  approval_status: ProfileApprovalStatus;
+  subscription_status: SubscriptionStatus;
+  public_profile_status: PublicProfileStatus;
+  // Marketplace data
+  badges: string[];
+  tools: string[];
+  niches: string[];
+  portfolio_links: string[];
+  credential_links: string[];
+  certifications: string[];
+  proof_links: string[];
+  education_or_coursework: string | null;
+  github_url: string | null;
+  linkedin_url: string | null;
+  case_studies: string | null;
+  // Legacy columns kept for compat
   portfolio_url: string | null;
   skills: string[];
   available_hours: string;
   is_active: boolean;
+  // Admin & scoring
+  admin_notes: string | null;
+  ai_profile_score: number | null;
+  ai_profile_summary: string | null;
+  // Stats
+  completed_builds_count: number;
+  average_rating: number | null;
   rating: number;
   builds_completed: number;
+  // Timestamps
   created_at: string;
+  updated_at: string;
+}
+
+export interface CreatorProfileInsert {
+  id?: string;
+  user_id?: string | null;
+  creator_application_id?: string | null;
+  display_name?: string | null;
+  full_name: string;
+  profile_photo_url?: string | null;
+  slug?: string | null;
+  bio?: string | null;
+  tier?: CreatorTier;
+  verification_status?: VerificationStatus;
+  approval_status?: ProfileApprovalStatus;
+  subscription_status?: SubscriptionStatus;
+  public_profile_status?: PublicProfileStatus;
+  badges?: string[];
+  tools?: string[];
+  niches?: string[];
+  portfolio_links?: string[];
+  credential_links?: string[];
+  certifications?: string[];
+  proof_links?: string[];
+  education_or_coursework?: string | null;
+  github_url?: string | null;
+  linkedin_url?: string | null;
+  case_studies?: string | null;
+  // Legacy
+  portfolio_url?: string | null;
+  skills?: string[];
+  available_hours?: string;
+  is_active?: boolean;
+  admin_notes?: string | null;
+  ai_profile_score?: number | null;
+  ai_profile_summary?: string | null;
+  completed_builds_count?: number;
+  average_rating?: number | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CreatorApplicationRow {
@@ -341,19 +422,7 @@ export type Database = {
       };
       creator_profiles: {
         Row: CreatorProfileRow;
-        Insert: {
-          id?: string;
-          user_id: string;
-          full_name: string;
-          bio?: string | null;
-          portfolio_url?: string | null;
-          skills: string[];
-          available_hours: string;
-          is_active?: boolean;
-          rating?: number;
-          builds_completed?: number;
-          created_at?: string;
-        };
+        Insert: CreatorProfileInsert;
         Update: Partial<Omit<CreatorProfileRow, 'id'>>;
         Relationships: [];
       };

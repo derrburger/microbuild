@@ -1,0 +1,120 @@
+-- ============================================================
+-- MicroBuild — Admin Auth Notes
+-- ============================================================
+-- This file is for documentation and future reference only.
+-- It does NOT contain runnable DDL; it explains the steps
+-- needed to harden RLS policies once Supabase Auth is in use.
+--
+-- Run order (for reference):
+--   1. schema.sql
+--   2. seed.sql
+--   3. policies.sql
+--   4. migrations/creator-tier-fields.sql
+--   5. migrations/profile-system-foundation.sql
+--   6. (This file — comments only, nothing to execute)
+-- ============================================================
+
+
+-- ─── Current situation (MVP / dev mode) ──────────────────────────────────────
+--
+-- The following policies in supabase/policies.sql are TEMPORARY and allow the
+-- anon role to read and update sensitive tables with no user context check:
+--
+--   buyer_requests_dev_admin_read        → USING (true)  ← anon reads ALL rows
+--   buyer_requests_dev_admin_update      → USING (true)  ← anon updates ANY row
+--   creator_apps_dev_admin_read          → USING (true)  ← anon reads ALL rows
+--   creator_apps_dev_admin_update        → USING (true)  ← anon updates ANY row
+--   build_packets_dev_admin_insert       → WITH CHECK (true)
+--   creator_profiles_dev_admin_read      → USING (true)  ← overrides public-only read
+--   creator_profiles_dev_admin_insert    → WITH CHECK (true)
+--   creator_profiles_dev_admin_update    → USING (true)  ← anon updates ANY profile
+--
+-- While /admin is now protected by Supabase Auth + an email allowlist
+-- (src/lib/admin.ts, src/components/AdminRouteGuard.tsx), the anon key is
+-- still exposed in the browser. A direct REST API call bypasses the frontend
+-- entirely and can still read/write using these dev policies.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+
+-- ─── Phase 2 hardening — when Supabase Auth is fully in place ────────────────
+--
+-- STEP 1: Create an admin role via Supabase custom claims
+--         (or use a simple allow-table approach as below)
+--
+--   CREATE TABLE IF NOT EXISTS public.admin_users (
+--     user_id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
+--     created_at timestamptz NOT NULL DEFAULT now()
+--   );
+--   -- RLS: only service_role can insert
+--   ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+--
+--   -- Manually insert your admin user after creating them in Supabase Auth:
+--   -- INSERT INTO public.admin_users (user_id) VALUES ('<your-user-uuid>');
+--
+--
+-- STEP 2: Replace every dev admin policy with a proper auth check.
+--         Example for buyer_requests:
+--
+--   -- Drop the dev policy:
+--   DROP POLICY IF EXISTS buyer_requests_dev_admin_read ON public.buyer_requests;
+--   DROP POLICY IF EXISTS buyer_requests_dev_admin_update ON public.buyer_requests;
+--
+--   -- Create hardened policies:
+--   CREATE POLICY buyer_requests_admin_read ON public.buyer_requests
+--     FOR SELECT
+--     TO authenticated
+--     USING (
+--       EXISTS (
+--         SELECT 1 FROM public.admin_users
+--         WHERE user_id = auth.uid()
+--       )
+--     );
+--
+--   CREATE POLICY buyer_requests_admin_update ON public.buyer_requests
+--     FOR UPDATE
+--     TO authenticated
+--     USING (
+--       EXISTS (
+--         SELECT 1 FROM public.admin_users
+--         WHERE user_id = auth.uid()
+--       )
+--     )
+--     WITH CHECK (
+--       EXISTS (
+--         SELECT 1 FROM public.admin_users
+--         WHERE user_id = auth.uid()
+--       )
+--     );
+--
+-- Repeat this pattern for:
+--   creator_applications (read + update)
+--   creator_profiles     (read + insert + update)
+--   build_packets        (insert + select)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+
+-- ─── How to create an admin user in Supabase Auth ─────────────────────────────
+--
+-- 1. Go to your Supabase dashboard → Authentication → Users → Invite User
+--    (or use "Add User" and create with a password directly).
+--
+-- 2. Enter the email you put in VITE_ADMIN_EMAILS in your .env file.
+--    Set a strong password.
+--
+-- 3. Confirm the email if required (check for the confirmation email, or
+--    manually confirm in the Supabase dashboard under the user's row).
+--
+-- 4. You can now sign in at /admin/login with those credentials.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+
+-- ─── Security checklist before public launch ─────────────────────────────────
+--
+-- [ ] Replace all USING (true) dev policies with auth.uid()-based checks
+-- [ ] Remove or disable public anon UPDATE on buyer_requests/creator_applications
+-- [ ] Ensure creator_profiles_dev_admin_read does not expose admin_notes
+-- [ ] Remove VITE_ADMIN_EMAILS from client-side code (move to server/Edge Function)
+-- [ ] Add Supabase RLS for service_role-only admin_users table
+-- [ ] Add session expiry + refresh token handling
+-- [ ] Optionally move admin dashboard to a separate domain/subdomain
+-- ─────────────────────────────────────────────────────────────────────────────

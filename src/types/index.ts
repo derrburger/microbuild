@@ -1,4 +1,7 @@
 export type CreatorTier = 'free' | 'professional' | 'verified';
+export type ProfileApprovalStatus = 'draft' | 'approved_pending_payment' | 'active' | 'hidden' | 'suspended' | 'rejected';
+export type PublicProfileStatus = 'hidden' | 'public' | 'paused';
+export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
 
 export type MicroBuildCategory =
   | 'Quote Funnel'

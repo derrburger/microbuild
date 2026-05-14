@@ -1,0 +1,214 @@
+/* ─── Page shell ─────────────────────────────────────────────────────────────── */
+.creator-dir-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+/* ─── Hero ───────────────────────────────────────────────────────────────────── */
+.creator-dir-hero {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 3rem 1.5rem 2.5rem;
+  text-align: center;
+}
+.creator-dir-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+.creator-dir-title {
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--text-primary);
+  margin: 0 0 0.75rem;
+}
+.creator-dir-sub {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  max-width: 560px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ─── Body ───────────────────────────────────────────────────────────────────── */
+.creator-dir-body {
+  padding: 2.5rem 1.5rem 4rem;
+}
+.creator-dir-count {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
+}
+
+/* ─── Grid ───────────────────────────────────────────────────────────────────── */
+.creator-dir-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+/* ─── Creator card ───────────────────────────────────────────────────────────── */
+.creator-dir-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.1rem 1rem 1.1rem 1rem;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.15s;
+  position: relative;
+}
+.creator-dir-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.cdc-avatar {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.cdc-body {
+  flex: 1;
+  min-width: 0;
+}
+.cdc-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.3rem;
+}
+
+.cdc-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+.cdc-tier,
+.cdc-verified,
+.cdc-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.cdc-verified {
+  color: #f9b032;
+  border-color: #f9b03255;
+  background: #f9b03212;
+}
+.cdc-badge {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: transparent;
+}
+
+.cdc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.4rem;
+}
+.cdc-chip {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-secondary);
+}
+.cdc-chip--more { color: var(--text-muted); }
+
+.cdc-niches {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+}
+.cdc-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.cdc-arrow {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  align-self: center;
+  margin-left: auto;
+  padding-left: 0.5rem;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+.creator-dir-card:hover .cdc-arrow { opacity: 1; color: var(--accent); }
+
+/* ─── States ─────────────────────────────────────────────────────────────────── */
+.creator-dir-state {
+  text-align: center;
+  padding: 4rem 1rem;
+  color: var(--text-muted);
+}
+.creator-dir-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto 1rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.creator-dir-error { color: #ef4444; }
+
+.creator-dir-coming-soon {
+  text-align: center;
+  padding: 4rem 1rem;
+  max-width: 500px;
+  margin: 0 auto;
+}
+.coming-soon-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+.creator-dir-coming-soon h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 0.75rem;
+}
+.creator-dir-coming-soon p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+}
+.coming-soon-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .creator-dir-grid { grid-template-columns: 1fr; }
+  .creator-dir-title { font-size: 1.5rem; }
+}

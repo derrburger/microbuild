@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { fetchTemplates } from '../lib/templates';
 import { generateBuildPacket, generateCreatorReview } from '../lib/buildPacket';
 import type { GeneratedBuildPacket, CreatorApplicationReview } from '../lib/buildPacket';
+import { buildCreatorProfileInsert } from '../lib/profiles';
+import type { CreatorApplicationRow as DBCreatorApplicationRow } from '../types/database';
 import type { MicroBuildListing } from '../types';
 import './Admin.css';
 
@@ -223,6 +225,54 @@ async function updateApplicationStatus(id: string, status: string): Promise<bool
     .update({ status })
     .eq('id', id);
   if (error) { console.error('[Admin] update application status:', error); return false; }
+  return true;
+}
+
+async function findExistingProfile(
+  applicationId: string,
+): Promise<{ id: string; slug: string | null; public_profile_status: string } | null> {
+  const { data, error } = await (supabase
+    .from('creator_profiles')
+    .select('id, slug, public_profile_status')
+    .eq('creator_application_id', applicationId)
+    .maybeSingle() as unknown as Promise<{
+      data: { id: string; slug: string | null; public_profile_status: string } | null;
+      error: unknown;
+    }>);
+  if (error) { console.error('[Admin] findExistingProfile:', error); return null; }
+  return data ?? null;
+}
+
+async function createCreatorProfile(
+  app: CreatorApplicationRow,
+  fitScore: number,
+): Promise<{ id: string; slug: string | null; public_profile_status: string } | null> {
+  // Prevent duplicate profiles for the same application
+  const existing = await findExistingProfile(app.id);
+  if (existing) return existing;
+
+  const payload = buildCreatorProfileInsert(app as unknown as DBCreatorApplicationRow, fitScore);
+  const { data, error } = await (supabase
+    .from('creator_profiles')
+    .insert(payload as unknown as Record<string, unknown>)
+    .select('id, slug, public_profile_status')
+    .single() as unknown as Promise<{
+      data: { id: string; slug: string | null; public_profile_status: string } | null;
+      error: unknown;
+    }>);
+  if (error) { console.error('[Admin] create creator_profile:', error); return null; }
+  return data;
+}
+
+async function setProfileVisibility(
+  profileId: string,
+  status: 'public' | 'hidden' | 'paused',
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('creator_profiles')
+    .update({ public_profile_status: status })
+    .eq('id', profileId);
+  if (error) { console.error('[Admin] setProfileVisibility:', error); return false; }
   return true;
 }
 
@@ -942,6 +992,165 @@ const APP_STATUS_OPTIONS: { status: string; label: string }[] = [
   { status: 'suspended',                label: 'Suspended'                },
 ];
 
+// ─── Create Profile Button ────────────────────────────────────────────────────
+
+function CreateProfileButton({
+  app,
+  fitScore,
+}: {
+  app: CreatorApplicationRow;
+  fitScore: number;
+}) {
+  const [state, setState] = useState<'idle' | 'creating' | 'done' | 'error'>('idle');
+  const [profileId, setProfileId]   = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<string>('hidden');
+  const [toggling, setToggling]     = useState(false);
+  const isApproved = ['approved_pending_payment', 'active'].includes(app.status);
+
+  async function handleCreate() {
+    setState('creating');
+    const result = await createCreatorProfile(app, fitScore);
+    if (!result) {
+      setState('error');
+      setTimeout(() => setState('idle'), 4000);
+      return;
+    }
+    setProfileId(result.id);
+    setVisibility(result.public_profile_status ?? 'hidden');
+    setState('done');
+  }
+
+  async function handleToggleVisibility() {
+    if (!profileId) return;
+    const next = visibility === 'public' ? 'hidden' : 'public';
+    setToggling(true);
+    const ok = await setProfileVisibility(profileId, next);
+    if (ok) setVisibility(next);
+    setToggling(false);
+  }
+
+  if (state === 'done' && profileId) {
+    const isPublic = visibility === 'public';
+    return (
+      <div className="create-profile-done">
+        <span>✓ Profile {isPublic ? 'live' : 'created (hidden)'}</span>
+        <div className="create-profile-actions">
+          <button
+            className={`create-profile-visibility-btn${isPublic ? ' is-public' : ''}`}
+            onClick={handleToggleVisibility}
+            disabled={toggling}
+            title={isPublic ? 'Hide profile from public directory' : 'Make profile publicly visible'}
+          >
+            {toggling ? '…' : isPublic ? '🟢 Public — click to hide' : '⚫ Hidden — click to activate'}
+          </button>
+          <a
+            className="create-profile-link"
+            href={`/creator/${profileId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Preview →
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isApproved) {
+    return (
+      <button className="create-profile-btn create-profile-btn--disabled" disabled title="Set application status to approved_pending_payment or active first">
+        Create Profile <span className="create-profile-hint">(needs approval first)</span>
+      </button>
+    );
+  }
+
+  return (
+    <button
+      className={`create-profile-btn${state === 'error' ? ' create-profile-btn--error' : ''}`}
+      onClick={handleCreate}
+      disabled={state === 'creating'}
+    >
+      {state === 'creating' ? 'Creating…' : state === 'error' ? 'Failed — retry' : '+ Create Creator Profile'}
+    </button>
+  );
+}
+
+// ─── Approval Action Row ──────────────────────────────────────────────────────
+
+function ApprovalActionRow({
+  app,
+  onStatusChange,
+}: {
+  app: CreatorApplicationRow;
+  onStatusChange: (id: string, newStatus: string) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  async function applyStatus(next: string) {
+    setLoading(true);
+    const ok = await updateApplicationStatus(app.id, next);
+    setLoading(false);
+    if (ok) onStatusChange(app.id, next);
+    else console.error('[Admin] ApprovalActionRow failed to set status:', next);
+  }
+
+  const s = app.status;
+  const tier = safeText(app.tier, 'free');
+
+  return (
+    <div className="approval-action-row">
+      {s !== 'active' && tier === 'free' && (
+        <button
+          className="approval-btn approval-btn--approve"
+          onClick={() => applyStatus('active')}
+          disabled={loading}
+          title="Approve and activate this Free Creator account"
+        >
+          ✓ Approve Free
+        </button>
+      )}
+      {s !== 'approved_pending_payment' && tier !== 'free' && (
+        <button
+          className="approval-btn approval-btn--approve"
+          onClick={() => applyStatus('approved_pending_payment')}
+          disabled={loading}
+          title={`Approve — ${tier === 'professional' ? '$15/mo' : '$25/mo'} payment required before activation`}
+        >
+          ✓ Approve (Pending Payment)
+        </button>
+      )}
+      {s !== 'needs_more_info' && (
+        <button
+          className="approval-btn approval-btn--info"
+          onClick={() => applyStatus('needs_more_info')}
+          disabled={loading}
+        >
+          ? Needs Info
+        </button>
+      )}
+      {s !== 'needs_portfolio_review' && (
+        <button
+          className="approval-btn approval-btn--review"
+          onClick={() => applyStatus('needs_portfolio_review')}
+          disabled={loading}
+        >
+          Portfolio Review
+        </button>
+      )}
+      {s !== 'rejected' && (
+        <button
+          className="approval-btn approval-btn--reject"
+          onClick={() => applyStatus('rejected')}
+          disabled={loading}
+        >
+          ✗ Reject
+        </button>
+      )}
+      {loading && <span className="approval-saving">Saving…</span>}
+    </div>
+  );
+}
+
 // ─── Profile Preview ──────────────────────────────────────────────────────────
 
 function ProfilePreview({ app, review }: { app: CreatorApplicationRow; review: CreatorApplicationReview }) {
@@ -1169,6 +1378,9 @@ function CreatorCard({
       {/* Decision */}
       <div className="creator-decision">{review.recommendedDecision}</div>
 
+      {/* Approval actions */}
+      <ApprovalActionRow app={app} onStatusChange={onStatusChange} />
+
       {/* Expandable toggles */}
       <div className="creator-toggle-row">
         <button
@@ -1188,7 +1400,14 @@ function CreatorCard({
       </div>
 
       {/* Profile preview */}
-      {previewOpen && <ProfilePreview app={app} review={review} />}
+      {previewOpen && (
+        <>
+          <ProfilePreview app={app} review={review} />
+          <div className="create-profile-row">
+            <CreateProfileButton app={app} fitScore={review.candidateFitScore} />
+          </div>
+        </>
+      )}
 
       {/* AI Review panel */}
       {reviewOpen && (
@@ -1406,12 +1625,13 @@ export default function Admin() {
         </div>
       </div>
 
-      {/* ── Auth warning ─────────────────────────────────────────────────── */}
+      {/* ── Dev-mode warning ─────────────────────────────────────────────── */}
       <div className="admin-auth-warning">
         <div className="container">
-          <strong>⚠️ No authentication required.</strong>{' '}
-          Dev policies active — status writes use anon key. See <code>supabase/policies.sql</code>.
-          Replace with Supabase Auth + admin role checks before going public.
+          <strong>⚠️ Development admin dashboard — not protected.</strong>{' '}
+          Admin auth is deferred to a later phase. Do not deploy this publicly until
+          Supabase Auth and admin role policies are added.
+          See <code>supabase/migrations/admin-auth-notes.sql</code> for the hardening guide.
         </div>
       </div>
 

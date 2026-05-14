@@ -283,24 +283,69 @@ export default function CreatorsApply() {
 
   // ── Success state ────────────────────────────────────────────────────────────
   if (submitted && tierConfig) {
+    const isFree = selectedTier === 'free';
+    const steps = isFree
+      ? [
+          { icon: '📋', title: 'Application received', desc: 'Your Free Creator application is in the queue for manual review.' },
+          { icon: '🔍', title: 'Admin reviews your profile', desc: 'We\'ll check your tools, niches, portfolio, and experience against current demand.' },
+          { icon: '✉️', title: 'Decision email within 3–5 days', desc: 'We\'ll send a direct yes or no with feedback. Approved accounts are activated immediately.' },
+          { icon: '🟢', title: 'Account activated', desc: 'Your Free Creator account goes live — no payment required.' },
+        ]
+      : [
+          { icon: '📋', title: 'Application received', desc: `Your ${tierConfig.name} application is in the queue for manual review.` },
+          { icon: '🔍', title: 'Portfolio & credentials reviewed', desc: 'We\'ll review your portfolio, project history, and tier proof before making a decision.' },
+          { icon: '✉️', title: 'Approval decision within 3–5 days', desc: 'If approved, you\'ll receive an email with subscription activation instructions.' },
+          { icon: '💳', title: `Payment: ${tierConfig.price} (after approval only)`, desc: 'You won\'t be charged today. Payment is required only after you receive an approval email and choose to activate.' },
+          { icon: '🟢', title: 'Profile activated', desc: 'Once payment is confirmed, your profile goes live in the MicroBuild creator directory.' },
+        ];
+
     return (
       <div className="creators-page">
         <div className="container creators-success">
           <div className="success-icon">✓</div>
           <h2>Application Submitted</h2>
-          <div className="success-tier-badge" style={{ color: tierConfig.badgeColor, borderColor: tierConfig.badgeColor + '44', backgroundColor: tierConfig.badgeColor + '15' }}>
+          <div
+            className="success-tier-badge"
+            style={{ color: tierConfig.badgeColor, borderColor: tierConfig.badgeColor + '44', backgroundColor: tierConfig.badgeColor + '15' }}
+          >
             {tierConfig.badge} — {tierConfig.name}
           </div>
-          <p>
-            Thanks, <strong>{form.fullName}</strong>. We review every application manually.
-            {selectedTier !== 'free'
-              ? ' We\'ll review your portfolio and credentials within 3–5 business days. If approved, we\'ll send subscription activation instructions before your account goes live. You won\'t be charged today.'
-              : ' If your skills are a good fit, we\'ll reach out within 3–5 business days.'}
+
+          <p className="success-intro">
+            Thanks, <strong>{form.fullName}</strong>. We review every application manually
+            and will be direct with feedback either way.
           </p>
+
+          <div className="success-timeline">
+            <div className="success-timeline-label">What happens next</div>
+            {steps.map((s, i) => (
+              <div key={i} className="success-step">
+                <div className="success-step-icon">{s.icon}</div>
+                <div className="success-step-body">
+                  <div className="success-step-title">{s.title}</div>
+                  <div className="success-step-desc">{s.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {!isFree && (
+            <div className="success-payment-note">
+              <strong>No charge today.</strong> The {tierConfig.price} subscription is activated
+              only after admin approval and your confirmation. You can decline at any point at no cost.
+              Your public profile will not be visible until admin activates it after payment.
+            </div>
+          )}
+
           <p className="success-note">
-            We're selective because build quality directly affects buyer outcomes. We'll be direct with feedback either way.
+            Public profiles are only visible in the creator directory after admin approval and
+            activation — your application is not publicly accessible.
           </p>
-          <Link to="/" className="btn btn-ghost btn-sm">Back to Home</Link>
+
+          <div className="success-actions">
+            <Link to="/" className="btn btn-ghost btn-sm">Back to Home</Link>
+            <Link to="/creators" className="btn btn-ghost btn-sm">Creator Directory</Link>
+          </div>
         </div>
       </div>
     );

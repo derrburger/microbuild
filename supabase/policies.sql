@@ -187,6 +187,61 @@ CREATE POLICY "build_packets_dev_admin_insert"
   WITH CHECK (true);
 
 
+-- ─── creator_profiles — public read (active/public profiles only) ────────────
+-- The /creators directory and /creator/:id pages use these policies.
+-- Profiles are only returned when public_profile_status = 'public'.
+-- Admin notes and internal scoring are still readable via this policy — do
+-- NOT add admin_notes or ai_profile_summary to public-facing queries.
+
+ALTER TABLE public.creator_profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "creator_profiles_public_read" ON public.creator_profiles;
+CREATE POLICY "creator_profiles_public_read"
+  ON public.creator_profiles
+  FOR SELECT
+  TO anon, authenticated
+  USING (public_profile_status = 'public');
+
+
+-- ─── DEVELOPMENT ONLY — Admin access to creator_profiles ─────────────────────
+-- These policies allow the anon key to read and write creator_profiles from
+-- the /admin page. This is required for:
+--   - Admin reading all profiles (not just public ones)
+--   - Admin inserting profiles via "Create Creator Profile" button
+--   - Admin updating profile status/fields
+--
+-- ⚠️  SECURITY WARNING: These let any anonymous client read ALL profile data
+--     (including admin_notes) and create/update profiles without authentication.
+--     FOR LOCAL MVP DEVELOPMENT ONLY.
+--
+-- BEFORE GOING PUBLIC:
+--     1. Remove or replace these policies.
+--     2. Wire Supabase Auth (Phase 2) with admin role checks.
+--     3. Restrict reads to auth.uid() = admin_id or use service-role key in Edge Functions.
+
+DROP POLICY IF EXISTS "creator_profiles_dev_admin_read" ON public.creator_profiles;
+CREATE POLICY "creator_profiles_dev_admin_read"
+  ON public.creator_profiles
+  FOR SELECT
+  TO anon, authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "creator_profiles_dev_admin_insert" ON public.creator_profiles;
+CREATE POLICY "creator_profiles_dev_admin_insert"
+  ON public.creator_profiles
+  FOR INSERT
+  TO anon, authenticated
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "creator_profiles_dev_admin_update" ON public.creator_profiles;
+CREATE POLICY "creator_profiles_dev_admin_update"
+  ON public.creator_profiles
+  FOR UPDATE
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+
 -- ─── Verification query (uncomment to check active policies) ─────────────────
 -- SELECT tablename, policyname, permissive, roles, cmd
 -- FROM   pg_policies

@@ -50,21 +50,41 @@
   margin-top: 0.25rem;
 }
 
-/* ─── Auth warning banner ──────────────────────────────────────────────────── */
-.admin-auth-warning {
-  background: rgba(239, 68, 68, 0.05);
-  border-bottom: 1px solid rgba(239, 68, 68, 0.18);
-  padding: 0.6rem 1.5rem;
-  font-size: 0.8rem;
-  color: #ef9494;
-  line-height: 1.55;
+/* ─── Admin header actions (session info + sign out) ───────────────────────── */
+.admin-header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
-.admin-auth-warning code {
+.admin-session-email {
+  font-size: 0.72rem;
+  color: #636f88;
   font-family: monospace;
-  background: rgba(239, 68, 68, 0.1);
-  padding: 0.1rem 0.35rem;
-  border-radius: 3px;
-  font-size: 0.9em;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-signout-btn {
+  background: transparent;
+  border: 1px solid #2a2f42;
+  border-radius: 6px;
+  color: #636f88;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.admin-signout-btn:hover:not(:disabled) {
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+.admin-signout-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ─── Page body ────────────────────────────────────────────────────────────── */
@@ -1101,6 +1121,112 @@
   .admin-placeholders { grid-template-columns: 1fr; }
   .ops-scores-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ─── Approval action row ───────────────────────────────────────────────────── */
+.approval-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+.approval-btn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.28rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.approval-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.approval-btn--approve {
+  color: #00d478; border-color: #00d47855; background: #00d47812;
+}
+.approval-btn--approve:hover:not(:disabled) { background: #00d47825; }
+.approval-btn--info {
+  color: #f9b032; border-color: #f9b03255; background: #f9b03212;
+}
+.approval-btn--review {
+  color: #63b3ed; border-color: #63b3ed55; background: #63b3ed12;
+}
+.approval-btn--reject {
+  color: #ef4444; border-color: #ef444455; background: #ef444412;
+}
+.approval-saving { font-size: 0.72rem; color: var(--text-muted); align-self: center; }
+
+/* ─── Create profile button ─────────────────────────────────────────────────── */
+.create-profile-row {
+  padding: 0.75rem 1rem 0.5rem;
+}
+.create-profile-btn {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.4rem 1rem;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.create-profile-btn:hover:not(:disabled) { background: rgba(0,212,120,0.08); }
+.create-profile-btn--disabled {
+  border-color: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+.create-profile-btn--error {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+.create-profile-hint {
+  font-weight: 400;
+  font-size: 0.7rem;
+  margin-left: 0.3rem;
+  opacity: 0.7;
+}
+.create-profile-done {
+  font-size: 0.78rem;
+  color: #00d478;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.create-profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.create-profile-link {
+  font-size: 0.72rem;
+  color: #63b3ed;
+  text-decoration: none;
+}
+.create-profile-link:hover { text-decoration: underline; }
+.create-profile-visibility-btn {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  border: 1px solid #505870;
+  background: #1e2235;
+  color: #a0aec0;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.create-profile-visibility-btn:hover:not(:disabled) {
+  border-color: #63b3ed;
+  color: #e2e8f0;
+}
+.create-profile-visibility-btn.is-public {
+  border-color: #00d47855;
+  color: #00d478;
+  background: #00d47808;
+}
+.create-profile-visibility-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* ─── Error boundary fallback ──────────────────────────────────────────────── */
 .admin-section-crash {

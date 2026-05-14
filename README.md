@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses — quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Early Access MVP — live Supabase backend, guest form submissions, admin dashboard.
+**Status:** Early Access MVP — live Supabase backend, creator tier system, profile system foundation, admin dashboard (dev-mode, auth deferred).
 
 ---
 
@@ -31,7 +31,7 @@ MicroBuild solves this by offering five standardized "MicroBuilds" — small, fo
 | Frontend | React 18 + TypeScript + Vite |
 | Routing | React Router v6 |
 | Database | Supabase (PostgreSQL) |
-| Auth | Not yet implemented (Phase 2) |
+| Auth | Not active — admin auth deferred to a later phase; buyer/creator auth TBD |
 | Payments | Not yet implemented (Phase 4) |
 | AI | Not yet implemented (Phase 3) |
 | Deployment | Hostinger (planned) |
@@ -42,15 +42,19 @@ MicroBuild solves this by offering five standardized "MicroBuilds" — small, fo
 
 ```
 src/
-  components/    # Navbar, Footer, MicroBuildCard, StatusBadge, CTASection, Layout
+  components/    # Navbar, Footer, MicroBuildCard, StatusBadge, CTASection, Layout, AdminRouteGuard
   data/          # mockListings.ts (fallback data), templateDetails.ts (extended static detail)
-  lib/           # supabase.ts (client + typed insert helpers), templates.ts (fetch service), buildPacket.ts (packet generator)
+  lib/           # supabase.ts (client + typed helpers), templates.ts (fetch), buildPacket.ts (AI-style packets), profiles.ts (profile helpers), admin.ts (auth helpers + email allowlist)
   pages/         # One file per route
   types/         # index.ts (frontend types), database.ts (Supabase schema types)
 supabase/
-  schema.sql     # DDL — all tables, indexes, triggers
-  seed.sql       # DML — categories and template listings
-  policies.sql   # RLS — access policies
+  schema.sql                                  # DDL — all tables, indexes, triggers
+  seed.sql                                    # DML — categories and template listings
+  policies.sql                                # RLS — access policies
+  migrations/
+    creator-tier-fields.sql                   # Adds tier columns to creator_applications
+    profile-system-foundation.sql             # Expands creator_profiles + business_profiles
+    admin-auth-notes.sql                      # Comments only — future RLS hardening guide
 docs/
   database-schema.md
   mvp-roadmap.md
@@ -80,16 +84,18 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and fill in your Supabase project values:
+Edit `.env` and fill in your values:
 
 ```
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_ADMIN_EMAILS=you@example.com
 ```
 
-Find these in your Supabase Dashboard → Settings → API.
+- **`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`** — found in Supabase Dashboard → Settings → API.
+- **`VITE_ADMIN_EMAILS`** — comma-separated list of emails that can sign in to `/admin`. Must match the email(s) you created in Supabase Auth (see Admin Setup below).
 
-> Note: The app runs with mock data if these are not set — no crashes, just sample listings.
+> The app renders with mock data if `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are not set — no crashes, just sample listings.
 
 ### 3. Start the development server
 
@@ -103,40 +109,19 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Supabase Setup
 
-Run these three SQL files **in order** in your Supabase Dashboard → SQL Editor:
+Run these SQL files **in order** in your Supabase Dashboard → SQL Editor:
 
-### Step 1 — Schema (`supabase/schema.sql`)
+| # | File | Purpose |
+|---|------|---------|
+| 1 | `supabase/schema.sql` | Creates all tables, indexes, triggers |
+| 2 | `supabase/seed.sql` | Inserts categories and 5 template listings |
+| 3 | `supabase/policies.sql` | Enables RLS + all access policies |
+| 4 | `supabase/migrations/creator-tier-fields.sql` | Adds tier columns to `creator_applications` |
+| 5 | `supabase/migrations/profile-system-foundation.sql` | Expands `creator_profiles` and `business_profiles` |
 
-Creates all 11 tables, indexes, and the `updated_at` trigger. Safe to run on a fresh project.
+Each file is safe to re-run: migrations use `ADD COLUMN IF NOT EXISTS`, policies use `DROP POLICY IF EXISTS`.
 
-```sql
--- Paste contents of supabase/schema.sql and run
-```
-
-### Step 2 — Seed data (`supabase/seed.sql`)
-
-Inserts the 5 MicroBuild categories and 5 template listings. Uses `ON CONFLICT DO NOTHING` so it is safe to run multiple times.
-
-```sql
--- Paste contents of supabase/seed.sql and run
-```
-
-### Step 3 — RLS Policies (`supabase/policies.sql`)
-
-Enables Row Level Security and creates the minimum access policies needed for the frontend to work without auth:
-
-- Public `SELECT` on categories and active templates
-- Public `INSERT` on `buyer_requests` and `creator_applications`
-- Owner `INSERT` / `SELECT` on `business_profiles` (Phase 2, requires auth)
-
-The file also includes commented-out "dev admin read" policies. Uncomment these to make the `/admin` page show real buyer requests and applications.
-
-```sql
--- Paste contents of supabase/policies.sql and run
--- To also enable /admin reads, uncomment the two policy blocks near the bottom
-```
-
-> **Order matters.** Schema must exist before seed runs; seed data must exist before some policies make sense. `policies.sql` is idempotent — it uses `DROP POLICY IF EXISTS` before each `CREATE POLICY`.
+> **Order matters.** Schema must exist before seed; policies file references tables that schema created; migrations must run after schema.
 
 ---
 
@@ -150,18 +135,30 @@ The file also includes commented-out "dev admin read" policies. Uncomment these 
 | `/browse` | Browse all 5 MicroBuild templates with category filter and search |
 | `/builds/:slug` | Template detail page with customer flow, FAQ, best fit industries |
 | `/request` | Buyer request form — inserts into `buyer_requests` |
-| `/creators/apply` | Creator application form — inserts into `creator_applications` |
+| `/creators` | Creator directory — public profiles only; shows "coming soon" until profiles are activated |
+| `/creator/:id` | Individual creator profile — hidden unless `public_profile_status = 'public'` |
+| `/creators/apply` | Creator application with tier selection — inserts into `creator_applications` |
 | `/how-it-works` | Process explanation |
 | `/pricing` | Three pricing tiers |
 | `/case-studies` | Demo scenario examples |
 
-### Admin (internal only)
+### Admin (dev-mode, no auth required)
 
 | Route | Description |
 |-------|-------------|
-| `/admin` | AI Operations Command Center — buyer requests with AI-style analysis, creator applications, active template listings |
+| `/admin` | AI Operations Command Center — loads directly, no login required in dev mode |
+| `/admin/login` | Deferred placeholder — shows a note that auth is not yet active |
 
-> ⚠️ The `/admin` route has no authentication. Dev admin read policies are active in `supabase/policies.sql`. Use this URL internally only until Phase 2 adds auth.
+> **Admin auth is intentionally deferred.** The infrastructure files exist (`src/lib/admin.ts`, `src/components/AdminRouteGuard.tsx`) but are not wired into routing. The `AdminRouteGuard` can be reconnected to `App.tsx` in a future auth phase.
+
+> **Do not deploy `/admin` publicly** until Supabase Auth and admin role policies are in place. The temporary dev RLS policies in `supabase/policies.sql` allow anonymous read/write access. See `supabase/migrations/admin-auth-notes.sql` for the full hardening guide.
+
+#### When Admin Auth Is Ready
+
+1. Create a Supabase Auth user (Dashboard → Authentication → Users → Add User).
+2. Add their email to `VITE_ADMIN_EMAILS` in `.env`.
+3. In `src/App.tsx`, re-wrap the `admin` index route with `<AdminRouteGuard>`.
+4. Replace all `USING (true)` dev policies per `supabase/migrations/admin-auth-notes.sql`.
 
 #### Admin Dashboard Features (v2 — Actionable Ops)
 
@@ -228,6 +225,61 @@ The file also includes commented-out "dev admin read" policies. Uncomment these 
 - [ ] Payment link generated per accepted request; `approved_pending_payment` status triggers subscription activation email
 - [ ] Webhook handler updates `creator_applications.status` → `active` after payment
 - [ ] Creator payout via Stripe Connect
+
+---
+
+## Creator Profile System
+
+### Profile Visibility Rules
+
+Creator profiles follow strict visibility rules to protect applicants and maintain marketplace quality:
+
+| Stage | `approval_status` | `public_profile_status` | Visible to public? |
+|---|---|---|---|
+| Application submitted | (not yet created) | — | No |
+| Admin creates profile | `draft` | `hidden` | No |
+| Approved (Free) | `active` | `hidden` | No — admin must flip to `public` |
+| Approved (Pro/Verified, pending payment) | `approved_pending_payment` | `hidden` | No |
+| Payment confirmed, admin activates | `active` | `public` | **Yes** |
+| Suspended | `suspended` | `hidden` or `paused` | No |
+
+**Rule: Public profiles are only visible when `public_profile_status = 'public'`.** Approved but unpaid or newly approved profiles remain hidden until explicitly activated.
+
+### Approval-Before-Payment Flow
+
+1. Application submitted → `creator_applications.status = 'new'`
+2. Admin reviews and sets application to `approved_pending_payment`
+3. Admin clicks "Create Creator Profile" in dashboard → inserts into `creator_profiles` with `approval_status = 'approved_pending_payment'` and `public_profile_status = 'hidden'`
+4. Subscription instructions sent to creator (Pro/Verified only)
+5. On payment confirmation, admin sets `public_profile_status = 'public'` and `approval_status = 'active'`
+6. Profile appears in `/creators` directory
+
+Free Creators skip step 4 — admin can activate directly.
+
+### Profile Schema
+
+`creator_profiles` fields (after `profile-system-foundation.sql` migration):
+
+- **Identity:** `display_name`, `full_name`, `slug`, `profile_photo_url`, `bio`
+- **Tier:** `tier`, `verification_status`, `approval_status`, `subscription_status`, `public_profile_status`
+- **Marketplace:** `tools`, `niches`, `badges`, `portfolio_links`, `credential_links`, `certifications`
+- **Proof:** `github_url`, `linkedin_url`, `case_studies`, `education_or_coursework`, `proof_links`
+- **Stats:** `completed_builds_count`, `average_rating`
+- **Admin:** `admin_notes`, `ai_profile_score`, `ai_profile_summary`
+
+### Profile Helpers (`src/lib/profiles.ts`)
+
+- `normalizeCreatorProfile()` — safe Supabase row → typed profile
+- `normalizeCreatorApplicationToProfilePreview()` — generate preview from application
+- `buildCreatorProfileInsert()` — create insert payload from application
+- `generateCreatorProfileAISummary()` — rule-based profile summary
+- `getCreatorBadges()` — compute display badges from tier/stats
+- `getCreatorTierLabel()`, `getVerificationLabel()`, `getProfileVisibilityLabel()`
+
+### Public Profile Routes
+
+- `/creators` — creator directory (shows only `public_profile_status = 'public'` rows); shows "coming soon" if empty
+- `/creator/:id` — individual profile page; returns "Profile Not Available" if hidden/pending
 
 ---
 
