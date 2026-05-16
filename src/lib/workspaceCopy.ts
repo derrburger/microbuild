@@ -2,7 +2,7 @@
  * Plain-text snippets for creator workspace copy buttons (no external APIs).
  */
 
-import type { OrderPipelineRow, BuildPacketWorkspaceRow } from './orders';
+import type { OrderPipelineRow, BuildPacketWorkspaceRow, DeliverablePlaceholder } from './orders';
 
 function safeLines(items: string[] | null | undefined): string {
   return (items ?? []).filter(Boolean).map((s) => `• ${s}`).join('\n');
@@ -51,6 +51,9 @@ export function buildCreatorBriefCopy(
     '',
     '— Recommended MicroBuild —',
     packet.recommended_build || '—',
+    '',
+    '— Design direction —',
+    packet.design_direction?.trim() ? packet.design_direction : '—',
     '',
     '— Creator instructions —',
     packet.creator_instructions || '—',
@@ -115,6 +118,121 @@ export function buildCompletionMessageCopy(order: OrderPipelineRow): string {
     '',
     '— MicroBuild team',
   ].join('\n');
+}
+
+/** Rules-based operational checklist for creators (static — no AI). */
+export const OPERATIONAL_BUILD_CHECKLIST_ITEMS: readonly string[] = [
+  'Understand buyer goal — align copy and structure with their stated outcome.',
+  'Review business links — scan website/social noted on the request for tone and offerings.',
+  'Build page/funnel structure — sections match suggested MicroBuild type.',
+  'Add form/CTA — primary conversion matches brief.',
+  'Check mobile layout — readable tap targets and spacing.',
+  'Add trust/review/proof sections — testimonials or placeholders where brief asks.',
+  'Test links/forms — open preview and verify submissions route correctly.',
+  'Submit preview — paste staging/preview URL for MicroBuild review.',
+  'Submit delivery — paste production/live URL when approved internally.',
+];
+
+export function buildOperationalBuildChecklistCopy(): string {
+  const lines = OPERATIONAL_BUILD_CHECKLIST_ITEMS.map((s, i) => `${i + 1}. ${s}`);
+  return ['MicroBuild — Build checklist', '', ...lines].join('\n');
+}
+
+/** Summarize feedback visible to creator (revision note + optional creator submission notes). */
+export function buildCreatorFeedbackCopy(revisionNote: string, creatorNotes: string): string {
+  const rev = revisionNote.trim();
+  const cn = creatorNotes.trim();
+  return [
+    'MicroBuild — Creator feedback summary',
+    '',
+    rev ? `— Revision note from MicroBuild —\n${rev}` : '— No active revision note —',
+    '',
+    cn ? `— Your latest submission notes —\n${cn}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export function buildDeliverySummaryCopy(
+  order: OrderPipelineRow,
+  deliverable: { preview_url?: string | null; live_url?: string | null; github_url?: string | null; delivery_status?: string | null } | null,
+  buyerBusiness: string,
+): string {
+  const prev = deliverable?.preview_url?.trim();
+  const live = deliverable?.live_url?.trim();
+  const gh = deliverable?.github_url?.trim();
+  return [
+    `MicroBuild — Delivery summary`,
+    `Project: ${order.project_title ?? 'Untitled'}`,
+    `Buyer: ${buyerBusiness || 'Unknown request'}`,
+    `Order status: ${order.order_status}`,
+    `Deliverable status: ${deliverable?.delivery_status ?? 'none'}`,
+    '',
+    prev ? `Preview: ${prev}` : 'Preview: —',
+    live ? `Delivery URL: ${live}` : 'Delivery URL: —',
+    gh ? `GitHub (metadata): ${gh}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export type WorkspaceActivityItem = { id: string; title: string; atIso?: string };
+
+export function buildWorkspaceActivityItems(params: {
+  order: OrderPipelineRow;
+  buyerRequestCreatedAt?: string | null;
+  packetUpdatedAt?: string | null;
+  deliverable: DeliverablePlaceholder | null;
+}): WorkspaceActivityItem[] {
+  const { order, buyerRequestCreatedAt, packetUpdatedAt, deliverable } = params;
+  const items: WorkspaceActivityItem[] = [];
+
+  if (buyerRequestCreatedAt) {
+    items.push({ id: 'req', title: 'Buyer request submitted', atIso: buyerRequestCreatedAt });
+  }
+  items.push({ id: 'order', title: 'Project record created', atIso: order.created_at });
+
+  if (packetUpdatedAt) {
+    items.push({ id: 'packet', title: 'Build packet saved / updated', atIso: packetUpdatedAt });
+  }
+
+  if (order.creator_id) {
+    items.push({ id: 'assigned', title: 'Creator assigned to project' });
+  }
+
+  if (deliverable && deliverable.delivery_status !== 'draft') {
+    items.push({
+      id: 'submit',
+      title: 'Deliverable submitted',
+      atIso: deliverable.submitted_at,
+    });
+  }
+
+  if (deliverable?.delivery_status === 'revision_needed') {
+    items.push({
+      id: 'revision',
+      title: 'Revision requested',
+      atIso: deliverable.updated_at,
+    });
+  }
+
+  if (deliverable?.approved_at) {
+    items.push({
+      id: 'approved',
+      title: 'Deliverable approved internally',
+      atIso: deliverable.approved_at,
+    });
+  }
+
+  if (order.order_status === 'completed') {
+    items.push({
+      id: 'done',
+      title: 'Project marked completed',
+      atIso: order.updated_at,
+    });
+  }
+
+  return items;
 }
 
 export async function copyTextToClipboard(text: string): Promise<boolean> {

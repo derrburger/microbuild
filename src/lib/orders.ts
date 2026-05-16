@@ -104,6 +104,8 @@ export interface BuildPacketWorkspaceRow {
   customer_problem: string;
   suggested_copy: Record<string, unknown> | null;
   form_fields: unknown;
+  /** Visual / UX direction from build packet row */
+  design_direction: string | null;
   automation_needs: string | null;
   creator_instructions: string;
   quality_checklist: string[] | null;
@@ -354,7 +356,7 @@ export async function fetchOrdersByRequestIds(
 }
 
 const BUILD_PACKET_WORKSPACE_COLS =
-  'id, request_id, order_id, business_summary, recommended_build, customer_problem, suggested_copy, form_fields, automation_needs, creator_instructions, quality_checklist, launch_checklist, suggested_page_sections, ai_summary, updated_at';
+  'id, request_id, order_id, business_summary, recommended_build, customer_problem, suggested_copy, form_fields, design_direction, automation_needs, creator_instructions, quality_checklist, launch_checklist, suggested_page_sections, ai_summary, updated_at';
 
 /** Loads the best build packet for an order (linked id first, else latest by request). */
 export async function fetchBuildPacketForOrder(

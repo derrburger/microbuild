@@ -19,6 +19,7 @@ import {
   fetchDeliverableByOrderId,
   createDeliverablePlaceholder,
   adminReviewDeliverable,
+  fetchBuildPacketForOrder,
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
   ORDER_PIPELINE_STAGES,
@@ -26,8 +27,23 @@ import {
   DELIVERY_STATUS_LABELS,
   getNextOrderAction,
 } from '../lib/orders';
-import type { OrderPipelineRow, CreatorProfileSnap, DeliverablePlaceholder, CreatorAssignmentDiagnostics } from '../lib/orders';
+import type {
+  OrderPipelineRow,
+  CreatorProfileSnap,
+  DeliverablePlaceholder,
+  CreatorAssignmentDiagnostics,
+  BuildPacketWorkspaceRow,
+} from '../lib/orders';
 import type { OrderPipelineStatus } from '../types/database';
+import {
+  buildBuyerUpdateCopy,
+  buildCompletionMessageCopy,
+  buildCreatorBriefCopy,
+  buildDeliverySummaryCopy,
+  buildOperationalBuildChecklistCopy,
+  buildRevisionRequestCopy,
+  copyTextToClipboard,
+} from '../lib/workspaceCopy';
 import './Admin.css';
 
 // ─── Defensive helpers ────────────────────────────────────────────────────────
@@ -1635,10 +1651,23 @@ function OrderCard({
     'idle' | 'revision' | 'approve' | 'delivered' | 'completed'
   >('idle');
   const [reviewMsg, setReviewMsg]           = useState<'idle' | 'ok' | 'err'>('idle');
+  const [pipelineMsg, setPipelineMsg]       = useState<'idle' | 'ok' | 'err'>('idle');
+  const [adminClipMsg, setAdminClipMsg]     = useState<string | null>(null);
+  const [workspacePacket, setWorkspacePacket] = useState<BuildPacketWorkspaceRow | null>(null);
 
   useEffect(() => {
     setSelectedCreator(order.creator_id ?? '');
   }, [order.creator_id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchBuildPacketForOrder(order).then((p) => {
+      if (!cancelled) setWorkspacePacket(p);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [order.id, order.build_packet_id, order.request_id]);
 
   const statusColor = ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6';
   const assignedCreator = activeCreators.find((c) => c.id === order.creator_id);
@@ -1646,9 +1675,17 @@ function OrderCard({
 
   async function handleStatus(status: OrderPipelineStatus) {
     setUpdatingStatus(true);
+    setPipelineMsg('idle');
     const ok = await updateOrderStatus(order.id, status);
-    if (ok) onUpdate(order.id, { order_status: status });
     setUpdatingStatus(false);
+    if (ok) {
+      onUpdate(order.id, { order_status: status });
+      setPipelineMsg('ok');
+      setTimeout(() => setPipelineMsg('idle'), 4000);
+    } else {
+      setPipelineMsg('err');
+      setTimeout(() => setPipelineMsg('idle'), 6000);
+    }
   }
 
   async function handleAssign() {
@@ -1727,6 +1764,38 @@ function OrderCard({
     }
   }
 
+  async function handleAdminClipboard(kind: 'brief' | 'delivery' | 'revision' | 'buyer' | 'completion' | 'checklist') {
+    let text: string;
+    switch (kind) {
+      case 'brief':
+        text = buildCreatorBriefCopy(order, workspacePacket);
+        break;
+      case 'delivery':
+        text = buildDeliverySummaryCopy(order, deliverable, buyerBusinessName);
+        break;
+      case 'revision':
+        text = buildRevisionRequestCopy(
+          deliverable?.revision_note?.trim() ||
+            revisionFeedback.trim() ||
+            order.admin_notes?.trim() ||
+            '',
+        );
+        break;
+      case 'buyer':
+        text = buildBuyerUpdateCopy(order, workspacePacket);
+        break;
+      case 'completion':
+        text = buildCompletionMessageCopy(order);
+        break;
+      case 'checklist':
+        text = buildOperationalBuildChecklistCopy();
+        break;
+    }
+    const ok = await copyTextToClipboard(text);
+    setAdminClipMsg(ok ? 'Copied' : 'Copy failed');
+    setTimeout(() => setAdminClipMsg(null), 2200);
+  }
+
   return (
     <div className="order-card">
       <div className="order-card-header">
@@ -1756,6 +1825,36 @@ function OrderCard({
         <span className="order-buyer-val">{buyerBusinessName} · {buyerBuildType}</span>
       </div>
 
+      <div className="order-next-callout">
+        <div className="order-next-callout-label">Next best admin action</div>
+        <p className="order-next-callout-body">{getNextOrderAction(order.order_status)}</p>
+        <p className="order-activity-line">
+          Timestamps on file: created {fmtDate(order.created_at)} · updated {fmtDate(order.updated_at)}
+        </p>
+      </div>
+
+      <div className="order-admin-copy-bar" role="group" aria-label="Copy snippets">
+        <button type="button" className="order-del-copy-btn" onClick={() => handleAdminClipboard('brief')}>
+          Copy Creator Brief
+        </button>
+        <button type="button" className="order-del-copy-btn" onClick={() => handleAdminClipboard('checklist')}>
+          Copy Build Checklist
+        </button>
+        <button type="button" className="order-del-copy-btn" onClick={() => handleAdminClipboard('buyer')}>
+          Copy Buyer Update
+        </button>
+        <button type="button" className="order-del-copy-btn" onClick={() => handleAdminClipboard('completion')}>
+          Copy Completion Message
+        </button>
+        <button type="button" className="order-del-copy-btn" onClick={() => handleAdminClipboard('delivery')}>
+          Copy Delivery Summary
+        </button>
+        <button type="button" className="order-del-copy-btn" onClick={() => handleAdminClipboard('revision')}>
+          Copy Revision Request
+        </button>
+        {adminClipMsg ? <span className="order-del-copy-msg">{adminClipMsg}</span> : null}
+      </div>
+
       {/* Pipeline progress bar */}
       <div className="order-pipeline-bar">
         {ORDER_PIPELINE_STAGES.map((s) => {
@@ -1770,6 +1869,12 @@ function OrderCard({
           );
         })}
       </div>
+      {pipelineMsg === 'ok' && (
+        <span className="wf-feedback wf-feedback--ok order-pipeline-feedback">Pipeline status saved</span>
+      )}
+      {pipelineMsg === 'err' && (
+        <span className="wf-feedback wf-feedback--err order-pipeline-feedback">Status update failed — see console</span>
+      )}
 
       {/* Details row */}
       <div className="order-card-details">
@@ -1796,7 +1901,7 @@ function OrderCard({
         <span className="order-assign-label">
           {assignedCreator
             ? `Assigned: ${assignedCreator.display_name ?? assignedCreator.full_name}`
-            : 'Not yet assigned'}
+            : 'Unassigned'}
         </span>
         <select
           className="order-creator-select"
@@ -1854,6 +1959,9 @@ function OrderCard({
           </p>
         ) : (
           <>
+            {deliverable.revision_note?.trim() ? (
+              <blockquote className="order-del-revision-quote">{deliverable.revision_note.trim()}</blockquote>
+            ) : null}
             <div className="order-deliverable-meta">
               <span className="order-del-tag">
                 Status: {DELIVERY_STATUS_LABELS[deliverable.delivery_status] ?? deliverable.delivery_status}
@@ -1945,7 +2053,9 @@ function OrderCard({
       <div className="order-status-actions">
         <span className="order-status-actions-label">Update Status:</span>
         {[
+          { id: 'draft',          label: 'Draft' },
           { id: 'ready_to_quote', label: 'Ready to Quote' },
+          { id: 'pending_payment',label: 'Pending Payment' },
           { id: 'assigned',       label: 'Assigned'        },
           { id: 'in_progress',    label: 'In Progress'    },
           { id: 'in_review',      label: 'In Review'      },
@@ -1966,13 +2076,6 @@ function OrderCard({
         ))}
       </div>
 
-      {/* Next best action */}
-      <div className="order-next-action">
-        <span className="order-next-icon">→</span>
-        {getNextOrderAction(order.order_status)}
-      </div>
-
-      {/* Admin notes */}
       <div className="order-notes-row">
         <textarea
           className="order-notes-input"
@@ -2120,7 +2223,7 @@ function ProjectPipelineSection({
                   buyerBusinessName={
                     order.request_id && bizByReq[order.request_id]
                       ? bizByReq[order.request_id].business_name
-                      : 'Unknown buyer request'
+                      : 'Unknown request'
                   }
                   buyerBuildType={
                     order.request_id && bizByReq[order.request_id]

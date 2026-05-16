@@ -2620,6 +2620,75 @@
   font-size: 0.8rem;
   color: var(--text-secondary);
 }
+
+.order-next-callout {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.order-next-callout-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.order-next-callout-body {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.order-activity-line {
+  margin: 0.35rem 0 0;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.order-admin-copy-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+.order-del-copy-btn {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.28rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.order-del-copy-btn:hover {
+  border-color: #63b3ed;
+  color: #63b3ed;
+}
+.order-del-copy-msg {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #00d478;
+}
+
+.order-pipeline-feedback {
+  display: block;
+  margin: 0.25rem 0 0.35rem;
+}
+
+.order-del-revision-quote {
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+  border-left: 3px solid #f9b032;
+  background: rgba(249, 176, 50, 0.08);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 .order-bp-badge {
   font-size: 0.62rem;
   font-weight: 700;

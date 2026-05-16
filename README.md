@@ -2,18 +2,21 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Deliverables + Project Workspace v1 — creators open `/dashboard/projects/:id`, submit preview/delivery/GitHub URLs and notes (single deliverable row per order, upsert). Admin Project Pipeline cards include deliverable review (request revision → `revision_needed` + creator-visible `revision_note`, approve → `approved` + order `delivered`, mark delivered/completed). Buyer dashboard shows order timeline and exposes preview/live links only when the order is delivered/completed **and** the deliverable is **approved**. Rules-based AI only; no Stripe/GitHub OAuth/external AI APIs. Build passes.
+**Status:** Project Workspace Polish v2 — creator workspace header/brief/checklist/deliverable panel/status guidance and activity timeline; admin pipeline cards with next-action callout, deliverable URLs + revision note, and standardized copy buttons (**Copied** / graceful failure); buyer-facing eight-stage journey with safe preview/delivery links; single deliverable row per order (upsert). Rules-based AI only; no Stripe/GitHub OAuth/external AI APIs. Build passes.
 
-### Deliverables + Project Workspace v1
+### Project Workspace Polish v2
 
 | Area | Behavior |
 |------|----------|
-| Creator workspace | Route `GET /dashboard/projects/:orderId` — brief from `build_packets`, buyer-safe context from `buyer_requests`, submission updates/creates one `deliverables` row per order, sets status **submitted**, moves order **in_review** when prior status was assigned/in_progress. |
-| Admin review | Order cards: revision textarea (falls back to internal admin notes if empty when requesting revision), **Approve Deliverable**, **Mark Delivered**, **Mark Completed**. |
-| Buyer tracking | Linked order shows full pipeline timeline; delivery URLs hidden until release criteria above are met. |
-| SQL | Optional non-destructive migration `supabase/migrations/deliverables-revision-note.sql` adds `revision_note` for creator-visible revision feedback. |
+| Creator workspace | Route `/dashboard/projects/:orderId` — project overview, creator brief (incl. design direction), operational build checklist, deliverable submission (preview/delivery/GitHub metadata/notes), revision note callout when present, activity list from **real** timestamps only, status guidance by order + deliverable state, copy helpers (brief, checklist, buyer update, revision request, completion, creator feedback, delivery summary). |
+| Admin deliverable review | Pipeline order cards: buyer/build context, assignment (**Unassigned** when empty), payment + packet placeholders, deliverable status + links + revision blockquote; revision / approve / delivered / completed actions with loading and success/error feedback; copy row includes **creator brief** (loaded from linked/latest packet), checklist, buyer update (packet-aware), completion message, delivery summary, revision request. |
+| Buyer project tracking | Eight-stage timeline (request → completed); proposal/payment placeholders; preview/delivery URLs only when policy-safe (delivered/completed + approved deliverable); no internal admin-only notes. |
+| Revision workflow | **Request Revision** sets deliverable `revision_needed`, saves `revision_note`, moves order back toward active build (**in_progress** via `adminReviewDeliverable`); creator workspace surfaces feedback; buyers see sanitized messaging. |
+| Future | File uploads (Supabase Storage), Stripe payouts, tighter RLS. |
 
-**Future:** file uploads to Supabase Storage, Stripe payouts, tighter RLS (replace dev-wide policies).
+### Deliverables + Project Workspace v1
+
+**Superseded by Polish v2 for UX details** — core behaviors unchanged: single `deliverables` row per order, creator submission moves order toward review when applicable, optional migration `deliverables-revision-note.sql` for `revision_note`.
 
 ---
 

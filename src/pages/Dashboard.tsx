@@ -25,6 +25,11 @@ import {
   getNextOrderAction,
 } from '../lib/orders';
 import type { OrderPipelineRow, DeliverablePlaceholder } from '../lib/orders';
+import {
+  BUYER_JOURNEY_STAGES,
+  getBuyerJourneyActiveIndex,
+  buyerDeliveryStatusLabel,
+} from '../lib/buyerProjectTimeline';
 import type { UserProfileRow, CreatorProfileRow } from '../types/database';
 import DashboardNav from '../components/DashboardNav';
 import './Dashboard.css';
@@ -629,6 +634,53 @@ interface BuyerRequest {
   website_social: string | null;
 }
 
+// ─── Buyer: project journey (friendly labels) ──────────────────────────────────
+
+function BuyerProjectJourneyTimeline({
+  order,
+  deliverable,
+}: {
+  order: OrderPipelineRow;
+  deliverable: DeliverablePlaceholder | null | undefined;
+}) {
+  const idx = getBuyerJourneyActiveIndex(order, deliverable ?? undefined);
+  return (
+    <div className="buyer-journey-tl" aria-label="Project progress">
+      {BUYER_JOURNEY_STAGES.map((label, i) => {
+        const done = i < idx;
+        const active = i === idx;
+        return (
+          <div
+            key={label}
+            className={`buyer-j-step${active ? ' buyer-j-step--active' : ''}${done ? ' buyer-j-step--done' : ''}`}
+          >
+            <div className="buyer-j-dot" />
+            <span className="buyer-j-label">{label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function buyerProjectNextMessage(order: OrderPipelineRow, deliverable: DeliverablePlaceholder | null | undefined): string {
+  const st = order.order_status;
+  if (st === 'completed') return 'This project is complete. Thank you for using MicroBuild.';
+  if (st === 'delivered' && deliverable?.delivery_status === 'approved') {
+    return 'Your delivery is approved — open the preview or live links below.';
+  }
+  if (st === 'delivered') return 'MicroBuild released your build — links appear below when approved for sharing.';
+  if (st === 'in_review') return 'Your build is in internal review; we’ll notify you when preview links are ready.';
+  if (st === 'in_progress' || deliverable?.delivery_status === 'revision_needed') {
+    return 'A creator is actively working on your MicroBuild.';
+  }
+  if (st === 'assigned') return 'A creator has been assigned and will begin production.';
+  if (st === 'draft' || st === 'ready_to_quote' || st === 'pending_payment') {
+    return 'MicroBuild is aligning scope and preparing your build packet.';
+  }
+  return getNextOrderAction(st);
+}
+
 // ─── Request timeline view ─────────────────────────────────────────────────────
 
 function RequestTimeline({ status }: { status: string }) {
@@ -644,36 +696,6 @@ function RequestTimeline({ status }: { status: string }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-// ─── Buyer: order pipeline timeline (linked project) ─────────────────────────
-
-function BuyerOrderTimeline({ orderStatus }: { orderStatus: string }) {
-  const idx = orderTimelineIndex(orderStatus);
-  return (
-    <div className="buyer-order-timeline" aria-label="Project status">
-      {ORDER_PIPELINE_STAGES.map((s, i) => {
-        const done = i < idx;
-        const active = i === idx;
-        const color = ORDER_STATUS_COLORS[s.id] ?? '#8a94a6';
-        return (
-          <div
-            key={s.id}
-            className={`buyer-ot-step${active ? ' buyer-ot-step--active' : ''}${done ? ' buyer-ot-step--done' : ''}`}
-          >
-            <div
-              className="buyer-ot-dot"
-              style={{
-                borderColor: color,
-                background: done || active ? color : 'transparent',
-              }}
-            />
-            <span className="buyer-ot-label">{s.label}</span>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -732,19 +754,19 @@ function ActiveRequestCard({
               {ORDER_STATUS_LABELS[linkedOrder.order_status] ?? linkedOrder.order_status}
             </span>
           </div>
-          <BuyerOrderTimeline orderStatus={linkedOrder.order_status} />
+          <div className="buyer-project-meta-row">
+            <span className="buyer-project-meta-label">MicroBuild</span>
+            <span className="buyer-project-meta-val">{request.build_type ?? '—'}</span>
+            <span className="buyer-project-meta-label">Delivery status</span>
+            <span className="buyer-project-meta-val">{buyerDeliveryStatusLabel(linkedOrder, deliverable)}</span>
+          </div>
+          <div className="buyer-proposal-placeholder">
+            <span className="buyer-proposal-label">Proposal &amp; payment</span>
+            <span className="buyer-proposal-val">Formal quotes and checkout — Stripe phase (placeholder).</span>
+          </div>
+          <BuyerProjectJourneyTimeline order={linkedOrder} deliverable={deliverable} />
           <div className="buyer-project-next">
-            {linkedOrder.order_status === 'draft' || linkedOrder.order_status === 'ready_to_quote'
-              ? 'MicroBuild is preparing a build plan for your request.'
-              : linkedOrder.order_status === 'assigned' || linkedOrder.order_status === 'in_progress'
-              ? 'A creator has been assigned and is building your MicroBuild.'
-              : linkedOrder.order_status === 'in_review'
-              ? "Your build is in internal review. You'll get a preview link when it's approved for delivery."
-              : linkedOrder.order_status === 'delivered'
-              ? 'Your MicroBuild has been delivered! Review the links below.'
-              : linkedOrder.order_status === 'completed'
-              ? 'Build completed. Thank you for using MicroBuild!'
-              : getNextOrderAction(linkedOrder.order_status)}
+            {buyerProjectNextMessage(linkedOrder, deliverable ?? null)}
           </div>
           {(() => {
             const released =
