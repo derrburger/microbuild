@@ -1329,6 +1329,68 @@
   line-height: 1.4;
 }
 
+.buyer-order-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.35rem;
+  margin: 0.15rem 0;
+}
+.buyer-ot-step {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  opacity: 0.35;
+}
+.buyer-ot-step--done,
+.buyer-ot-step--active {
+  opacity: 1;
+}
+.buyer-ot-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+}
+.buyer-ot-label {
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+.buyer-ot-step--active .buyer-ot-label {
+  color: var(--text-secondary);
+}
+
+.buyer-delivery-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.15rem;
+}
+.buyer-delivery-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #00d478;
+  width: 100%;
+}
+.buyer-delivery-link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #63b3ed;
+  text-decoration: none;
+}
+.buyer-delivery-link:hover {
+  text-decoration: underline;
+}
+.buyer-delivery-pending {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
 /* ============================================================
    CREATOR — Live Project Pipeline Card
    ============================================================ */
@@ -1411,6 +1473,31 @@
   border-top: 1px solid var(--border);
   padding-top: 0.3rem;
   margin-top: 0.1rem;
+}
+.cd-project-mini-tl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 0.15rem 0;
+}
+.cd-mini-tick {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  opacity: 0.35;
+}
+.cd-mini-tick.on {
+  opacity: 1;
+}
+.cd-project-open {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #63b3ed;
+  text-decoration: none;
+  margin-top: 0.15rem;
+}
+.cd-project-open:hover {
+  text-decoration: underline;
 }
 .cd-project-more {
   font-size: 0.72rem;

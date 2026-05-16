@@ -17,11 +17,14 @@ import {
 import {
   fetchOrdersByCreatorProfile,
   fetchOrdersByRequestIds,
+  fetchDeliverablesByOrderIds,
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
+  ORDER_PIPELINE_STAGES,
+  orderTimelineIndex,
   getNextOrderAction,
 } from '../lib/orders';
-import type { OrderPipelineRow } from '../lib/orders';
+import type { OrderPipelineRow, DeliverablePlaceholder } from '../lib/orders';
 import type { UserProfileRow, CreatorProfileRow } from '../types/database';
 import DashboardNav from '../components/DashboardNav';
 import './Dashboard.css';
@@ -343,12 +346,28 @@ function CreatorProjectPipeline({ creatorProfileId }: { creatorProfileId: string
             <div className="cd-project-list">
               {activeOrders.slice(0, 4).map((order) => {
                 const sColor = ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6';
+                const tIdx = orderTimelineIndex(order.order_status);
                 return (
                   <div key={order.id} className="cd-project-card">
                     <div className="cd-project-title">
                       {order.project_title ?? `Project ${order.id.slice(0, 8)}…`}
                     </div>
                     <div className="cd-project-type">{order.project_type ?? '—'}</div>
+                    <div className="cd-project-mini-tl" aria-hidden>
+                      {ORDER_PIPELINE_STAGES.map((s, i) => {
+                        const done = i < tIdx;
+                        const active = i === tIdx;
+                        const c = ORDER_STATUS_COLORS[s.id] ?? '#8a94a6';
+                        return (
+                          <div
+                            key={s.id}
+                            className={`cd-mini-tick${done || active ? ' on' : ''}`}
+                            style={{ background: done || active ? c : 'var(--border)' }}
+                            title={s.label}
+                          />
+                        );
+                      })}
+                    </div>
                     <div className="cd-project-footer">
                       <span className="cd-project-status-badge"
                         style={{ color: sColor, borderColor: sColor + '44', background: sColor + '11' }}>
@@ -357,6 +376,9 @@ function CreatorProjectPipeline({ creatorProfileId }: { creatorProfileId: string
                       <span className="cd-project-date">{fmtDate(order.created_at)}</span>
                     </div>
                     <div className="cd-project-next">→ {getNextOrderAction(order.order_status)}</div>
+                    <Link className="cd-project-open" to={`/dashboard/projects/${order.id}`}>
+                      Open workspace →
+                    </Link>
                   </div>
                 );
               })}
@@ -626,14 +648,46 @@ function RequestTimeline({ status }: { status: string }) {
   );
 }
 
+// ─── Buyer: order pipeline timeline (linked project) ─────────────────────────
+
+function BuyerOrderTimeline({ orderStatus }: { orderStatus: string }) {
+  const idx = orderTimelineIndex(orderStatus);
+  return (
+    <div className="buyer-order-timeline" aria-label="Project status">
+      {ORDER_PIPELINE_STAGES.map((s, i) => {
+        const done = i < idx;
+        const active = i === idx;
+        const color = ORDER_STATUS_COLORS[s.id] ?? '#8a94a6';
+        return (
+          <div
+            key={s.id}
+            className={`buyer-ot-step${active ? ' buyer-ot-step--active' : ''}${done ? ' buyer-ot-step--done' : ''}`}
+          >
+            <div
+              className="buyer-ot-dot"
+              style={{
+                borderColor: color,
+                background: done || active ? color : 'transparent',
+              }}
+            />
+            <span className="buyer-ot-label">{s.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Active request card ────────────────────────────────────────────────────────
 
 function ActiveRequestCard({
   request,
   linkedOrder,
+  deliverable,
 }: {
   request: BuyerRequest;
   linkedOrder?: OrderPipelineRow | null;
+  deliverable?: DeliverablePlaceholder | null;
 }) {
   const data = {
     business_name:   request.business_name,
@@ -678,19 +732,52 @@ function ActiveRequestCard({
               {ORDER_STATUS_LABELS[linkedOrder.order_status] ?? linkedOrder.order_status}
             </span>
           </div>
+          <BuyerOrderTimeline orderStatus={linkedOrder.order_status} />
           <div className="buyer-project-next">
             {linkedOrder.order_status === 'draft' || linkedOrder.order_status === 'ready_to_quote'
               ? 'MicroBuild is preparing a build plan for your request.'
               : linkedOrder.order_status === 'assigned' || linkedOrder.order_status === 'in_progress'
               ? 'A creator has been assigned and is building your MicroBuild.'
               : linkedOrder.order_status === 'in_review'
-              ? "Build is under review. You'll be notified when it's ready."
+              ? "Your build is in internal review. You'll get a preview link when it's approved for delivery."
               : linkedOrder.order_status === 'delivered'
-              ? 'Your MicroBuild has been delivered! Review and confirm.'
+              ? 'Your MicroBuild has been delivered! Review the links below.'
               : linkedOrder.order_status === 'completed'
               ? 'Build completed. Thank you for using MicroBuild!'
               : getNextOrderAction(linkedOrder.order_status)}
           </div>
+          {(() => {
+            const released =
+              (linkedOrder.order_status === 'delivered' || linkedOrder.order_status === 'completed') &&
+              deliverable?.delivery_status === 'approved';
+            const preview = deliverable?.preview_url?.trim();
+            const live = deliverable?.live_url?.trim();
+            if (released && (preview || live)) {
+              return (
+                <div className="buyer-delivery-links">
+                  <div className="buyer-delivery-label">Your delivery</div>
+                  {preview && (
+                    <a className="buyer-delivery-link" href={preview} target="_blank" rel="noopener noreferrer">
+                      Preview link →
+                    </a>
+                  )}
+                  {live && (
+                    <a className="buyer-delivery-link" href={live} target="_blank" rel="noopener noreferrer">
+                      Live site →
+                    </a>
+                  )}
+                </div>
+              );
+            }
+            if (linkedOrder && ['assigned', 'in_progress', 'in_review'].includes(linkedOrder.order_status)) {
+              return (
+                <p className="buyer-delivery-pending">
+                  Preview and live links appear here once MicroBuild approves delivery to you.
+                </p>
+              );
+            }
+            return null;
+          })()}
         </div>
       ) : (
         <div className="buyer-project-block buyer-project-block--pending">
@@ -845,6 +932,7 @@ function BusinessProfilePanel({ requests }: { requests: BuyerRequest[] }) {
 function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
   const [requests,     setRequests]     = useState<BuyerRequest[]>([]);
   const [orders,       setOrders]       = useState<OrderPipelineRow[]>([]);
+  const [deliverables, setDeliverables] = useState<Record<string, DeliverablePlaceholder>>({});
   const [loadingReqs,  setLoadingReqs]  = useState(true);
 
   useEffect(() => {
@@ -860,12 +948,22 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
         setLoadingReqs(false);
         // Fetch linked orders once we have request IDs
         if (reqs.length > 0) {
-          fetchOrdersByRequestIds(reqs.map((r) => r.id)).then(setOrders);
+          fetchOrdersByRequestIds(reqs.map((r) => r.id)).then((ords) => {
+            setOrders(ords);
+            const oids = ords.map((o) => o.id);
+            if (oids.length > 0) {
+              fetchDeliverablesByOrderIds(oids).then(setDeliverables);
+            } else {
+              setDeliverables({});
+            }
+          });
+        } else {
+          setOrders([]);
+          setDeliverables({});
         }
       });
   }, [userProfile.email]);
 
-  // Build a map of request_id → order for O(1) lookup
   const orderByRequestId = useMemo<Record<string, OrderPipelineRow>>(() => {
     const map: Record<string, OrderPipelineRow> = {};
     for (const o of orders) { if (o.request_id) map[o.request_id] = o; }
@@ -929,6 +1027,11 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
                 key={r.id}
                 request={r}
                 linkedOrder={orderByRequestId[r.id] ?? null}
+                deliverable={
+                  orderByRequestId[r.id]
+                    ? deliverables[orderByRequestId[r.id]!.id] ?? null
+                    : null
+                }
               />
             ))}
           </div>

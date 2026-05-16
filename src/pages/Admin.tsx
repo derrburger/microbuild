@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { fetchTemplates } from '../lib/templates';
 import { generateBuildPacket, generateCreatorReview } from '../lib/buildPacket';
@@ -10,15 +10,23 @@ import type { MicroBuildListing } from '../types';
 import {
   createOrderFromRequest,
   fetchAllOrders,
-  fetchActiveCreatorProfiles,
+  fetchCreatorProfilesForAssignment,
+  fetchOrderByRequestId,
   updateOrderStatus,
   assignCreatorToOrder,
+  setOrderCreatorProfile,
+  linkBuildPacketToOrder,
+  fetchDeliverableByOrderId,
+  createDeliverablePlaceholder,
+  adminReviewDeliverable,
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
   ORDER_PIPELINE_STAGES,
+  orderTimelineIndex,
+  DELIVERY_STATUS_LABELS,
   getNextOrderAction,
 } from '../lib/orders';
-import type { OrderPipelineRow, CreatorProfileSnap, } from '../lib/orders';
+import type { OrderPipelineRow, CreatorProfileSnap, DeliverablePlaceholder, CreatorAssignmentDiagnostics } from '../lib/orders';
 import type { OrderPipelineStatus } from '../types/database';
 import './Admin.css';
 
@@ -56,6 +64,7 @@ function safeDate(v: unknown): string {
 
 interface BuyerRequestRow {
   id: string;
+  user_id: string | null;
   full_name: string;
   email: string;
   business_name: string;
@@ -119,6 +128,7 @@ type RequestFilter = 'all' | 'new' | 'high-priority' | 'needs-followup' | 'ready
 function normalizeBuyerRequest(raw: Record<string, unknown>): BuyerRequestRow {
   return {
     id:              safeText(raw.id, 'unknown'),
+    user_id:         raw.user_id != null ? safeText(raw.user_id) : null,
     full_name:       safeText(raw.full_name, 'Unknown'),
     email:           safeText(raw.email, ''),
     business_name:   safeText(raw.business_name, 'Unknown Business'),
@@ -338,12 +348,23 @@ async function performApprovalAction(
       account_type:               'creator',
     });
 
-    // Upsert creator_profile (check existing first)
-    const { data: existingProfile } = await supabase
+    // Upsert creator_profile — prefer row keyed by application; fall back to linked id (avoid duplicates)
+    const { data: byApplicationId } = await supabase
       .from('creator_profiles')
       .select('id, public_profile_status')
       .eq('creator_application_id', app.id)
       .maybeSingle();
+
+    let existingProfile = byApplicationId as { id: string; public_profile_status?: string } | null;
+
+    if (!existingProfile && app.linked_creator_profile_id) {
+      const { data: byLink } = await supabase
+        .from('creator_profiles')
+        .select('id, public_profile_status')
+        .eq('id', app.linked_creator_profile_id)
+        .maybeSingle();
+      existingProfile = byLink as { id: string; public_profile_status?: string } | null;
+    }
 
     if (existingProfile) {
       // Update existing profile — also stamp auth_user_id if not set
@@ -354,8 +375,10 @@ async function performApprovalAction(
           approval_status:   newStatus,
           subscription_status,
           verification_status: verif,
-          // Ensure auth_user_id is set on the profile (may be missing on older rows)
+          is_active:           true,
           ...(app.auth_user_id ? { auth_user_id: app.auth_user_id } : {}),
+          ...(app.user_profile_id ? { user_profile_id: app.user_profile_id } : {}),
+          creator_application_id: app.id,
           updated_at: new Date().toISOString(),
         })
         .eq('id', existingProfile.id);
@@ -377,11 +400,13 @@ async function performApprovalAction(
       const fullPayload = {
         ...(payload as unknown as Record<string, unknown>),
         tier,
-        approval_status:     newStatus,
+        approval_status:        newStatus,
         subscription_status,
-        verification_status: verif,
+        verification_status:  verif,
         public_profile_status: 'hidden',
-        auth_user_id: app.auth_user_id ?? null,
+        auth_user_id:           app.auth_user_id ?? null,
+        user_profile_id:        app.user_profile_id ?? null,
+        is_active:              true,
       };
       const { data: newProfile, error: cpErr } = await supabase
         .from('creator_profiles')
@@ -408,6 +433,7 @@ async function performApprovalAction(
           .from('creator_profiles')
           .update({
             public_profile_status: 'hidden',
+            is_active:             false,
             ...(action === 'suspend' ? { approval_status: 'suspended' } : {}),
           })
           .eq('id', app.linked_creator_profile_id);
@@ -433,28 +459,62 @@ async function setProfileVisibility_v2(
 
 async function saveBuiltPacket(
   requestId: string,
-  packet: GeneratedBuildPacket
+  packet: GeneratedBuildPacket,
 ): Promise<{ id: string } | null> {
-  const { data, error } = await (supabase
+  const rowPayload = {
+    business_summary:        packet.businessSummary,
+    recommended_build:     packet.recommendedBuild,
+    customer_problem:      packet.problem,
+    suggested_copy:        { direction: packet.suggestedCopyDirection, cta: packet.ctaStrategy },
+    form_fields:           packet.formFields.map((f) => ({ field: f })),
+    design_direction:      packet.designDirection,
+    automation_needs:      packet.automationNeeds,
+    creator_instructions:  packet.creatorInstructions,
+    quality_checklist:     packet.qualityChecklist,
+    launch_checklist:      packet.launchChecklist,
+    suggested_page_sections: packet.suggestedPageSections,
+    ai_summary:            packet.aiSummary,
+    generated_by:          'manual',
+    updated_at:            new Date().toISOString(),
+  };
+
+  const { data: existing, error: lookupErr } = await supabase
     .from('build_packets')
-    .insert({
-      request_id:           requestId,
-      order_id:             null,
-      business_summary:     packet.businessSummary,
-      recommended_build:    packet.recommendedBuild,
-      customer_problem:     packet.problem,
-      suggested_copy:       { direction: packet.suggestedCopyDirection, cta: packet.ctaStrategy },
-      form_fields:          packet.formFields.map((f) => ({ field: f })),
-      design_direction:     packet.designDirection,
-      automation_needs:     packet.automationNeeds,
-      creator_instructions: packet.creatorInstructions,
-      quality_checklist:    packet.qualityChecklist,
-      generated_by:         'manual',
-    })
     .select('id')
-    .single() as unknown as Promise<{ data: { id: string } | null; error: unknown }>);
-  if (error) { console.error('[Admin] save build_packet:', error); return null; }
-  return data;
+    .eq('request_id', requestId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lookupErr) console.error('[Admin] saveBuiltPacket lookup:', lookupErr);
+
+  let packetId: string;
+
+  if (existing && typeof (existing as { id?: string }).id === 'string') {
+    packetId = (existing as { id: string }).id;
+    const { error: upErr } = await supabase.from('build_packets').update(rowPayload).eq('id', packetId);
+    if (upErr) { console.error('[Admin] save build_packet update:', upErr); return null; }
+  } else {
+    const { data: inserted, error: insErr } = await supabase
+      .from('build_packets')
+      .insert({
+        ...rowPayload,
+        request_id: requestId,
+        order_id:   null,
+      })
+      .select('id')
+      .single();
+    if (insErr || !inserted) { console.error('[Admin] save build_packet insert:', insErr); return null; }
+    packetId = (inserted as { id: string }).id;
+  }
+
+  const { data: ord } = await supabase.from('orders').select('id').eq('request_id', requestId).maybeSingle();
+  const oid = ord && typeof (ord as { id?: string }).id === 'string' ? (ord as { id: string }).id : null;
+  if (oid) {
+    await linkBuildPacketToOrder(oid, packetId);
+  }
+
+  return { id: packetId };
 }
 
 // ─── Utility helpers ──────────────────────────────────────────────────────────
@@ -621,7 +681,15 @@ function StatusDropdown({
 
 // ─── Save Build Packet button ─────────────────────────────────────────────────
 
-function SavePacketButton({ requestId, packet }: { requestId: string; packet: GeneratedBuildPacket }) {
+function SavePacketButton({
+  requestId,
+  packet,
+  onSaved,
+}: {
+  requestId: string;
+  packet: GeneratedBuildPacket;
+  onSaved?: () => void;
+}) {
   const [state, setState]   = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [savedId, setSavedId] = useState<string | null>(null);
 
@@ -631,6 +699,8 @@ function SavePacketButton({ requestId, packet }: { requestId: string; packet: Ge
     if (result) {
       setState('saved');
       setSavedId(result.id);
+      onSaved?.();
+      setTimeout(() => setState('idle'), 2500);
     } else {
       setState('error');
       setTimeout(() => setState('idle'), 4000);
@@ -669,7 +739,15 @@ const AI_TABS: { id: AiTab; label: string }[] = [
   { id: 'automation', label: 'Automation'    },
 ];
 
-function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBuildPacket }) {
+function AiOpsPanel({
+  row,
+  packet,
+  onPacketSaved,
+}: {
+  row: BuyerRequestRow;
+  packet: GeneratedBuildPacket;
+  onPacketSaved?: () => void;
+}) {
   const [tab, setTab] = useState<AiTab>('summary');
 
   return (
@@ -860,7 +938,7 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
             </div>
             <div className="ops-copy-row">
               <CopyBtn text={packet.proposalDraft} label="Copy Proposal Draft" />
-              <SavePacketButton requestId={row.id} packet={packet} />
+              <SavePacketButton requestId={row.id} packet={packet} onSaved={onPacketSaved} />
             </div>
           </>
         )}
@@ -904,80 +982,667 @@ function AiOpsPanel({ row, packet }: { row: BuyerRequestRow; packet: GeneratedBu
   );
 }
 
-// ─── Create Project Button ────────────────────────────────────────────────────
+// ─── Request → Project workflow (always visible on buyer cards) ───────────────
 
-function CreateProjectBtn({
-  requestId, buildType,
-}: { requestId: string; buildType: string }) {
-  type BtnState = 'checking' | 'idle' | 'creating' | 'exists' | 'done' | 'error';
-  const [state, setState] = useState<BtnState>('checking');
-  const [projectId, setProjectId] = useState<string | null>(null);
+function wfCreatorBriefCopyText(packet: GeneratedBuildPacket): string {
+  return [
+    packet.businessSummary,
+    '',
+    'Customer problem:',
+    packet.problem,
+    '',
+    'Recommended MicroBuild:',
+    packet.recommendedBuild,
+    '',
+    'Creator instructions:',
+    packet.creatorInstructions,
+    '',
+    'Quality checklist:',
+    ...packet.qualityChecklist.map((line) => `• ${line}`),
+  ].join('\n');
+}
 
-  useEffect(() => {
-    supabase
-      .from('orders')
-      .select('id, order_status')
-      .eq('request_id', requestId)
-      .limit(1)
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          setProjectId((data[0] as { id: string }).id);
-          setState('exists');
-        } else {
-          setState('idle');
-        }
-      });
-  }, [requestId]);
+function wfBuyerProposalCopyText(packet: GeneratedBuildPacket): string {
+  const draft = packet.proposalDraft?.trim()
+    ? packet.proposalDraft
+    : [packet.suggestedProposalAngle, '', packet.buyerOutreachMessage].filter(Boolean).join('\n\n');
+  return draft || 'No proposal draft generated.';
+}
 
-  async function handleCreate() {
-    setState('creating');
-    const result = await createOrderFromRequest({ requestId, buildType });
-    if (result) {
-      setProjectId(result.id);
-      setState(result.isNew ? 'done' : 'exists');
-    } else {
-      setState('error');
-      setTimeout(() => setState('idle'), 3000);
-    }
-  }
+function wfFullPacketCopyText(packet: GeneratedBuildPacket): string {
+  return [
+    '=== MicroBuild build packet (rules-based) ===',
+    '',
+    'Business summary:',
+    packet.businessSummary,
+    '',
+    'Customer problem:',
+    packet.problem,
+    '',
+    'Recommended MicroBuild:',
+    packet.recommendedBuild,
+    '',
+    'Suggested page sections:',
+    ...packet.suggestedPageSections.map((s) => `• ${s}`),
+    '',
+    'Suggested form fields:',
+    ...packet.formFields.map((s) => `• ${s}`),
+    '',
+    'CTA strategy:',
+    packet.ctaStrategy,
+    '',
+    'Automation:',
+    packet.automationNeeds,
+    '',
+    'Creator instructions:',
+    packet.creatorInstructions,
+    '',
+    'Quality checklist:',
+    ...packet.qualityChecklist.map((s) => `• ${s}`),
+    '',
+    'Launch checklist:',
+    ...packet.launchChecklist.map((s) => `• ${s}`),
+  ].join('\n');
+}
 
-  if (state === 'checking') return null;
-  if (state === 'exists' || state === 'done') {
+function wfLaunchChecklistCopyText(packet: GeneratedBuildPacket): string {
+  return packet.launchChecklist.map((s) => `• ${s}`).join('\n');
+}
+
+type WorkflowDbPacket = {
+  id: string;
+  business_summary?: string;
+  customer_problem?: string;
+  recommended_build?: string;
+  suggested_page_sections?: string[] | null;
+  form_fields?: unknown[] | null;
+  suggested_copy?: Record<string, unknown> | null;
+  automation_needs?: string | null;
+  creator_instructions?: string | null;
+  quality_checklist?: string[] | null;
+  launch_checklist?: string[] | null;
+};
+
+function CreatorAssignmentDiagnosticsPanel({
+  diagnostics,
+}: {
+  diagnostics: CreatorAssignmentDiagnostics | null;
+}) {
+  if (!diagnostics) {
     return (
-      <div className="create-project-badge">
-        ✓ Project <span className="create-project-id">{projectId?.slice(0, 8) ?? '…'}…</span>
-        {state === 'done' && <span className="create-project-new"> Created</span>}
-      </div>
+      <p className="req-project-workflow-empty-msg">
+        Loading creator directory from Supabase…
+      </p>
     );
   }
   return (
-    <button
-      className={`create-project-btn${state === 'error' ? ' create-project-btn--error' : ''}`}
-      onClick={handleCreate}
-      disabled={state === 'creating'}
-    >
-      {state === 'creating' ? '…' : state === 'error' ? 'Failed — retry' : '+ Create Project'}
-    </button>
+    <div className="creator-assign-diagnostics">
+      <p className="req-project-workflow-empty-msg">
+        No creators matched assignment rules (approval active / pending payment, legacy is_active flag, or linked active application).
+      </p>
+      <ul className="creator-assign-diagnostics-list">
+        <li>Total creator_profiles rows: {diagnostics.totalProfilesInDb ?? '—'}</li>
+        <li>Profiles with is_active = true: {diagnostics.profilesIsActiveTrueInDb ?? '—'}</li>
+        <li>Public profiles (public_profile_status): {diagnostics.publicProfilesInDb ?? '—'}</li>
+        <li>Profiles with approval active / pending payment: {diagnostics.profilesApprovalActiveOrPending}</li>
+        <li>Extra profiles pulled via linked application IDs: {diagnostics.profilesFetchedViaLinkedApp}</li>
+        <li>Active / pending-payment applications with linked_creator_profile_id: {diagnostics.linkedActiveApplications}</li>
+        <li>Eligible after filters (assignment dropdown): {diagnostics.eligibleAfterFilter}</li>
+      </ul>
+      {diagnostics.errors.length > 0 && (
+        <div className="creator-assign-diagnostics-err">
+          <strong>Query errors:</strong>
+          {diagnostics.errors.map((e) => (
+            <div key={e}>{e}</div>
+          ))}
+        </div>
+      )}
+      <p className="creator-assign-diagnostics-hint">
+        Hidden profiles can still be assigned. If counts look wrong, check browser console for Supabase errors (RLS / policies).
+      </p>
+    </div>
+  );
+}
+
+function RequestProjectWorkflow({
+  row,
+  packet,
+  creatorProfiles,
+  assignmentDiagnostics,
+  onRefreshOrders,
+  reloadNonce,
+}: {
+  row: BuyerRequestRow;
+  packet: GeneratedBuildPacket;
+  creatorProfiles: CreatorProfileSnap[];
+  assignmentDiagnostics: CreatorAssignmentDiagnostics | null;
+  onRefreshOrders: () => void;
+  reloadNonce: number;
+}) {
+  const [loading, setLoading]                   = useState(true);
+  const [order, setOrder]                       = useState<OrderPipelineRow | null>(null);
+  const [dbPacket, setDbPacket]                 = useState<WorkflowDbPacket | null>(null);
+  const [deliverable, setDeliverable]           = useState<DeliverablePlaceholder | null>(null);
+  const [showGenPreview, setShowGenPreview]     = useState(false);
+  const [packetDetailOpen, setPacketDetailOpen] = useState(false);
+  const [selectedCreatorId, setSelectedCreatorId] = useState('');
+  const [busySave, setBusySave]                 = useState(false);
+  const [busyCreate, setBusyCreate]             = useState(false);
+  const [busyAssign, setBusyAssign]             = useState(false);
+  const [busyDeliv, setBusyDeliv]               = useState(false);
+  const [busyStatus, setBusyStatus]             = useState(false);
+  const [msgSave, setMsgSave]                   = useState<'idle' | 'ok' | 'err'>('idle');
+  const [msgCreate, setMsgCreate]               = useState<'idle' | 'ok' | 'err'>('idle');
+  const [msgAssign, setMsgAssign]               = useState<'idle' | 'ok' | 'err'>('idle');
+  const [msgDeliv, setMsgDeliv]                 = useState<'idle' | 'ok' | 'err'>('idle');
+
+  const refreshLocal = useCallback(async () => {
+    setLoading(true);
+    try {
+      const o = await fetchOrderByRequestId(row.id);
+      setOrder(o);
+      const { data: bp, error: bpErr } = await supabase
+        .from('build_packets')
+        .select('id,business_summary,customer_problem,recommended_build,suggested_page_sections,form_fields,suggested_copy,automation_needs,creator_instructions,quality_checklist,launch_checklist,updated_at')
+        .eq('request_id', row.id)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (bpErr) console.error('[Admin] workflow load build_packets:', bpErr);
+      setDbPacket((bp as WorkflowDbPacket | null) ?? null);
+      if (o?.id) {
+        const d = await fetchDeliverableByOrderId(o.id);
+        setDeliverable(d);
+      } else {
+        setDeliverable(null);
+      }
+      const cid = o?.creator_id ?? '';
+      setSelectedCreatorId(cid);
+    } finally {
+      setLoading(false);
+    }
+  }, [row.id]);
+
+  useEffect(() => {
+    refreshLocal();
+  }, [refreshLocal, reloadNonce]);
+
+  const assignedCreator = creatorProfiles.find((c) => c.id === order?.creator_id);
+  const packetSaved     = !!dbPacket?.id;
+  const shortProjectId  = order?.id ? `${order.id.slice(0, 8)}…` : null;
+
+  async function handleSavePacket() {
+    setBusySave(true);
+    setMsgSave('idle');
+    const result = await saveBuiltPacket(row.id, packet);
+    setBusySave(false);
+    if (result) {
+      setMsgSave('ok');
+      await refreshLocal();
+      onRefreshOrders();
+      setTimeout(() => setMsgSave('idle'), 3500);
+    } else {
+      setMsgSave('err');
+      setTimeout(() => setMsgSave('idle'), 5000);
+    }
+  }
+
+  async function handleCreateProject() {
+    setBusyCreate(true);
+    setMsgCreate('idle');
+    const result = await createOrderFromRequest({
+      requestId: row.id,
+      buildType: row.build_type,
+      buyerUserId: row.user_id ?? null,
+    });
+    setBusyCreate(false);
+    if (result) {
+      setMsgCreate(result.isNew ? 'ok' : 'ok');
+      onRefreshOrders();
+      await refreshLocal();
+      setTimeout(() => setMsgCreate('idle'), 3500);
+    } else {
+      setMsgCreate('err');
+      setTimeout(() => setMsgCreate('idle'), 5000);
+    }
+  }
+
+  async function handleAssignCreator() {
+    if (!order?.id || !selectedCreatorId) return;
+    setBusyAssign(true);
+    setMsgAssign('idle');
+    const ok = await setOrderCreatorProfile(order.id, selectedCreatorId);
+    setBusyAssign(false);
+    if (ok) {
+      setMsgAssign('ok');
+      onRefreshOrders();
+      await refreshLocal();
+      setTimeout(() => setMsgAssign('idle'), 3500);
+    } else {
+      setMsgAssign('err');
+      setTimeout(() => setMsgAssign('idle'), 5000);
+    }
+  }
+
+  async function handleAssignAndAdvance() {
+    if (!order?.id || !selectedCreatorId) return;
+    setBusyAssign(true);
+    setMsgAssign('idle');
+    const ok = await assignCreatorToOrder(order.id, selectedCreatorId);
+    setBusyAssign(false);
+    if (ok) {
+      setMsgAssign('ok');
+      onRefreshOrders();
+      await refreshLocal();
+      setTimeout(() => setMsgAssign('idle'), 3500);
+    } else {
+      setMsgAssign('err');
+      setTimeout(() => setMsgAssign('idle'), 5000);
+    }
+  }
+
+  async function handlePipelineStatus(st: OrderPipelineStatus) {
+    if (!order?.id) return;
+    setBusyStatus(true);
+    const ok = await updateOrderStatus(order.id, st);
+    setBusyStatus(false);
+    if (ok) {
+      onRefreshOrders();
+      await refreshLocal();
+    }
+  }
+
+  async function handleDeliverablePlaceholder() {
+    if (!order?.id || !order.creator_id) return;
+    setBusyDeliv(true);
+    setMsgDeliv('idle');
+    const result = await createDeliverablePlaceholder({
+      orderId: order.id,
+      creatorProfileId: order.creator_id,
+    });
+    setBusyDeliv(false);
+    if (result) {
+      setMsgDeliv('ok');
+      await refreshLocal();
+      setTimeout(() => setMsgDeliv('idle'), 3500);
+    } else {
+      setMsgDeliv('err');
+      setTimeout(() => setMsgDeliv('idle'), 5000);
+    }
+  }
+
+  const displayPacket = packet;
+
+  return (
+    <div className="req-project-workflow">
+      <div className="req-project-workflow-head">
+        <span className="req-project-workflow-title">Project Workflow</span>
+        <span className="req-project-workflow-sub">
+          Request → Build packet → Project → Creator → Status → Deliverables
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="req-project-workflow-loading">Loading project state…</div>
+      ) : (
+        <>
+          {/* Row 1: packet + project */}
+          {!order ? (
+            <div className="req-project-workflow-grid req-project-workflow-grid--noproject">
+              <div className="req-project-workflow-col">
+                <div className="req-project-workflow-label">Build packet</div>
+                <div className="req-project-workflow-status-line">
+                  <span className={packetSaved ? 'wf-tag wf-tag--ok' : 'wf-tag wf-tag--muted'}>
+                    {packetSaved ? `Saved · ${dbPacket?.id?.slice(0, 8) ?? 'packet'}…` : 'Not saved to Supabase'}
+                  </span>
+                </div>
+                <div className="req-project-workflow-actions">
+                  <button
+                    type="button"
+                    className="wf-action-btn"
+                    onClick={() => setShowGenPreview((v) => !v)}
+                  >
+                    {showGenPreview ? 'Hide generated preview' : 'Generate Build Packet'}
+                  </button>
+                  <button
+                    type="button"
+                    className="wf-action-btn wf-action-btn--primary"
+                    onClick={handleSavePacket}
+                    disabled={busySave}
+                  >
+                    {busySave ? 'Saving…' : packetSaved ? 'Save / Update Build Packet' : 'Save Build Packet'}
+                  </button>
+                  {msgSave === 'ok' && <span className="wf-feedback wf-feedback--ok">Saved</span>}
+                  {msgSave === 'err' && <span className="wf-feedback wf-feedback--err">Save failed — check console</span>}
+                </div>
+                <button
+                  type="button"
+                  className={`wf-action-btn wf-action-btn--accent${packetDetailOpen ? ' active' : ''}`}
+                  onClick={() => setPacketDetailOpen((v) => !v)}
+                >
+                  {packetDetailOpen ? 'Hide build packet panel' : 'View Build Packet'}
+                </button>
+              </div>
+              <div className="req-project-workflow-col">
+                <div className="req-project-workflow-label">Project</div>
+                <p className="req-project-workflow-hint">No project yet for this request.</p>
+                <button
+                  type="button"
+                  className="wf-action-btn wf-action-btn--accent"
+                  onClick={handleCreateProject}
+                  disabled={busyCreate}
+                >
+                  {busyCreate ? 'Creating…' : '+ Create Project'}
+                </button>
+                {msgCreate === 'ok' && <span className="wf-feedback wf-feedback--ok">Project ready</span>}
+                {msgCreate === 'err' && <span className="wf-feedback wf-feedback--err">Could not create — check console</span>}
+              </div>
+            </div>
+          ) : (
+            <div className="req-project-workflow-grid">
+              <div className="req-project-workflow-summary">
+                <div className="req-project-workflow-kv">
+                  <span className="kv-label">Project ID</span>
+                  <span className="kv-val mono">{shortProjectId ?? '—'}</span>
+                </div>
+                <div className="req-project-workflow-kv">
+                  <span className="kv-label">Project status</span>
+                  <span
+                    className="wf-tag"
+                    style={{
+                      color:       ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6',
+                      borderColor: `${ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6'}44`,
+                    }}
+                  >
+                    {ORDER_STATUS_LABELS[order.order_status] ?? order.order_status ?? 'Unknown'}
+                  </span>
+                </div>
+                <div className="req-project-workflow-kv">
+                  <span className="kv-label">Payment</span>
+                  <span className="wf-tag wf-tag--muted">{order.payment_status ?? 'unpaid'} (Stripe later)</span>
+                </div>
+                <div className="req-project-workflow-kv">
+                  <span className="kv-label">Assigned creator</span>
+                  <span className="kv-val">
+                    {assignedCreator
+                      ? `${assignedCreator.display_name ?? assignedCreator.full_name} · ${assignedCreator.tier ?? 'tier'}`
+                      : 'Unassigned'}
+                  </span>
+                </div>
+                <div className="req-project-workflow-kv">
+                  <span className="kv-label">Build packet</span>
+                  <span className={packetSaved ? 'wf-tag wf-tag--ok' : 'wf-tag wf-tag--warn'}>
+                    {packetSaved ? `Saved · linked ${order.build_packet_id ? '✓' : '(save again to link)'}` : 'Not saved'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="req-project-workflow-actions req-project-workflow-actions--wrap">
+                <button type="button" className="wf-action-btn" onClick={() => setShowGenPreview((v) => !v)}>
+                  {showGenPreview ? 'Hide generated preview' : 'Generate Build Packet'}
+                </button>
+                <button type="button" className="wf-action-btn wf-action-btn--primary" onClick={handleSavePacket} disabled={busySave}>
+                  {busySave ? 'Saving…' : 'Save / Update Build Packet'}
+                </button>
+                <button type="button" className={`wf-action-btn${packetDetailOpen ? ' active' : ''}`} onClick={() => setPacketDetailOpen((v) => !v)}>
+                  {packetDetailOpen ? 'Hide Build Packet' : 'View Build Packet'}
+                </button>
+                {msgSave === 'ok' && <span className="wf-feedback wf-feedback--ok">Saved</span>}
+                {msgSave === 'err' && <span className="wf-feedback wf-feedback--err">Save failed</span>}
+              </div>
+
+              {/* Assign creator */}
+              <div className="req-project-workflow-assign">
+                <div className="req-project-workflow-label">Assign Creator</div>
+                {creatorProfiles.length === 0 ? (
+                  <CreatorAssignmentDiagnosticsPanel diagnostics={assignmentDiagnostics} />
+                ) : (
+                  <>
+                    <div className="req-project-workflow-assign-row">
+                      <select
+                        className="wf-creator-select"
+                        value={selectedCreatorId}
+                        onChange={(e) => setSelectedCreatorId(e.target.value)}
+                        disabled={busyAssign}
+                      >
+                        <option value="">Select creator profile…</option>
+                        {creatorProfiles.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {(c.display_name ?? c.full_name) || 'Creator'} · tier {c.tier ?? '—'} · approval{' '}
+                            {c.approval_status ?? '—'} · {c.verification_status ?? '—'} · visibility{' '}
+                            {c.public_profile_status ?? '—'}
+                            {c.contact_email ? ` · ${c.contact_email}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="wf-action-btn"
+                        onClick={handleAssignCreator}
+                        disabled={busyAssign || !selectedCreatorId}
+                      >
+                        {busyAssign ? '…' : 'Save assignment'}
+                      </button>
+                      <button
+                        type="button"
+                        className="wf-action-btn wf-action-btn--primary"
+                        onClick={handleAssignAndAdvance}
+                        disabled={busyAssign || !selectedCreatorId}
+                      >
+                        {busyAssign ? '…' : 'Assign & Mark Assigned'}
+                      </button>
+                    </div>
+                    {msgAssign === 'ok' && (
+                      <span className="wf-feedback wf-feedback--ok">
+                        {assignedCreator
+                          ? `Assigned: ${assignedCreator.display_name ?? assignedCreator.full_name}`
+                          : 'Assignment saved'}
+                      </span>
+                    )}
+                    {msgAssign === 'err' && <span className="wf-feedback wf-feedback--err">Assignment failed — check console</span>}
+                  </>
+                )}
+              </div>
+
+              {/* Pipeline buttons */}
+              <div className="req-project-workflow-label">Project pipeline status</div>
+              <div className="req-project-workflow-status-btns">
+                {([
+                  ['ready_to_quote', 'Ready to Quote'],
+                  ['assigned',       'Mark Assigned'],
+                  ['in_progress',    'In Progress'],
+                  ['in_review',      'In Review'],
+                  ['delivered',      'Delivered'],
+                  ['completed',      'Completed'],
+                  ['rejected',       'Reject'],
+                  ['canceled',       'Cancel'],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`wf-pipe-btn${order.order_status === id ? ' wf-pipe-btn--current' : ''}`}
+                    disabled={busyStatus || order.order_status === id}
+                    onClick={() => handlePipelineStatus(id)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Deliverables placeholder */}
+              <div className="req-project-workflow-deliverable">
+                <div className="req-project-workflow-label">Deliverables (placeholder)</div>
+                {deliverable ? (
+                  <div className="wf-deliverable-strip">
+                    <span className="wf-tag wf-tag--muted">Status: {deliverable.delivery_status ?? 'draft'}</span>
+                    <span className="wf-tag wf-tag--muted">Preview: {deliverable.preview_url?.trim() ? 'Set' : '—'}</span>
+                    <span className="wf-tag wf-tag--muted">Delivery URL: {deliverable.live_url?.trim() ? 'Set' : '—'}</span>
+                    <span className="wf-tag wf-tag--muted">GitHub: {deliverable.github_url?.trim() ? 'Set' : '—'}</span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="req-project-workflow-hint">
+                      {order.creator_id
+                        ? 'Create a placeholder deliverable row for this order (no file upload yet).'
+                        : 'Assign a creator before adding a deliverable placeholder.'}
+                    </p>
+                    <button
+                      type="button"
+                      className="wf-action-btn"
+                      disabled={busyDeliv || !order.creator_id}
+                      onClick={handleDeliverablePlaceholder}
+                    >
+                      {busyDeliv ? '…' : '+ Create deliverable placeholder'}
+                    </button>
+                    {msgDeliv === 'ok' && <span className="wf-feedback wf-feedback--ok">Placeholder created</span>}
+                    {msgDeliv === 'err' && <span className="wf-feedback wf-feedback--err">Could not create — check console</span>}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {showGenPreview && (
+            <div className="req-project-gen-preview">
+              <div className="req-project-gen-preview-label">Generated preview (rules-based — same as AI Ops)</div>
+              <p className="req-project-gen-preview-summary">{displayPacket.aiSummary}</p>
+              <div className="req-project-gen-preview-mini">
+                <span><strong>Recommended:</strong> {displayPacket.recommendedBuild}</span>
+                <span><strong>Quote readiness:</strong> {displayPacket.quoteReadiness}</span>
+              </div>
+            </div>
+          )}
+
+          {packetDetailOpen && (
+            <div className="req-project-packet-detail">
+              <div className="req-project-packet-detail-copy-row">
+                <CopyBtn text={wfCreatorBriefCopyText(displayPacket)} label="Copy Creator Brief" />
+                <CopyBtn text={wfBuyerProposalCopyText(displayPacket)} label="Copy Buyer Proposal" />
+                <CopyBtn text={wfFullPacketCopyText(displayPacket)} label="Copy Build Packet" />
+                <CopyBtn text={wfLaunchChecklistCopyText(displayPacket)} label="Copy Launch Checklist" />
+              </div>
+              <div className="req-project-packet-sections">
+                <section>
+                  <h4>Business summary</h4>
+                  <p>{dbPacket?.business_summary ?? displayPacket.businessSummary}</p>
+                </section>
+                <section>
+                  <h4>Customer problem</h4>
+                  <p>{dbPacket?.customer_problem ?? displayPacket.problem}</p>
+                </section>
+                <section>
+                  <h4>Recommended MicroBuild</h4>
+                  <p>{dbPacket?.recommended_build ?? displayPacket.recommendedBuild}</p>
+                </section>
+                <section>
+                  <h4>Suggested page sections</h4>
+                  <ul>
+                    {(dbPacket?.suggested_page_sections?.length
+                      ? dbPacket.suggested_page_sections
+                      : displayPacket.suggestedPageSections
+                    ).map((s) => (
+                      <li key={s}>{s}</li>
+                    ))}
+                  </ul>
+                </section>
+                <section>
+                  <h4>Suggested form fields</h4>
+                  <ul>
+                    {(dbPacket?.form_fields?.length
+                      ? dbPacket.form_fields.map((x) => safeText((x as { field?: unknown })?.field, String(x)))
+                      : displayPacket.formFields
+                    ).map((s) => (
+                      <li key={s}>{s}</li>
+                    ))}
+                  </ul>
+                </section>
+                <section>
+                  <h4>CTA strategy</h4>
+                  <p>
+                    {safeText(dbPacket?.suggested_copy?.cta as unknown, '') ||
+                      displayPacket.ctaStrategy ||
+                      '—'}
+                  </p>
+                </section>
+                <section>
+                  <h4>Automation opportunities</h4>
+                  <p>{dbPacket?.automation_needs ?? displayPacket.automationNeeds}</p>
+                </section>
+                <section>
+                  <h4>Creator instructions</h4>
+                  <p>{dbPacket?.creator_instructions ?? displayPacket.creatorInstructions}</p>
+                </section>
+                <section>
+                  <h4>Quality checklist</h4>
+                  <ul>
+                    {(dbPacket?.quality_checklist?.length
+                      ? dbPacket.quality_checklist
+                      : displayPacket.qualityChecklist
+                    ).map((s) => (
+                      <li key={s}>{s}</li>
+                    ))}
+                  </ul>
+                </section>
+                <section>
+                  <h4>Launch checklist</h4>
+                  <ul>
+                    {(dbPacket?.launch_checklist?.length
+                      ? dbPacket.launch_checklist
+                      : displayPacket.launchChecklist
+                    ).map((s) => (
+                      <li key={s}>{s}</li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
 // ─── Order Card (Project Pipeline) ───────────────────────────────────────────
 
 function OrderCard({
-  order, activeCreators, onUpdate,
+  order,
+  activeCreators,
+  assignmentDiagnostics,
+  buyerBusinessName,
+  buyerBuildType,
+  deliverable,
+  onUpdate,
+  onDeliverableRefresh,
 }: {
   order: OrderPipelineRow;
   activeCreators: CreatorProfileSnap[];
+  assignmentDiagnostics: CreatorAssignmentDiagnostics | null;
+  buyerBusinessName: string;
+  buyerBuildType: string;
+  deliverable: DeliverablePlaceholder | null;
   onUpdate: (id: string, updates: Partial<OrderPipelineRow>) => void;
+  onDeliverableRefresh?: () => void;
 }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [assigning, setAssigning]           = useState(false);
   const [selectedCreator, setSelectedCreator] = useState(order.creator_id ?? '');
   const [notesVal, setNotesVal]             = useState(order.admin_notes ?? '');
   const [savingNotes, setSavingNotes]       = useState(false);
+  const [msgAssign, setMsgAssign]           = useState<'idle' | 'ok' | 'err'>('idle');
+  const [revisionFeedback, setRevisionFeedback] = useState('');
+  const [reviewBusy, setReviewBusy]         = useState<
+    'idle' | 'revision' | 'approve' | 'delivered' | 'completed'
+  >('idle');
+  const [reviewMsg, setReviewMsg]           = useState<'idle' | 'ok' | 'err'>('idle');
+
+  useEffect(() => {
+    setSelectedCreator(order.creator_id ?? '');
+  }, [order.creator_id]);
 
   const statusColor = ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6';
   const assignedCreator = activeCreators.find((c) => c.id === order.creator_id);
+  const pipelineIdx = orderTimelineIndex(order.order_status);
 
   async function handleStatus(status: OrderPipelineStatus) {
     setUpdatingStatus(true);
@@ -989,9 +1654,77 @@ function OrderCard({
   async function handleAssign() {
     if (!selectedCreator) return;
     setAssigning(true);
+    setMsgAssign('idle');
     const ok = await assignCreatorToOrder(order.id, selectedCreator);
-    if (ok) onUpdate(order.id, { creator_id: selectedCreator, order_status: 'assigned' });
     setAssigning(false);
+    if (ok) {
+      onUpdate(order.id, { creator_id: selectedCreator, order_status: 'assigned' });
+      setMsgAssign('ok');
+      setTimeout(() => setMsgAssign('idle'), 3500);
+    } else {
+      setMsgAssign('err');
+      setTimeout(() => setMsgAssign('idle'), 5000);
+    }
+  }
+
+  async function runDeliverableReview(
+    action: 'request_revision' | 'approve_deliverable' | 'mark_delivered' | 'mark_completed',
+  ) {
+    const busyMap = {
+      request_revision: 'revision',
+      approve_deliverable: 'approve',
+      mark_delivered: 'delivered',
+      mark_completed: 'completed',
+    } as const;
+    setReviewBusy(busyMap[action]);
+    setReviewMsg('idle');
+
+    let ok = false;
+    if (action === 'request_revision') {
+      const note =
+        revisionFeedback.trim() ||
+        (order.admin_notes?.trim() ?? '') ||
+        'Please apply the requested revisions and resubmit.';
+      ok = await adminReviewDeliverable({
+        deliverableId: deliverable?.id ?? null,
+        orderId: order.id,
+        action: 'request_revision',
+        revisionNote: note,
+        currentRevisionCount: deliverable?.revision_count ?? 0,
+      });
+      if (ok) onUpdate(order.id, { order_status: 'in_progress' });
+    } else if (action === 'approve_deliverable') {
+      ok = await adminReviewDeliverable({
+        deliverableId: deliverable?.id ?? null,
+        orderId: order.id,
+        action: 'approve_deliverable',
+      });
+      if (ok) onUpdate(order.id, { order_status: 'delivered' });
+    } else if (action === 'mark_delivered') {
+      ok = await adminReviewDeliverable({
+        deliverableId: null,
+        orderId: order.id,
+        action: 'mark_delivered',
+      });
+      if (ok) onUpdate(order.id, { order_status: 'delivered' });
+    } else {
+      ok = await adminReviewDeliverable({
+        deliverableId: null,
+        orderId: order.id,
+        action: 'mark_completed',
+      });
+      if (ok) onUpdate(order.id, { order_status: 'completed' });
+    }
+
+    setReviewBusy('idle');
+    if (ok) {
+      setReviewMsg('ok');
+      onDeliverableRefresh?.();
+      setTimeout(() => setReviewMsg('idle'), 4000);
+    } else {
+      setReviewMsg('err');
+      setTimeout(() => setReviewMsg('idle'), 6000);
+    }
   }
 
   return (
@@ -1012,15 +1745,21 @@ function OrderCard({
             style={{ color: order.payment_status === 'paid' ? '#00d478' : '#8a94a6' }}>
             {order.payment_status ?? 'unpaid'}
           </span>
+          <span className={`order-bp-badge${order.build_packet_id ? ' order-bp-badge--ok' : ''}`}>
+            Packet {order.build_packet_id ? 'linked ✓' : 'not linked'}
+          </span>
         </div>
+      </div>
+
+      <div className="order-card-buyer-context">
+        <span className="order-buyer-label">Buyer / MicroBuild</span>
+        <span className="order-buyer-val">{buyerBusinessName} · {buyerBuildType}</span>
       </div>
 
       {/* Pipeline progress bar */}
       <div className="order-pipeline-bar">
         {ORDER_PIPELINE_STAGES.map((s) => {
-          const idx = ORDER_PIPELINE_STAGES.findIndex((x) => x.id === order.order_status);
-          const sIdx = ORDER_PIPELINE_STAGES.findIndex((x) => x.id === s.id);
-          const done   = sIdx < idx;
+          const done   = ORDER_PIPELINE_STAGES.findIndex((x) => x.id === s.id) < pipelineIdx;
           const active = s.id === order.order_status;
           return (
             <div key={s.id} className={`order-pipe-step${active ? ' active' : ''}${done ? ' done' : ''}`}>
@@ -1066,20 +1805,140 @@ function OrderCard({
           disabled={assigning}
         >
           <option value="">Select creator…</option>
-          {activeCreators.length === 0 && <option disabled>No active creators yet</option>}
+          {activeCreators.length === 0 && <option disabled>No eligible creators in dropdown</option>}
           {activeCreators.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.display_name ?? c.full_name} · {c.tier}
+              {(c.display_name ?? c.full_name) || 'Creator'} · tier {c.tier ?? '—'} · approval {c.approval_status ?? '—'} ·{' '}
+              {c.verification_status ?? '—'} · visibility {c.public_profile_status ?? '—'}
+              {c.contact_email ? ` · ${c.contact_email}` : ''}
             </option>
           ))}
         </select>
         <button
           className="order-assign-btn"
           onClick={handleAssign}
-          disabled={!selectedCreator || assigning || selectedCreator === order.creator_id}
+          disabled={!selectedCreator || assigning}
         >
-          {assigning ? '…' : selectedCreator === order.creator_id ? 'Assigned ✓' : 'Assign'}
+          {assigning ? '…' : 'Assign & mark Assigned'}
         </button>
+      </div>
+      {msgAssign === 'ok' && (
+        <span className="wf-feedback wf-feedback--ok order-assign-feedback">
+          Assigned — status set to Assigned.
+        </span>
+      )}
+      {msgAssign === 'err' && (
+        <span className="wf-feedback wf-feedback--err order-assign-feedback">
+          Assignment failed — check browser console for Supabase error.
+        </span>
+      )}
+
+      {activeCreators.length === 0 && (
+        <div className="order-assign-empty">
+          <CreatorAssignmentDiagnosticsPanel diagnostics={assignmentDiagnostics} />
+        </div>
+      )}
+
+      {!order.creator_id && (
+        <p className="order-assign-warning">
+          Assign a creator before relying on deliverable submissions from the creator workspace.
+        </p>
+      )}
+
+      {/* Deliverable review */}
+      <div className="order-deliverable-panel">
+        <div className="order-detail-label">Deliverable</div>
+        {!deliverable ? (
+          <p className="order-detail-val muted">
+            No deliverable row yet — creators submit from their project workspace, or create a placeholder from the buyer request workflow.
+          </p>
+        ) : (
+          <>
+            <div className="order-deliverable-meta">
+              <span className="order-del-tag">
+                Status: {DELIVERY_STATUS_LABELS[deliverable.delivery_status] ?? deliverable.delivery_status}
+              </span>
+              {deliverable.revision_note?.trim() ? (
+                <span className="order-del-revision-note" title={deliverable.revision_note}>
+                  Last revision note on file
+                </span>
+              ) : null}
+            </div>
+            <div className="order-del-urls">
+              {deliverable.preview_url?.trim() ? (
+                <a href={deliverable.preview_url.trim()} target="_blank" rel="noopener noreferrer" className="order-del-link">
+                  Preview URL →
+                </a>
+              ) : (
+                <span className="muted">Preview URL —</span>
+              )}
+              {deliverable.live_url?.trim() ? (
+                <a href={deliverable.live_url.trim()} target="_blank" rel="noopener noreferrer" className="order-del-link">
+                  Delivery URL →
+                </a>
+              ) : (
+                <span className="muted">Delivery URL —</span>
+              )}
+            </div>
+            {deliverable.notes?.trim() ? (
+              <div className="order-del-notes">
+                <span className="order-del-notes-label">Creator notes</span>
+                <p>{deliverable.notes.trim()}</p>
+              </div>
+            ) : null}
+            <label className="order-del-revision-field">
+              <span>Revision feedback (sent to creator)</span>
+              <textarea
+                rows={2}
+                value={revisionFeedback}
+                onChange={(e) => setRevisionFeedback(e.target.value)}
+                placeholder="Optional — overrides empty requests; falls back to internal admin notes below if left blank."
+              />
+            </label>
+            <div className="order-del-actions">
+              <button
+                type="button"
+                className="order-del-btn order-del-btn--warn"
+                disabled={reviewBusy !== 'idle' || !deliverable}
+                onClick={() => runDeliverableReview('request_revision')}
+              >
+                {reviewBusy === 'revision' ? '…' : 'Request Revision'}
+              </button>
+              <button
+                type="button"
+                className="order-del-btn order-del-btn--ok"
+                disabled={reviewBusy !== 'idle' || !deliverable}
+                onClick={() => runDeliverableReview('approve_deliverable')}
+              >
+                {reviewBusy === 'approve' ? '…' : 'Approve Deliverable'}
+              </button>
+              <button
+                type="button"
+                className="order-del-btn"
+                disabled={reviewBusy !== 'idle'}
+                onClick={() => runDeliverableReview('mark_delivered')}
+              >
+                {reviewBusy === 'delivered' ? '…' : 'Mark Delivered'}
+              </button>
+              <button
+                type="button"
+                className="order-del-btn"
+                disabled={reviewBusy !== 'idle'}
+                onClick={() => runDeliverableReview('mark_completed')}
+              >
+                {reviewBusy === 'completed' ? '…' : 'Mark Completed'}
+              </button>
+            </div>
+            {reviewMsg === 'ok' && (
+              <span className="wf-feedback wf-feedback--ok order-del-feedback">Deliverable / order updated</span>
+            )}
+            {reviewMsg === 'err' && (
+              <span className="wf-feedback wf-feedback--err order-del-feedback">
+                Action failed — check console (missing column revision_note → run migration).
+              </span>
+            )}
+          </>
+        )}
       </div>
 
       {/* Status action buttons */}
@@ -1087,11 +1946,13 @@ function OrderCard({
         <span className="order-status-actions-label">Update Status:</span>
         {[
           { id: 'ready_to_quote', label: 'Ready to Quote' },
+          { id: 'assigned',       label: 'Assigned'        },
           { id: 'in_progress',    label: 'In Progress'    },
           { id: 'in_review',      label: 'In Review'      },
           { id: 'delivered',      label: 'Delivered'      },
           { id: 'completed',      label: 'Completed'      },
           { id: 'rejected',       label: 'Reject'         },
+          { id: 'canceled',       label: 'Cancel'         },
         ].map(({ id, label }) => (
           <button
             key={id}
@@ -1140,14 +2001,59 @@ function OrderCard({
 // ─── Project Pipeline Section ─────────────────────────────────────────────────
 
 function ProjectPipelineSection({
-  orders, activeCreators, loading, onOrderUpdate,
+  orders,
+  requests,
+  activeCreators,
+  assignmentDiagnostics,
+  loading,
+  onOrderUpdate,
 }: {
   orders: OrderPipelineRow[];
+  requests: BuyerRequestRow[];
   activeCreators: CreatorProfileSnap[];
+  assignmentDiagnostics: CreatorAssignmentDiagnostics | null;
   loading: boolean;
   onOrderUpdate: (id: string, updates: Partial<OrderPipelineRow>) => void;
 }) {
   const [filter, setFilter] = useState('all');
+  const [deliverablesByOrderId, setDeliverablesByOrderId] = useState<Record<string, DeliverablePlaceholder>>({});
+  const [deliverablesNonce, setDeliverablesNonce] = useState(0);
+
+  const bizByReq = useMemo(() => {
+    const m: Record<string, { business_name: string; build_type: string }> = {};
+    for (const r of requests) {
+      m[r.id] = {
+        business_name: r.business_name?.trim() ? r.business_name : 'Unknown business',
+        build_type: r.build_type?.trim() ? r.build_type : '—',
+      };
+    }
+    return m;
+  }, [requests]);
+
+  useEffect(() => {
+    if (orders.length === 0) {
+      setDeliverablesByOrderId({});
+      return;
+    }
+    const ids = orders.map((o) => o.id);
+    supabase
+      .from('deliverables')
+      .select(
+        'id, order_id, creator_id, creator_profile_id, live_url, preview_url, github_url, notes, delivery_status, revision_note, revision_count, approved_at, submitted_at, updated_at',
+      )
+      .in('order_id', ids)
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[Admin] batch deliverables:', error);
+          return;
+        }
+        const map: Record<string, DeliverablePlaceholder> = {};
+        for (const row of data ?? []) {
+          map[(row as DeliverablePlaceholder).order_id] = row as DeliverablePlaceholder;
+        }
+        setDeliverablesByOrderId(map);
+      });
+  }, [orders, deliverablesNonce]);
 
   const FILTERS = [
     { id: 'all',           label: 'All' },
@@ -1168,6 +2074,10 @@ function ProjectPipelineSection({
         <h2>Project Pipeline</h2>
         {!loading && <span className="admin-count">{orders.length}</span>}
       </div>
+      <p className="pipeline-section-intro">
+        Live orders from Supabase. Per-request controls (build packet, create project, assign creator) live in each card in the{' '}
+        <a href="#section-buyers">Buyer Request Queue</a> directly above.
+      </p>
 
       {loading ? (
         <div className="admin-state-row admin-loading">Loading projects…</div>
@@ -1206,7 +2116,20 @@ function ProjectPipelineSection({
                   key={order.id}
                   order={order}
                   activeCreators={activeCreators}
+                  assignmentDiagnostics={assignmentDiagnostics}
+                  buyerBusinessName={
+                    order.request_id && bizByReq[order.request_id]
+                      ? bizByReq[order.request_id].business_name
+                      : 'Unknown buyer request'
+                  }
+                  buyerBuildType={
+                    order.request_id && bizByReq[order.request_id]
+                      ? bizByReq[order.request_id].build_type
+                      : '—'
+                  }
+                  deliverable={deliverablesByOrderId[order.id] ?? null}
                   onUpdate={onOrderUpdate}
+                  onDeliverableRefresh={() => setDeliverablesNonce((n) => n + 1)}
                 />
               ))}
             </div>
@@ -1260,13 +2183,20 @@ function RequestCard({
   onStatusChange,
   selected,
   onSelect,
+  creatorProfiles,
+  assignmentDiagnostics,
+  onRefreshOrders,
 }: {
   enriched: EnrichedRequest;
   onStatusChange: (id: string, newStatus: string) => void;
   selected?: boolean;
   onSelect?: (id: string) => void;
+  creatorProfiles: CreatorProfileSnap[];
+  assignmentDiagnostics: CreatorAssignmentDiagnostics | null;
+  onRefreshOrders: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [wfNonce, setWfNonce]   = useState(0);
   const { row, packet } = enriched;
 
   return (
@@ -1369,9 +2299,20 @@ function RequestCard({
               🔴 {packet.riskFlags.length} risk flag{packet.riskFlags.length > 1 ? 's' : ''}
             </div>
           )}
-          <CreateProjectBtn requestId={row.id} buildType={row.build_type} />
+          <span className="req-card-scroll-hint">
+            Full pipeline controls below →
+          </span>
         </div>
       </div>
+
+      <RequestProjectWorkflow
+        row={row}
+        packet={packet}
+        creatorProfiles={creatorProfiles}
+        assignmentDiagnostics={assignmentDiagnostics}
+        onRefreshOrders={onRefreshOrders}
+        reloadNonce={wfNonce}
+      />
 
       {/* Goal/problem summary */}
       <div className="req-card-summary">
@@ -1417,7 +2358,7 @@ function RequestCard({
         {expanded ? '▲ Hide AI Operations' : '▼ View AI Operations Panel'}
       </button>
 
-      {expanded && <AiOpsPanel row={row} packet={packet} />}
+      {expanded && <AiOpsPanel row={row} packet={packet} onPacketSaved={() => setWfNonce((n) => n + 1)} />}
     </div>
   );
 }
@@ -2443,10 +3384,11 @@ function WorkflowTemplates() {
 
 function AdminSectionNav() {
   const NAV = [
-    { id: 'focus',     label: '⚡ Focus'     },
-    { id: 'creators',  label: '👤 Creators'  },
+    { id: 'focus',     label: '⚡ Focus'      },
     { id: 'buyers',    label: '📋 Buyers'    },
-    { id: 'profiles',  label: '🔍 Profiles'  },
+    { id: 'pipeline',  label: '🚀 Pipeline'  },
+    { id: 'creators',  label: '👤 Creators'  },
+    { id: 'profiles',  label: '🔍 Profiles'   },
     { id: 'templates', label: '📝 Templates' },
     { id: 'health',    label: '📊 Health'    },
   ];
@@ -2833,6 +3775,7 @@ export default function Admin() {
   const [templates, setTemplates]           = useState<MicroBuildListing[]>([]);
   const [orders, setOrders]                 = useState<OrderPipelineRow[]>([]);
   const [activeCreators, setActiveCreators] = useState<CreatorProfileSnap[]>([]);
+  const [creatorAssignmentDiag, setCreatorAssignmentDiag] = useState<CreatorAssignmentDiagnostics | null>(null);
   const [reqLoading, setReqLoading]         = useState(true);
   const [appLoading, setAppLoading]         = useState(true);
   const [profilesLoading, setProfilesLoading] = useState(true);
@@ -2851,7 +3794,7 @@ export default function Admin() {
   useEffect(() => {
     supabase
       .from('buyer_requests')
-      .select('id,full_name,email,business_name,industry,website_social,build_type,main_goal,current_problem,budget,deadline,style_notes,status,created_at')
+      .select('id,user_id,full_name,email,business_name,industry,website_social,build_type,main_goal,current_problem,budget,deadline,style_notes,status,created_at')
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) { console.error('[Admin] buyer_requests:', error); setReqError(true); }
@@ -2882,9 +3825,12 @@ export default function Admin() {
       setTplLoading(false);
     });
 
-    // Project pipeline
+    // Project pipeline — assignment list uses approval_status + linked apps (not is_active-only)
     fetchAllOrders().then((data) => { setOrders(data); setOrdersLoading(false); });
-    fetchActiveCreatorProfiles().then(setActiveCreators);
+    fetchCreatorProfilesForAssignment().then(({ creators, diagnostics }) => {
+      setActiveCreators(creators);
+      setCreatorAssignmentDiag(diagnostics);
+    });
 
     supabase
       .from('creator_profiles')
@@ -2938,10 +3884,18 @@ export default function Admin() {
     setApplications((prev) =>
       prev.map((a) => a.id === id ? { ...a, status: newStatus } : a)
     );
+    fetchCreatorProfilesForAssignment().then(({ creators, diagnostics }) => {
+      setActiveCreators(creators);
+      setCreatorAssignmentDiag(diagnostics);
+    });
   }
   function handleOrderUpdate(id: string, updates: Partial<OrderPipelineRow>) {
     setOrders((prev) => prev.map((o) => o.id === id ? { ...o, ...updates } : o));
   }
+
+  const reloadOrders = useCallback(() => {
+    fetchAllOrders().then(setOrders);
+  }, []);
 
   // Batch selection helpers
   function toggleSelectApp(id: string) {
@@ -3189,6 +4143,9 @@ export default function Admin() {
                       onStatusChange={handleRequestStatusChange}
                       selected={selectedReqs.has(e.row.id)}
                       onSelect={toggleSelectReq}
+                      creatorProfiles={activeCreators}
+                      assignmentDiagnostics={creatorAssignmentDiag}
+                      onRefreshOrders={reloadOrders}
                     />
                   </SectionErrorBoundary>
                 ))}
@@ -3197,6 +4154,18 @@ export default function Admin() {
             </SectionErrorBoundary>
           )}
         </section>
+
+        {/* ── Project Pipeline (orders / creators / deliverables) ───────────── */}
+        <SectionErrorBoundary name="Project Pipeline">
+          <ProjectPipelineSection
+            orders={orders}
+            requests={requests}
+            activeCreators={activeCreators}
+            assignmentDiagnostics={creatorAssignmentDiag}
+            loading={ordersLoading}
+            onOrderUpdate={handleOrderUpdate}
+          />
+        </SectionErrorBoundary>
 
         {/* ── Creator Applications ──────────────────────────────────────────── */}
         <section className="admin-section" id="section-creators">
@@ -3325,16 +4294,6 @@ export default function Admin() {
             applications={applications}
             profiles={creatorProfiles}
             loading={reqLoading || appLoading || profilesLoading}
-          />
-        </SectionErrorBoundary>
-
-        {/* ── Project Pipeline ──────────────────────────────────────────────── */}
-        <SectionErrorBoundary name="Project Pipeline">
-          <ProjectPipelineSection
-            orders={orders}
-            activeCreators={activeCreators}
-            loading={ordersLoading}
-            onOrderUpdate={handleOrderUpdate}
           />
         </SectionErrorBoundary>
 

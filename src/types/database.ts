@@ -362,6 +362,8 @@ export interface DeliverableRow {
   submitted_at: string;
   approved_at: string | null;
   revision_count: number;
+  /** Admin → creator feedback when delivery_status is revision_needed (deliverables-revision-note.sql) */
+  revision_note: string | null;
   updated_at: string;
 }
 

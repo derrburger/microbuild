@@ -2308,3 +2308,483 @@
   .pipeline-card-list { grid-template-columns: 1fr; }
   .order-card-details { grid-template-columns: 1fr; }
 }
+
+/* ─── Pipeline section intro ─────────────────────────────────────────────────── */
+
+.pipeline-section-intro {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: -0.25rem 0 1rem;
+  line-height: 1.45;
+}
+.pipeline-section-intro a {
+  color: #63b3ed;
+  text-decoration: underline;
+}
+
+/* ─── Buyer card — Project Workflow strip ────────────────────────────────────── */
+
+.req-project-workflow {
+  margin: 0 1rem 0.75rem;
+  padding: 0.85rem 1rem;
+  background: rgba(0, 212, 120, 0.04);
+  border: 1px solid rgba(0, 212, 120, 0.22);
+  border-radius: 10px;
+}
+.req-project-workflow-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.65rem;
+}
+.req-project-workflow-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #00d478;
+}
+.req-project-workflow-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.req-project-workflow-loading {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.req-project-workflow-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.req-project-workflow-grid--noproject {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.req-project-workflow-col {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.req-project-workflow-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.req-project-workflow-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.req-project-workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.req-project-workflow-actions--wrap {
+  margin-bottom: 0.25rem;
+}
+.req-project-workflow-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.45rem;
+}
+.req-project-workflow-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.req-project-workflow-kv .kv-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.req-project-workflow-kv .kv-val {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.req-project-workflow-kv .kv-val.mono {
+  font-family: ui-monospace, monospace;
+}
+.req-project-workflow-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+.req-project-workflow-empty-msg {
+  font-size: 0.78rem;
+  color: #f9b032;
+  margin: 0;
+}
+.req-project-workflow-assign-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+.wf-creator-select {
+  flex: 2;
+  min-width: 220px;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.wf-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.wf-tag--ok {
+  color: #00d478;
+  border-color: #00d47844;
+  background: rgba(0,212,120,0.06);
+}
+.wf-tag--warn {
+  color: #f9b032;
+  border-color: #f9b03244;
+  background: rgba(249,176,50,0.06);
+}
+.wf-tag--muted {
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+.wf-action-btn {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.wf-action-btn:hover:not(:disabled) {
+  border-color: #63b3ed;
+  color: #63b3ed;
+}
+.wf-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wf-action-btn--primary {
+  border-color: #00d47844;
+  color: #00d478;
+  background: rgba(0,212,120,0.06);
+}
+.wf-action-btn--accent {
+  border-color: #a78bfa44;
+  color: #a78bfa;
+  background: rgba(167,139,250,0.06);
+}
+.wf-action-btn.active {
+  border-color: #63b3ed;
+  color: #63b3ed;
+}
+.wf-feedback {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.wf-feedback--ok { color: #00d478; }
+.wf-feedback--err { color: #ef4444; }
+.req-project-workflow-status-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.wf-pipe-btn {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.wf-pipe-btn:hover:not(:disabled) {
+  border-color: #63b3ed;
+  color: #63b3ed;
+}
+.wf-pipe-btn--current {
+  border-color: #00d478;
+  color: #00d478;
+  font-weight: 800;
+}
+.wf-deliverable-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.req-project-gen-preview {
+  margin-top: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.req-project-gen-preview-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.req-project-gen-preview-summary {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin: 0.35rem 0;
+  line-height: 1.45;
+}
+.req-project-gen-preview-mini {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.req-project-packet-detail {
+  margin-top: 0.65rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.req-project-packet-detail-copy-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+.req-project-packet-sections section {
+  margin-bottom: 0.85rem;
+}
+.req-project-packet-sections h4 {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 0.35rem;
+}
+.req-project-packet-sections p,
+.req-project-packet-sections li {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.req-project-packet-sections ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.req-card-scroll-hint {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+/* ─── Pipeline order cards — buyer context + packet badge ───────────────────── */
+
+.order-card-buyer-context {
+  padding: 0.45rem 0;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.order-buyer-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.order-buyer-val {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.order-bp-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.12rem 0.45rem;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.order-bp-badge--ok {
+  color: #00d478;
+  border-color: #00d47844;
+}
+.order-assign-warning {
+  font-size: 0.74rem;
+  color: #f9b032;
+  margin: 0 0 0.35rem;
+  line-height: 1.35;
+}
+
+.order-deliverable-panel {
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.order-deliverable-panel .muted {
+  opacity: 0.85;
+}
+.order-deliverable-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.order-del-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.order-del-revision-note {
+  font-size: 0.68rem;
+  color: #f9b032;
+  cursor: help;
+}
+.order-del-urls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  font-size: 0.78rem;
+}
+.order-del-link {
+  color: #63b3ed;
+  font-weight: 600;
+  text-decoration: none;
+}
+.order-del-link:hover {
+  text-decoration: underline;
+}
+.order-del-notes-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.order-del-notes p {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.order-del-revision-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.order-del-revision-field textarea {
+  font: inherit;
+  font-weight: 400;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.order-del-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.order-del-btn {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.order-del-btn:hover:not(:disabled) {
+  border-color: #63b3ed;
+  color: #63b3ed;
+}
+.order-del-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.order-del-btn--warn {
+  border-color: #f9b03244;
+  color: #f9b032;
+}
+.order-del-btn--ok {
+  border-color: #00d47844;
+  color: #00d478;
+}
+.order-del-feedback {
+  display: block;
+}
+
+.order-assign-empty {
+  padding: 0.35rem 0;
+}
+.order-assign-empty .creator-assign-diagnostics {
+  margin-top: 0;
+}
+
+.order-assign-feedback {
+  display: block;
+  margin-top: 0.35rem;
+}
+
+.creator-assign-diagnostics {
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: var(--surface-2);
+}
+.creator-assign-diagnostics-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.creator-assign-diagnostics-err {
+  margin-top: 0.45rem;
+  font-size: 0.72rem;
+  color: #ef4444;
+  font-weight: 600;
+}
+.creator-assign-diagnostics-hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  .pipeline-card-list { grid-template-columns: 1fr; }
+  .order-card-details { grid-template-columns: 1fr; }
+}

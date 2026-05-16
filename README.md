@@ -2,7 +2,18 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Project Pipeline v1 live - buyer requests can be converted to trackable projects, assigned to creators, and tracked through a full pipeline (draft, ready_to_quote, assigned, in_progress, in_review, delivered, completed). Creator dashboard shows live assigned projects. Buyer dashboard shows linked project status. Admin Project Pipeline section with order cards, creator assignment, and status controls. Rules-based AI (buyerAI.ts, buildPacket.ts) with no external API calls. Build passes.
+**Status:** Deliverables + Project Workspace v1 — creators open `/dashboard/projects/:id`, submit preview/delivery/GitHub URLs and notes (single deliverable row per order, upsert). Admin Project Pipeline cards include deliverable review (request revision → `revision_needed` + creator-visible `revision_note`, approve → `approved` + order `delivered`, mark delivered/completed). Buyer dashboard shows order timeline and exposes preview/live links only when the order is delivered/completed **and** the deliverable is **approved**. Rules-based AI only; no Stripe/GitHub OAuth/external AI APIs. Build passes.
+
+### Deliverables + Project Workspace v1
+
+| Area | Behavior |
+|------|----------|
+| Creator workspace | Route `GET /dashboard/projects/:orderId` — brief from `build_packets`, buyer-safe context from `buyer_requests`, submission updates/creates one `deliverables` row per order, sets status **submitted**, moves order **in_review** when prior status was assigned/in_progress. |
+| Admin review | Order cards: revision textarea (falls back to internal admin notes if empty when requesting revision), **Approve Deliverable**, **Mark Delivered**, **Mark Completed**. |
+| Buyer tracking | Linked order shows full pipeline timeline; delivery URLs hidden until release criteria above are met. |
+| SQL | Optional non-destructive migration `supabase/migrations/deliverables-revision-note.sql` adds `revision_note` for creator-visible revision feedback. |
+
+**Future:** file uploads to Supabase Storage, Stripe payouts, tighter RLS (replace dev-wide policies).
 
 ---
 
@@ -57,6 +68,8 @@ supabase/
     admin-auth-notes.sql                      # Comments only â€” future RLS hardening guide
     email-account-profile-fields.sql          # Adds github_url, avatar_url to user_profiles
     account-approval-workflow.sql             # Approval workflow v1: auth linking, approval_status, duplicate prevention
+    project-pipeline-foundation.sql           # Orders pipeline, build_packets + deliverables extras (run before workspace features)
+    deliverables-revision-note.sql           # Adds revision_note on deliverables for admin→creator revision feedback
 docs/
   database-schema.md
   mvp-roadmap.md
@@ -842,14 +855,16 @@ Buyer submits request
 | Status | Meaning |
 |--------|---------|
 | draft | Project created, not yet assigned or quoted |
-| eady_to_quote | Ready to send proposal to buyer |
+| 
+eady_to_quote | Ready to send proposal to buyer |
 | pending_payment | Awaiting buyer payment (future Stripe integration) |
 | ssigned | Creator assigned, work not yet started |
 | in_progress | Creator is actively building |
 | in_review | Build submitted, under review |
 | delivered | Delivered to buyer, awaiting approval |
 | completed | Buyer approved, project closed |
-| ejected | Request rejected |
+| 
+ejected | Request rejected |
 | canceled | Project canceled |
 
 ### New Migration: project-pipeline-foundation.sql
@@ -920,20 +935,20 @@ The buyer dashboard's Active Requests section now shows a **Project Status block
 - If no project yet: shows "Your request is under review. MicroBuild will prepare a recommended build plan."
 - Orders are fetched by matching buyer request IDs
 
-### Deliverables (Placeholder)
+### Deliverables + Creator Workspace
 
-Deliverable records can be created via createDeliverablePlaceholder() in orders.ts. The deliverable schema now supports:
-- live_url / preview_url / github_url - build URLs
-- delivery_status: draft -> submitted -> revision_needed -> approved
-- creator_profile_id - explicit creator link
-- 
-otes - creator notes
+- **Route:** `/dashboard/projects/:orderId` (authenticated creator with `user_profiles.creator_profile_id` matching `orders.creator_id`).
+- **Submit:** `submitCreatorDeliverable()` upserts the single `deliverables` row for that `order_id` and sets `delivery_status` to **submitted**; order moves to **in_review** when it was **assigned** or **in_progress**.
+- **Admin:** Each pipeline order card includes deliverable URLs, creator notes, revision textarea, and actions: Request Revision, Approve Deliverable, Mark Delivered, Mark Completed.
+- **Buyer:** Preview/live links render only when `order_status` is **delivered** or **completed** **and** `delivery_status` is **approved** (does not expose internal admin-only notes).
+- **Migration:** Run `supabase/migrations/deliverables-revision-note.sql` so **Request Revision** can persist `revision_note` for the creator workspace.
 
-Full deliverable submission UI and buyer review flow are planned for a future phase.
+Legacy: `createDeliverablePlaceholder()` still creates an initial draft row from admin workflows when needed.
 
 ### Payment Integration (Future)
 
-Stripe integration is **not included in v1**. The payment_status field on orders (unpaid, pending, paid, efunded) and microbuild_fee / creator_payout fields are in place for a future Stripe integration via Supabase Edge Functions.
+Stripe integration is **not included in v1**. The payment_status field on orders (unpaid, pending, paid, 
+efunded) and microbuild_fee / creator_payout fields are in place for a future Stripe integration via Supabase Edge Functions.
 
 ### Real AI Integration (Future)
 
@@ -945,7 +960,8 @@ All current AI functionality is rules-based (uyerAI.ts, uildPacket.ts). Phase 
 2. **Generate/save build packet**: Open request in /admin, expand AI Operations Panel, generate packet and save to Supabase
 3. **Create project**: Click "+ Create Project" on any request card in admin; verify project ID badge appears
 4. **Assign creator**: In Project Pipeline section, select an active creator from the dropdown and click Assign
-5. **Creator dashboard**: Log in as creator, verify assigned project appears in Project Pipeline with correct status
-6. **Buyer dashboard**: Log in as buyer, verify linked project status appears on Active Requests
-7. **Admin status update**: In Project Pipeline, click status buttons (In Progress, In Review, Delivered) and verify they update
+5. **Creator dashboard**: Log in as creator, verify assigned project appears; open **Open workspace →**, submit deliverable URLs
+6. **Buyer dashboard**: Log in as buyer, verify linked project timeline and (after approve+delivery) preview/live links
+7. **Admin deliverable review**: Request revision / approve deliverable / mark delivered / completed; verify buyer visibility rules
+8. **Admin status update**: In Project Pipeline, click legacy status buttons as needed
 

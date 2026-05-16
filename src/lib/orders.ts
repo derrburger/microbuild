@@ -36,6 +36,25 @@ export interface CreatorProfileSnap {
   full_name: string;
   tier: string;
   is_active: boolean;
+  verification_status: string | null;
+  public_profile_status: string | null;
+  /** From creator_profiles.approval_status */
+  approval_status: string | null;
+  /** Best-effort from linked creator_application email */
+  contact_email: string | null;
+}
+
+/** Console + UI diagnostics when assignment list is empty */
+export interface CreatorAssignmentDiagnostics {
+  totalProfilesInDb: number | null;
+  publicProfilesInDb: number | null;
+  /** Rows where creator_profiles.is_active is true */
+  profilesIsActiveTrueInDb: number | null;
+  profilesApprovalActiveOrPending: number;
+  profilesFetchedViaLinkedApp: number;
+  linkedActiveApplications: number;
+  eligibleAfterFilter: number;
+  errors: string[];
 }
 
 export interface DeliverablePlaceholder {
@@ -48,7 +67,49 @@ export interface DeliverablePlaceholder {
   github_url: string | null;
   notes: string | null;
   delivery_status: DeliveryStatus;
+  revision_note?: string | null;
+  revision_count?: number | null;
+  approved_at?: string | null;
   submitted_at: string;
+  updated_at: string;
+}
+
+/** Extended pipeline timeline for dashboards / workspace (includes early + terminal stages). */
+export const ORDER_PIPELINE_STAGES: { id: OrderPipelineStatus; label: string }[] = [
+  { id: 'draft', label: 'Draft' },
+  { id: 'ready_to_quote', label: 'Ready to Quote' },
+  { id: 'pending_payment', label: 'Payment' },
+  { id: 'assigned', label: 'Assigned' },
+  { id: 'in_progress', label: 'In Progress' },
+  { id: 'in_review', label: 'In Review' },
+  { id: 'delivered', label: 'Delivered' },
+  { id: 'completed', label: 'Completed' },
+  { id: 'rejected', label: 'Rejected' },
+  { id: 'canceled', label: 'Canceled' },
+];
+
+export const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  draft: 'Draft',
+  submitted: 'Submitted',
+  revision_needed: 'Revision needed',
+  approved: 'Approved',
+};
+
+export interface BuildPacketWorkspaceRow {
+  id: string;
+  request_id: string;
+  order_id: string | null;
+  business_summary: string;
+  recommended_build: string;
+  customer_problem: string;
+  suggested_copy: Record<string, unknown> | null;
+  form_fields: unknown;
+  automation_needs: string | null;
+  creator_instructions: string;
+  quality_checklist: string[] | null;
+  launch_checklist: string[] | null;
+  suggested_page_sections: string[] | null;
+  ai_summary: string | null;
   updated_at: string;
 }
 
@@ -79,16 +140,6 @@ export const ORDER_STATUS_COLORS: Record<string, string> = {
   rejected:       '#ef4444',
   canceled:       '#ef4444',
 };
-
-export const ORDER_PIPELINE_STAGES: { id: OrderPipelineStatus; label: string }[] = [
-  { id: 'draft',          label: 'Draft' },
-  { id: 'ready_to_quote', label: 'Ready to Quote' },
-  { id: 'assigned',       label: 'Assigned' },
-  { id: 'in_progress',    label: 'In Progress' },
-  { id: 'in_review',      label: 'In Review' },
-  { id: 'delivered',      label: 'Delivered' },
-  { id: 'completed',      label: 'Completed' },
-];
 
 export function getNextOrderAction(status: OrderPipelineStatus | string): string {
   switch (status) {
@@ -165,7 +216,24 @@ export async function updateOrderStatus(
   return true;
 }
 
-/** Assigns a creator_profile to an order and moves status to 'assigned'. */
+/** Sets creator_profile on order only (does not change pipeline status). */
+export async function setOrderCreatorProfile(
+  orderId: string,
+  creatorProfileId: string,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      creator_id: creatorProfileId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId);
+
+  if (error) { console.error('[MicroBuild] setOrderCreatorProfile failed:', error); return false; }
+  return true;
+}
+
+/** Assigns creator and advances pipeline to assigned (one-click). */
 export async function assignCreatorToOrder(
   orderId: string,
   creatorProfileId: string,
@@ -180,6 +248,29 @@ export async function assignCreatorToOrder(
     .eq('id', orderId);
 
   if (error) { console.error('[MicroBuild] assignCreatorToOrder failed:', error); return false; }
+  return true;
+}
+
+/** Links an existing build_packet row to an order. */
+export async function linkBuildPacketToOrder(
+  orderId: string,
+  buildPacketId: string,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      build_packet_id: buildPacketId,
+      updated_at:      new Date().toISOString(),
+    })
+    .eq('id', orderId);
+
+  if (error) { console.error('[MicroBuild] linkBuildPacketToOrder failed:', error); return false; }
+
+  await supabase
+    .from('build_packets')
+    .update({ order_id: orderId, updated_at: new Date().toISOString() })
+    .eq('id', buildPacketId);
+
   return true;
 }
 
@@ -222,6 +313,16 @@ export async function fetchOrderByRequestId(
   return data as OrderPipelineRow | null;
 }
 
+/** Single order row by primary key (creator workspace / detail loaders). */
+export async function fetchOrderById(orderId: string): Promise<OrderPipelineRow | null> {
+  const { data, error } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+  if (error) {
+    console.error('[MicroBuild] fetchOrderById failed:', error);
+    return null;
+  }
+  return data as OrderPipelineRow | null;
+}
+
 /** Fetches orders assigned to a specific creator profile. */
 export async function fetchOrdersByCreatorProfile(
   creatorProfileId: string,
@@ -252,18 +353,318 @@ export async function fetchOrdersByRequestIds(
   return (data as OrderPipelineRow[]) ?? [];
 }
 
-// ─── Creator profiles ─────────────────────────────────────────────────────────
+const BUILD_PACKET_WORKSPACE_COLS =
+  'id, request_id, order_id, business_summary, recommended_build, customer_problem, suggested_copy, form_fields, automation_needs, creator_instructions, quality_checklist, launch_checklist, suggested_page_sections, ai_summary, updated_at';
 
-/** Fetches active creator profiles for the creator assignment dropdown. */
-export async function fetchActiveCreatorProfiles(): Promise<CreatorProfileSnap[]> {
+/** Loads the best build packet for an order (linked id first, else latest by request). */
+export async function fetchBuildPacketForOrder(
+  order: OrderPipelineRow,
+): Promise<BuildPacketWorkspaceRow | null> {
+  if (order.build_packet_id) {
+    const { data, error } = await supabase
+      .from('build_packets')
+      .select(BUILD_PACKET_WORKSPACE_COLS)
+      .eq('id', order.build_packet_id)
+      .maybeSingle();
+    if (error) console.error('[MicroBuild] fetchBuildPacketForOrder by packet id:', error);
+    else if (data) return data as BuildPacketWorkspaceRow;
+  }
+  if (!order.request_id) return null;
   const { data, error } = await supabase
-    .from('creator_profiles')
-    .select('id, display_name, full_name, tier, is_active')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false });
+    .from('build_packets')
+    .select(BUILD_PACKET_WORKSPACE_COLS)
+    .eq('request_id', order.request_id)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (error) { console.error('[MicroBuild] fetchActiveCreatorProfiles failed:', error); return []; }
-  return (data as CreatorProfileSnap[]) ?? [];
+  if (error) {
+    console.error('[MicroBuild] fetchBuildPacketForOrder by request:', error);
+    return null;
+  }
+  return data as BuildPacketWorkspaceRow | null;
+}
+
+/** Index into ORDER_PIPELINE_STAGES for progress UI (unknown → 0). */
+export function orderTimelineIndex(orderStatus: OrderPipelineStatus | string): number {
+  const i = ORDER_PIPELINE_STAGES.findIndex((s) => s.id === orderStatus);
+  return i >= 0 ? i : 0;
+}
+
+/** Batch-fetch deliverables keyed by order id (buyer dashboard, admin prefetch). */
+export async function fetchDeliverablesByOrderIds(
+  orderIds: string[],
+): Promise<Record<string, DeliverablePlaceholder>> {
+  if (orderIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from('deliverables')
+    .select(
+      'id, order_id, creator_id, creator_profile_id, live_url, preview_url, github_url, notes, delivery_status, revision_note, revision_count, approved_at, submitted_at, updated_at',
+    )
+    .in('order_id', orderIds);
+
+  if (error) {
+    console.error('[MicroBuild] fetchDeliverablesByOrderIds failed:', error);
+    return {};
+  }
+  const map: Record<string, DeliverablePlaceholder> = {};
+  for (const row of (data ?? []) as DeliverablePlaceholder[]) {
+    map[row.order_id] = row;
+  }
+  return map;
+}
+
+export type AdminDeliverableReviewAction =
+  | 'request_revision'
+  | 'approve_deliverable'
+  | 'mark_delivered'
+  | 'mark_completed';
+
+export async function adminReviewDeliverable(params: {
+  deliverableId: string | null;
+  orderId: string;
+  action: AdminDeliverableReviewAction;
+  revisionNote?: string;
+  currentRevisionCount?: number;
+}): Promise<boolean> {
+  const now = new Date().toISOString();
+
+  switch (params.action) {
+    case 'request_revision': {
+      if (!params.deliverableId) {
+        console.error('[MicroBuild] adminReviewDeliverable: missing deliverable id');
+        return false;
+      }
+      const nextRev = (params.currentRevisionCount ?? 0) + 1;
+      const { error: dErr } = await supabase
+        .from('deliverables')
+        .update({
+          delivery_status: 'revision_needed' as DeliveryStatus,
+          revision_note: params.revisionNote?.trim() || null,
+          revision_count: nextRev,
+          updated_at: now,
+        })
+        .eq('id', params.deliverableId);
+      if (dErr) {
+        console.error('[MicroBuild] adminReviewDeliverable revision:', dErr);
+        return false;
+      }
+      return updateOrderStatus(params.orderId, 'in_progress');
+    }
+    case 'approve_deliverable': {
+      if (!params.deliverableId) {
+        console.error('[MicroBuild] adminReviewDeliverable: missing deliverable id');
+        return false;
+      }
+      const { error: dErr } = await supabase
+        .from('deliverables')
+        .update({
+          delivery_status: 'approved' as DeliveryStatus,
+          approved_at: now,
+          updated_at: now,
+        })
+        .eq('id', params.deliverableId);
+      if (dErr) {
+        console.error('[MicroBuild] adminReviewDeliverable approve:', dErr);
+        return false;
+      }
+      return updateOrderStatus(params.orderId, 'delivered');
+    }
+    case 'mark_delivered':
+      return updateOrderStatus(params.orderId, 'delivered');
+    case 'mark_completed':
+      return updateOrderStatus(params.orderId, 'completed');
+    default:
+      return false;
+  }
+}
+
+type ProfileAssignmentRow = {
+  id: string;
+  display_name: string | null;
+  full_name: string | null;
+  tier: string | null;
+  is_active: boolean | null;
+  verification_status: string | null;
+  public_profile_status: string | null;
+  approval_status: string | null;
+  creator_application_id: string | null;
+};
+
+function normalizeSnap(row: ProfileAssignmentRow, contactEmail: string | null): CreatorProfileSnap {
+  const display = (row.display_name ?? '').trim();
+  const full = (row.full_name ?? '').trim();
+  const label = display || full || 'Creator';
+  return {
+    id: row.id,
+    display_name: display || label,
+    full_name: full || label,
+    tier: row.tier ?? 'free',
+    is_active: Boolean(row.is_active),
+    verification_status: row.verification_status ?? null,
+    public_profile_status: row.public_profile_status ?? null,
+    approval_status: row.approval_status ?? null,
+    contact_email: contactEmail,
+  };
+}
+
+function terminalBlocked(status: string | undefined): boolean {
+  const s = (status ?? '').toLowerCase();
+  return s === 'rejected' || s === 'suspended';
+}
+
+/**
+ * Loads creator_profiles eligible for pipeline assignment.
+ *
+ * IMPORTANT: Do not filter on `is_active` alone — `buildCreatorProfileInsert` sets
+ * `is_active: false` for new profiles while `approval_status` is the source of truth.
+ */
+export async function fetchCreatorProfilesForAssignment(): Promise<{
+  creators: CreatorProfileSnap[];
+  diagnostics: CreatorAssignmentDiagnostics;
+}> {
+  const diagnostics: CreatorAssignmentDiagnostics = {
+    totalProfilesInDb: null,
+    publicProfilesInDb: null,
+    profilesIsActiveTrueInDb: null,
+    profilesApprovalActiveOrPending: 0,
+    profilesFetchedViaLinkedApp: 0,
+    linkedActiveApplications: 0,
+    eligibleAfterFilter: 0,
+    errors: [],
+  };
+
+  const SELECT_COLS =
+    'id, display_name, full_name, tier, is_active, verification_status, public_profile_status, approval_status, creator_application_id';
+
+  const [
+    totalRes,
+    publicRes,
+    activeFlagRes,
+    approvalRes,
+    appsRes,
+  ] = await Promise.all([
+    supabase.from('creator_profiles').select('id', { count: 'exact', head: true }),
+    supabase.from('creator_profiles').select('id', { count: 'exact', head: true }).eq('public_profile_status', 'public'),
+    supabase.from('creator_profiles').select('id', { count: 'exact', head: true }).eq('is_active', true),
+    supabase
+      .from('creator_profiles')
+      .select(SELECT_COLS)
+      .in('approval_status', ['active', 'approved_pending_payment']),
+    supabase
+      .from('creator_applications')
+      .select('linked_creator_profile_id, email, status')
+      .in('status', ['active', 'approved_pending_payment'])
+      .not('linked_creator_profile_id', 'is', null),
+  ]);
+
+  if (totalRes.error) {
+    console.error('[MicroBuild] creator assignment count(total):', totalRes.error);
+    diagnostics.errors.push(`total count: ${totalRes.error.message}`);
+  } else {
+    diagnostics.totalProfilesInDb = totalRes.count ?? null;
+  }
+  if (publicRes.error) {
+    console.error('[MicroBuild] creator assignment count(public):', publicRes.error);
+    diagnostics.errors.push(`public count: ${publicRes.error.message}`);
+  } else {
+    diagnostics.publicProfilesInDb = publicRes.count ?? null;
+  }
+  if (activeFlagRes.error) {
+    console.error('[MicroBuild] creator assignment count(is_active):', activeFlagRes.error);
+    diagnostics.errors.push(`is_active count: ${activeFlagRes.error.message}`);
+  } else {
+    diagnostics.profilesIsActiveTrueInDb = activeFlagRes.count ?? null;
+  }
+  if (approvalRes.error) {
+    console.error('[MicroBuild] creator assignment by approval_status:', approvalRes.error);
+    diagnostics.errors.push(`approval query: ${approvalRes.error.message}`);
+  }
+  if (appsRes.error) {
+    console.error('[MicroBuild] creator assignment linked apps:', appsRes.error);
+    diagnostics.errors.push(`applications query: ${appsRes.error.message}`);
+  }
+
+  const byApproval = (approvalRes.data ?? []) as ProfileAssignmentRow[];
+  diagnostics.profilesApprovalActiveOrPending = byApproval.length;
+
+  const activeApps = (appsRes.data ?? []) as {
+    linked_creator_profile_id: string;
+    email: string | null;
+    status: string;
+  }[];
+  diagnostics.linkedActiveApplications = activeApps.length;
+
+  const emailByProfileId = new Map<string, string>();
+  const linkedIdsOrdered: string[] = [];
+  const seen = new Set<string>();
+  for (const a of activeApps) {
+    const pid = a.linked_creator_profile_id;
+    if (!pid || seen.has(pid)) continue;
+    seen.add(pid);
+    linkedIdsOrdered.push(pid);
+    if (a.email?.trim()) emailByProfileId.set(pid, a.email.trim());
+  }
+
+  const mergedMap = new Map<string, ProfileAssignmentRow>();
+  for (const p of byApproval) mergedMap.set(p.id, p);
+
+  const missingLinked = linkedIdsOrdered.filter((id) => !mergedMap.has(id));
+  diagnostics.profilesFetchedViaLinkedApp = missingLinked.length;
+
+  if (missingLinked.length > 0) {
+    const { data: extraRows, error: extraErr } = await supabase
+      .from('creator_profiles')
+      .select(SELECT_COLS)
+      .in('id', missingLinked);
+
+    if (extraErr) {
+      console.error('[MicroBuild] creator assignment fetch linked profiles:', extraErr);
+      diagnostics.errors.push(`linked profile fetch: ${extraErr.message}`);
+    } else {
+      for (const p of (extraRows ?? []) as ProfileAssignmentRow[]) {
+        mergedMap.set(p.id, p);
+      }
+    }
+  }
+
+  const linkedSet = new Set(linkedIdsOrdered);
+
+  const eligibleRows = [...mergedMap.values()].filter((p) => {
+    if (terminalBlocked(p.approval_status ?? undefined)) return false;
+    const ap = (p.approval_status ?? '').toLowerCase();
+    if (ap === 'active' || ap === 'approved_pending_payment') return true;
+    if (p.is_active === true) return true;
+    if (linkedSet.has(p.id)) return true;
+    return false;
+  });
+
+  diagnostics.eligibleAfterFilter = eligibleRows.length;
+
+  eligibleRows.sort((a, b) => {
+    const na = (a.display_name ?? a.full_name ?? '').toLowerCase();
+    const nb = (b.display_name ?? b.full_name ?? '').toLowerCase();
+    return na.localeCompare(nb);
+  });
+
+  const creators = eligibleRows.map((row) =>
+    normalizeSnap(row, emailByProfileId.get(row.id) ?? null),
+  );
+
+  if (creators.length === 0 && diagnostics.errors.length === 0) {
+    console.warn(
+      '[MicroBuild] fetchCreatorProfilesForAssignment: zero eligible creators.',
+      diagnostics,
+    );
+  }
+
+  return { creators, diagnostics };
+}
+
+/** @deprecated Prefer fetchCreatorProfilesForAssignment when diagnostics are needed */
+export async function fetchActiveCreatorProfiles(): Promise<CreatorProfileSnap[]> {
+  const { creators } = await fetchCreatorProfilesForAssignment();
+  return creators;
 }
 
 // ─── Deliverables ─────────────────────────────────────────────────────────────
@@ -308,7 +709,9 @@ export async function fetchDeliverableByOrderId(
 ): Promise<DeliverablePlaceholder | null> {
   const { data, error } = await supabase
     .from('deliverables')
-    .select('id, order_id, creator_id, creator_profile_id, live_url, preview_url, github_url, notes, delivery_status, submitted_at, updated_at')
+    .select(
+      'id, order_id, creator_id, creator_profile_id, live_url, preview_url, github_url, notes, delivery_status, revision_note, revision_count, approved_at, submitted_at, updated_at',
+    )
     .eq('order_id', orderId)
     .maybeSingle();
 
@@ -325,6 +728,10 @@ export async function updateDeliverable(
     github_url?: string;
     notes?: string;
     delivery_status?: DeliveryStatus;
+    revision_note?: string | null;
+    approved_at?: string | null;
+    submitted_at?: string;
+    revision_count?: number;
   },
 ): Promise<boolean> {
   const { error } = await supabase
@@ -333,5 +740,67 @@ export async function updateDeliverable(
     .eq('id', deliverableId);
 
   if (error) { console.error('[MicroBuild] updateDeliverable failed:', error); return false; }
+  return true;
+}
+
+/**
+ * Creator submits or updates the single deliverable row for an order (no duplicates).
+ * Sets delivery_status to submitted and stamps submitted_at.
+ */
+export async function submitCreatorDeliverable(params: {
+  orderId: string;
+  creatorProfileId: string;
+  previewUrl: string;
+  deliveryUrl: string;
+  githubUrl: string;
+  notes: string;
+}): Promise<boolean> {
+  const now = new Date().toISOString();
+  const preview_url = params.previewUrl.trim() || null;
+  const live_url = params.deliveryUrl.trim() || '';
+  const github_url = params.githubUrl.trim() || null;
+  const notes = params.notes.trim() || null;
+
+  const existing = await fetchDeliverableByOrderId(params.orderId);
+
+  if (existing) {
+    const { error } = await supabase
+      .from('deliverables')
+      .update({
+        preview_url,
+        live_url,
+        github_url,
+        notes,
+        delivery_status: 'submitted' as DeliveryStatus,
+        submitted_at: now,
+        creator_id: params.creatorProfileId,
+        creator_profile_id: params.creatorProfileId,
+        updated_at: now,
+      })
+      .eq('id', existing.id);
+
+    if (error) {
+      console.error('[MicroBuild] submitCreatorDeliverable update:', error);
+      return false;
+    }
+    return true;
+  }
+
+  const { error } = await supabase.from('deliverables').insert({
+    order_id: params.orderId,
+    creator_id: params.creatorProfileId,
+    creator_profile_id: params.creatorProfileId,
+    live_url,
+    preview_url,
+    github_url,
+    notes,
+    delivery_status: 'submitted' as DeliveryStatus,
+    submitted_at: now,
+  });
+
+  if (error) {
+    console.error('[MicroBuild] submitCreatorDeliverable insert:', error);
+    return false;
+  }
   return true;
 }
