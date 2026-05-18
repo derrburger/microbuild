@@ -32,6 +32,7 @@ import {
 } from '../lib/buyerProjectTimeline';
 import type { UserProfileRow, CreatorProfileRow } from '../types/database';
 import DashboardNav from '../components/DashboardNav';
+import MarketplaceApplicantsPanel from '../components/MarketplaceApplicantsPanel';
 import './Dashboard.css';
 
 // ─── Safe helpers ──────────────────────────────────────────────────────────────
@@ -326,8 +327,11 @@ function CreatorProjectPipeline({ creatorProfileId }: { creatorProfileId: string
         <div className="cd-pipeline-loading">Loading projects…</div>
       ) : orders.length === 0 ? (
         <div className="cd-pipeline-empty">
-          <p>Approved creators will see assigned MicroBuild projects here.</p>
-          <p className="cd-pipeline-empty-sub">Admin will assign projects once a buyer request is approved.</p>
+          <p>Assigned MicroBuild projects appear here.</p>
+          <p className="cd-pipeline-empty-sub">
+            Browse open buyer requests under{' '}
+            <Link to="/browse">Buyer Requests</Link> — buyers can also hire you directly; admin assignment remains a fallback.
+          </p>
         </div>
       ) : (
         <>
@@ -555,6 +559,16 @@ function CreatorDashboard({
       {/* ── Warning banners ──────────────────────────────────────── */}
       <WarningBanner warnings={warnings} />
 
+      <div className="cd-market-banner">
+        <div>
+          <strong>Marketplace foundation</strong> — open buyer requests now accept voluntary applications before admin
+          assignment.
+        </div>
+        <Link to="/browse" className="btn btn-primary btn-sm">
+          Browse Buyer Requests →
+        </Link>
+      </div>
+
       {/* ── Status summary row (6 cards) ─────────────────────────── */}
       <div className="cd-status-row">
         <SummaryStatusCard
@@ -632,6 +646,9 @@ interface BuyerRequest {
   main_goal: string | null;
   industry: string | null;
   website_social: string | null;
+  applications_count?: number | null;
+  application_status?: string | null;
+  selected_creator_profile_id?: string | null;
 }
 
 // ─── Buyer: project journey (friendly labels) ──────────────────────────────────
@@ -960,7 +977,9 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
   useEffect(() => {
     supabase
       .from('buyer_requests')
-      .select('id, business_name, build_type, status, created_at, budget, deadline, main_goal, industry, website_social')
+      .select(
+        'id, business_name, build_type, status, created_at, budget, deadline, main_goal, industry, website_social, applications_count, application_status, selected_creator_profile_id',
+      )
       .eq('email', userProfile.email)
       .order('created_at', { ascending: false })
       .limit(10)
@@ -1021,12 +1040,14 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
         </div>
         <div className="dash-buyer-actions">
           <Link to="/request" className="btn btn-primary btn-sm">+ New Request</Link>
-          <Link to="/browse"  className="btn btn-ghost  btn-sm">Browse Builds</Link>
+          <Link to="/browse" className="btn btn-ghost btn-sm">Browse workflows</Link>
         </div>
       </div>
 
       {/* Status overview cards */}
       <BuyerStatusOverview requests={requests} loadingReqs={loadingReqs} />
+
+      {!loadingReqs ? <MarketplaceApplicantsPanel buyerProfile={userProfile} requests={requests} /> : null}
 
       {/* Active requests with timeline */}
       <div className="buyer-section">

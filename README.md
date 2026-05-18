@@ -2,7 +2,20 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Project Workspace Polish v2 — creator workspace header/brief/checklist/deliverable panel/status guidance and activity timeline; admin pipeline cards with next-action callout, deliverable URLs + revision note, and standardized copy buttons (**Copied** / graceful failure); buyer-facing eight-stage journey with safe preview/delivery links; single deliverable row per order (upsert). Rules-based AI only; no Stripe/GitHub OAuth/external AI APIs. Build passes.
+**Status:** Marketplace Application Foundation v1 — **role-aware `/browse`** (creators open buyer requests, buyers workflows + starters, guests platform templates); **creator Applications** dashboard at **`/dashboard/applications`**; **`/dashboard/browse` redirects** to the right surface; applicant review + duplicate-safe apply flow; buyer selection creates/updates `orders`; rules-based summaries in `src/lib/marketplace.ts`; TEMP DEV marketplace RLS flagged in migration; realtime chat + Stripe still deferred. Existing buyer request, onboarding, creator pipeline/admin assignment, and workspace flows preserved. Build passes.
+
+
+### Marketplace Application Foundation v1
+
+
+| Concept | Detail |
+|---------|--------|
+| SQL | `supabase/migrations/marketplace-application-foundation.sql` adds `request_applications`, `published_workflows`, `project_messages`; extends `buyer_requests` + `orders`. |
+| Role-aware Browse | **`/browse`** — after auth resolves `account_type`, creators browse open marketplace buyer requests (+ Apply), buyers browse **`published_workflows`** plus labelled **Platform starter MicroBuilds**, logged-out sees public templates only. **`/dashboard/browse`** now **redirects** (creators → `/dashboard/applications`, everyone else → `/browse`). Creator dashboard **`Applications`** tab lists their **`request_applications`**. |
+| Buyer selection | Dashboard **Creator Applicants** panel — rules-based scoring, refresh-only thread stub, selects creator → updates selections + assigns pipeline order (`buyer_selected`). |
+| Admin | `/admin` marketplace oversight counters + drill-down sample (`request_applications`). |
+| Messaging | Refresh-based inserts only — see docs for realtime phase. |
+| Future | Stripe, production-scoped policies, realtime messaging (`docs/marketplace-application-flow.md`). |
 
 ### Project Workspace Polish v2
 
@@ -73,8 +86,10 @@ supabase/
     account-approval-workflow.sql             # Approval workflow v1: auth linking, approval_status, duplicate prevention
     project-pipeline-foundation.sql           # Orders pipeline, build_packets + deliverables extras (run before workspace features)
     deliverables-revision-note.sql           # Adds revision_note on deliverables for admin→creator revision feedback
+    marketplace-application-foundation.sql   # Marketplace: request_applications, published_workflows, project_messages, buyer/request selection fields — TEMP DEV RLS flagged in-file
 docs/
   database-schema.md
+  marketplace-application-flow.md
   mvp-roadmap.md
   ai-build-packet-structure.md
 ```
@@ -139,6 +154,9 @@ Run these SQL files **in order** in your Supabase Dashboard â†’ SQL Editor:
 | 6 | `supabase/migrations/account-profile-foundation.sql` | Creates `user_profiles` table, links auth, adds `creator_profiles` v2 columns, RLS policies |
 | 7 | `supabase/migrations/email-account-profile-fields.sql` | Adds `github_url` and `avatar_url` to `user_profiles` for email auth accounts |
 | 8 | `supabase/migrations/account-approval-workflow.sql` | **Run this.** Fixes status CHECK constraint, adds auth linking columns, approval tracking, duplicate-prevention indexes |
+| 9 | `supabase/migrations/project-pipeline-foundation.sql` | Pipeline fields on `orders` / packets / deliverables + TEMP DEV ALL policies for local pipeline testing |
+| 10 | `supabase/migrations/deliverables-revision-note.sql` | Optional revision note persistence for creator workspace |
+| 11 | `supabase/migrations/marketplace-application-foundation.sql` | Marketplace tables + TEMP DEV marketplace policies (**unsafe for prod**) |
 
 Each file is safe to re-run: migrations use `ADD COLUMN IF NOT EXISTS`, policies use `DROP POLICY IF EXISTS`.
 

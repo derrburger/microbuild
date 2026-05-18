@@ -24,6 +24,63 @@ export type RequestStatus =
   | 'accepted'
   | 'rejected';
 
+/** Lifecycle for marketplace openness (migration: buyer_requests.visibility_status) */
+export type BuyerRequestVisibilityStatus =
+  | 'draft'
+  | 'open'
+  | 'reviewing_applicants'
+  | 'creator_selected'
+  | 'in_progress'
+  | 'completed'
+  | 'closed';
+
+/** Alias for readability — same constrained values as visibility in current migration */
+export type BuyerRequestMarketplaceApplicationStatus =
+  | 'draft'
+  | 'open'
+  | 'reviewing_applicants'
+  | 'creator_selected'
+  | 'in_progress'
+  | 'completed'
+  | 'closed';
+
+export type RequestApplicationStatus =
+  | 'submitted'
+  | 'shortlisted'
+  | 'buyer_selected'
+  | 'rejected'
+  | 'withdrawn'
+  | 'admin_blocked';
+
+export type PublishedWorkflowStatus =
+  | 'draft'
+  | 'submitted_for_review'
+  | 'published'
+  | 'hidden'
+  | 'rejected'
+  | 'archived';
+
+export type PublishedWorkflowVisibilityStatus = 'hidden' | 'public' | 'paused';
+
+export type ProjectMessageType =
+  | 'general'
+  | 'question'
+  | 'proposal'
+  | 'revision'
+  | 'admin_note'
+  | 'system_update';
+
+export type ProjectMessageVisibility =
+  | 'participant'
+  | 'admin_only'
+  | 'buyer_creator'
+  | 'public_safe';
+
+export type OrderSelectionMethod =
+  | 'buyer_selected'
+  | 'admin_assigned'
+  | 'system_recommended';
+
 export type CreatorTier = 'free' | 'professional' | 'verified';
 
 export type ApplicationStatus =
@@ -174,6 +231,11 @@ export interface BuyerRequestRow {
   deadline: string | null;
   style_notes: string | null;
   status: RequestStatus;
+  visibility_status?: BuyerRequestVisibilityStatus | string | null;
+  application_status?: BuyerRequestMarketplaceApplicationStatus | string | null;
+  selected_creator_profile_id?: string | null;
+  selected_request_application_id?: string | null;
+  applications_count?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -217,6 +279,9 @@ export interface CreatorProfileRow {
   admin_notes: string | null;
   ai_profile_score: number | null;
   ai_profile_summary: string | null;
+  /** Rules-based/client-computed strength (account-profile-foundation migration) */
+  profile_strength_score?: number | null;
+  profile_strength_summary?: string | null;
   // Stats
   completed_builds_count: number;
   average_rating: number | null;
@@ -321,8 +386,115 @@ export interface OrderRow {
   admin_notes: string | null;
   microbuild_fee: string | null;
   creator_payout: string | null;
+  request_application_id?: string | null;
+  selected_by_buyer?: boolean | null;
+  selection_method?: OrderSelectionMethod | string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RequestApplicationRow {
+  id: string;
+  buyer_request_id: string;
+  order_id: string | null;
+  creator_profile_id: string;
+  creator_user_profile_id: string | null;
+  buyer_user_profile_id: string | null;
+  application_status: RequestApplicationStatus | string;
+  proposal_message: string | null;
+  fit_reason: string | null;
+  estimated_timeline: string | null;
+  proposed_price: number | string | null;
+  relevant_workflow_id: string | null;
+  creator_questions: string | null;
+  creator_fit_summary: string | null;
+  admin_notes: string | null;
+  buyer_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublishedWorkflowRow {
+  id: string;
+  creator_profile_id: string;
+  title: string;
+  slug: string | null;
+  category: string | null;
+  target_industry: string | null;
+  description: string | null;
+  included_features: string | null;
+  setup_requirements: string | null;
+  starting_price: number | string | null;
+  estimated_turnaround: string | null;
+  preview_url: string | null;
+  cover_image_url: string | null;
+  workflow_status: PublishedWorkflowStatus | string;
+  visibility_status: PublishedWorkflowVisibilityStatus | string;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectMessageRow {
+  id: string;
+  buyer_request_id: string | null;
+  order_id: string | null;
+  sender_user_profile_id: string | null;
+  recipient_user_profile_id: string | null;
+  sender_role: string | null;
+  message_body: string;
+  message_type: ProjectMessageType | string;
+  visibility: ProjectMessageVisibility | string;
+  created_at: string;
+}
+
+export interface RequestApplicationInsert {
+  id?: string;
+  buyer_request_id: string;
+  order_id?: string | null;
+  creator_profile_id: string;
+  creator_user_profile_id?: string | null;
+  buyer_user_profile_id?: string | null;
+  application_status?: RequestApplicationStatus | string;
+  proposal_message?: string | null;
+  fit_reason?: string | null;
+  estimated_timeline?: string | null;
+  proposed_price?: number | string | null;
+  relevant_workflow_id?: string | null;
+  creator_questions?: string | null;
+  creator_fit_summary?: string | null;
+  admin_notes?: string | null;
+  buyer_message?: string | null;
+}
+
+export interface PublishedWorkflowInsert {
+  id?: string;
+  creator_profile_id: string;
+  title: string;
+  slug?: string | null;
+  category?: string | null;
+  target_industry?: string | null;
+  description?: string | null;
+  included_features?: string | null;
+  setup_requirements?: string | null;
+  starting_price?: number | string | null;
+  estimated_turnaround?: string | null;
+  preview_url?: string | null;
+  cover_image_url?: string | null;
+  workflow_status?: PublishedWorkflowStatus | string;
+  visibility_status?: PublishedWorkflowVisibilityStatus | string;
+}
+
+export interface ProjectMessageInsert {
+  id?: string;
+  buyer_request_id?: string | null;
+  order_id?: string | null;
+  sender_user_profile_id?: string | null;
+  recipient_user_profile_id?: string | null;
+  sender_role?: string | null;
+  message_body: string;
+  message_type?: ProjectMessageType | string;
+  visibility?: ProjectMessageVisibility | string;
 }
 
 export interface BuildPacketRow {
@@ -398,6 +570,11 @@ export interface BuyerRequestInsert {
   deadline?: string | null;
   style_notes?: string | null;
   status?: RequestStatus;
+  visibility_status?: BuyerRequestVisibilityStatus | string | null;
+  application_status?: BuyerRequestMarketplaceApplicationStatus | string | null;
+  selected_creator_profile_id?: string | null;
+  selected_request_application_id?: string | null;
+  applications_count?: number | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -449,6 +626,9 @@ export interface OrderInsert {
   admin_notes?: string | null;
   microbuild_fee?: string | null;
   creator_payout?: string | null;
+  request_application_id?: string | null;
+  selected_by_buyer?: boolean | null;
+  selection_method?: OrderSelectionMethod | string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -515,6 +695,24 @@ export type Database = {
         Row: BuyerRequestRow;
         Insert: BuyerRequestInsert;
         Update: Partial<Omit<BuyerRequestRow, 'id'>>;
+        Relationships: [];
+      };
+      request_applications: {
+        Row: RequestApplicationRow;
+        Insert: RequestApplicationInsert;
+        Update: Partial<Omit<RequestApplicationRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      published_workflows: {
+        Row: PublishedWorkflowRow;
+        Insert: PublishedWorkflowInsert;
+        Update: Partial<Omit<PublishedWorkflowRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      project_messages: {
+        Row: ProjectMessageRow;
+        Insert: ProjectMessageInsert;
+        Update: Partial<Omit<ProjectMessageRow, 'id' | 'created_at'>>;
         Relationships: [];
       };
       creator_profiles: {

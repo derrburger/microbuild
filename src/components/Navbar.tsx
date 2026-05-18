@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfileRow } from '../hooks/useUserProfileRow';
 import './Navbar.css';
 
 export default function Navbar() {
@@ -8,6 +9,14 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenu] = useState(false);
   const { user, signOut }           = useAuth();
   const navigate                    = useNavigate();
+  const { profile: userProfileRow, loading: profileLoading } = useUserProfileRow();
+
+  const isCreator = userProfileRow?.account_type?.toLowerCase() === 'creator';
+
+  const browseLabel =
+    profileLoading ? 'Browse' :
+    user && isCreator ? 'Buyer Requests'
+    : 'Browse';
 
   const close = () => { setMenuOpen(false); setUserMenu(false); };
 
@@ -43,7 +52,7 @@ export default function Navbar() {
         </button>
 
         <div className={`navbar-links${menuOpen ? ' open' : ''}`}>
-          <NavLink to="/browse"       onClick={close}>Browse</NavLink>
+          <NavLink to="/browse"       onClick={close}>{browseLabel}</NavLink>
           <NavLink to="/how-it-works" onClick={close}>How It Works</NavLink>
           <NavLink to="/pricing"      onClick={close}>Pricing</NavLink>
           <NavLink to="/case-studies" onClick={close}>Case Studies</NavLink>

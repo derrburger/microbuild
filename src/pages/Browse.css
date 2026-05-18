@@ -19,7 +19,40 @@
 .browse-sub {
   color: var(--text-secondary);
   font-size: 1.05rem;
-  max-width: 480px;
+  max-width: 640px;
+}
+
+.browse-sub-dash-link {
+  display: inline;
+}
+
+.browse-sub-dash-link a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.browse-sub-dash-link a:hover {
+  text-decoration: underline;
+}
+
+.browse-onboarding-prompt {
+  margin-top: 1rem;
+}
+
+.browse-section {
+  margin-bottom: 2.5rem;
+}
+
+.browse-section-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin-bottom: 0.35rem;
+}
+
+.browse-section-intro {
+  margin-bottom: 1rem;
+  font-size: 0.92rem;
 }
 
 .browse-body {

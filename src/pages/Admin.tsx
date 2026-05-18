@@ -94,6 +94,11 @@ interface BuyerRequestRow {
   style_notes: string | null;
   status: string;
   created_at: string;
+  visibility_status?: string | null;
+  application_status?: string | null;
+  selected_creator_profile_id?: string | null;
+  selected_request_application_id?: string | null;
+  applications_count?: number | null;
 }
 
 interface CreatorApplicationRow {
@@ -158,6 +163,21 @@ function normalizeBuyerRequest(raw: Record<string, unknown>): BuyerRequestRow {
     style_notes:     raw.style_notes != null ? safeText(raw.style_notes) : null,
     status:          safeText(raw.status, 'new'),
     created_at:      safeText(raw.created_at, new Date().toISOString()),
+    visibility_status: raw.visibility_status != null ? safeText(raw.visibility_status, 'open') : 'open',
+    application_status:
+      raw.application_status != null ? safeText(raw.application_status, 'open') : 'open',
+    selected_creator_profile_id:
+      raw.selected_creator_profile_id != null ? safeText(raw.selected_creator_profile_id) : null,
+    selected_request_application_id:
+      raw.selected_request_application_id != null ? safeText(raw.selected_request_application_id) : null,
+    applications_count: (() => {
+      if (typeof raw.applications_count === 'number') return raw.applications_count;
+      if (typeof raw.applications_count === 'string') {
+        const n = Number(raw.applications_count);
+        return isFinite(n) ? n : null;
+      }
+      return null;
+    })(),
   };
 }
 
@@ -3871,6 +3891,22 @@ function PlatformHealthSnapshot({
   );
 }
 
+interface MarketplaceReqAppRow {
+  id: string;
+  buyer_request_id: string;
+  creator_profile_id: string;
+  application_status: string | null;
+  created_at: string | null;
+}
+
+interface PublishedWorkflowAdminRow {
+  id: string;
+  title: string;
+  creator_profile_id: string;
+  workflow_status: string | null;
+  visibility_status: string | null;
+}
+
 export default function Admin() {
   const [requests, setRequests]             = useState<BuyerRequestRow[]>([]);
   const [applications, setApplications]     = useState<CreatorApplicationRow[]>([]);
@@ -3893,15 +3929,22 @@ export default function Admin() {
   // Batch selection
   const [selectedApps, setSelectedApps]     = useState<Set<string>>(new Set());
   const [selectedReqs, setSelectedReqs]     = useState<Set<string>>(new Set());
+  const [requestApplications, setRequestApplications] = useState<MarketplaceReqAppRow[]>([]);
+  const [publishedWorkflowRows, setPublishedWorkflowRows] = useState<PublishedWorkflowAdminRow[]>([]);
 
   useEffect(() => {
     supabase
       .from('buyer_requests')
-      .select('id,user_id,full_name,email,business_name,industry,website_social,build_type,main_goal,current_problem,budget,deadline,style_notes,status,created_at')
+      .select(
+        [
+          'id,user_id,full_name,email,business_name,industry,website_social,build_type,main_goal,current_problem,budget,deadline,style_notes,status,created_at',
+          'visibility_status,application_status,selected_creator_profile_id,selected_request_application_id,applications_count',
+        ].join(','),
+      )
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) { console.error('[Admin] buyer_requests:', error); setReqError(true); }
-        else setRequests(((data ?? []) as Record<string, unknown>[]).map(normalizeBuyerRequest));
+        else setRequests(((data ?? []) as unknown as Record<string, unknown>[]).map(normalizeBuyerRequest));
         setReqLoading(false);
       });
 
@@ -3961,19 +4004,60 @@ export default function Admin() {
         }
         setProfilesLoading(false);
       });
+
+    supabase
+      .from('request_applications')
+      .select('id,buyer_request_id,creator_profile_id,application_status,created_at')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) console.error('[Admin] request_applications:', error);
+        else {
+          setRequestApplications(
+            ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+              id:                 safeText(r.id, ''),
+              buyer_request_id:   safeText(r.buyer_request_id),
+              creator_profile_id: safeText(r.creator_profile_id),
+              application_status:
+                r.application_status != null ? safeText(r.application_status) : null,
+              created_at: r.created_at != null ? safeText(r.created_at) : null,
+            }))
+          );
+        }
+      });
+
+    supabase
+      .from('published_workflows')
+      .select('id,title,creator_profile_id,workflow_status,visibility_status')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) console.error('[Admin] published_workflows:', error);
+        else {
+          setPublishedWorkflowRows(
+            ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+              id:                 safeText(r.id, ''),
+              title:              safeText(r.title, ''),
+              creator_profile_id: safeText(r.creator_profile_id),
+              workflow_status:    r.workflow_status != null ? safeText(r.workflow_status) : null,
+              visibility_status:  r.visibility_status != null ? safeText(r.visibility_status) : null,
+            }))
+          );
+        }
+      });
   }, []);
 
   // Enriched requests with AI packets — per-row isolation so one bad row can't crash
-  const enriched = useMemo<EnrichedRequest[]>(() => {
-    return requests.flatMap((row) => {
-      try {
-        return [{ row, packet: generateBuildPacket(rowToRequest(row)) }];
-      } catch (err) {
-        console.error('[Admin] generateBuildPacket failed for row', row.id, err);
-        return [];
-      }
-    });
-  }, [requests]);
+  const enriched = useMemo<EnrichedRequest[]>(
+    () =>
+      requests.flatMap((row) => {
+        try {
+          return [{ row, packet: generateBuildPacket(rowToRequest(row)) }];
+        } catch (err) {
+          console.error('[Admin] generateBuildPacket failed for row', row.id, err);
+          return [];
+        }
+      }),
+    [requests],
+  );
 
   const filtered = useMemo(() => applyFilter(enriched, reqFilter), [enriched, reqFilter]);
 
@@ -4040,6 +4124,46 @@ export default function Admin() {
       default:         return applications;
     }
   }, [applications, appStatusFilter]);
+
+  const marketplaceOpenRequests = useMemo(
+    () =>
+      requests.filter((r) => {
+        const vr = safeText(r.visibility_status, 'open').toLowerCase();
+        const ap = safeText(r.application_status, 'open').toLowerCase();
+        return (
+          vr !== 'closed'
+          && vr !== 'completed'
+          && vr !== 'draft'
+          && ap !== 'creator_selected'
+          && ap !== 'completed'
+          && ap !== 'closed'
+        );
+      }),
+    [requests],
+  );
+
+  const requestAppsNeedingBuyer = useMemo(
+    () =>
+      requestApplications.filter((a) => {
+        const s = safeText(a.application_status, '').toLowerCase();
+        return s === 'submitted' || s === 'shortlisted';
+      }),
+    [requestApplications],
+  );
+
+  const workflowsPendingPublish = useMemo(
+    () =>
+      publishedWorkflowRows.filter((w) => {
+        const s = safeText(w.workflow_status, '').toLowerCase();
+        return s === 'submitted_for_review';
+      }),
+    [publishedWorkflowRows],
+  );
+
+  const buyerSelectedOrdersCount = useMemo(
+    () => orders.filter((o) => safeText(o.selection_method, '').toLowerCase() === 'buyer_selected').length,
+    [orders],
+  );
 
   // Batch summaries (built from enriched/review data)
   const selectedAppSummaries = useMemo(
@@ -4112,6 +4236,61 @@ export default function Admin() {
 
         {/* ── Section navigation ───────────────────────────────────────────── */}
         <AdminSectionNav />
+
+        {/* ── Marketplace foundation ─────────────────────────────────────── */}
+        <section className="admin-marketplace-summary">
+          <h2 className="admin-marketplace-title">Marketplace foundation oversight</h2>
+          <p className="admin-market-desc">
+            Mirrors new tables from <code>marketplace-application-foundation.sql</code>. Buyer-chosen creators are now the typical path alongside published workflows, while pipeline controls below still expose manual assignment as escalation or fallback support.
+          </p>
+          <div className="admin-market-metrics">
+            <div className="metric-card metric-card-slim">
+              <span className="metric-value">{marketplaceOpenRequests.length}</span>
+              <span className="metric-label">Buyer requests accepting marketplace bids</span>
+            </div>
+            <div className="metric-card metric-card-slim">
+              <span className="metric-value">{requestAppsNeedingBuyer.length}</span>
+              <span className="metric-label">Active request_applications awaiting buyer/admin</span>
+            </div>
+            <div className="metric-card metric-card-slim">
+              <span className="metric-value">
+                {
+                  requests.filter((r) => safeText(r.selected_creator_profile_id) !== '').length
+                }
+              </span>
+              <span className="metric-label">Requests with a selected_creator_profile_id</span>
+            </div>
+            <div className="metric-card metric-card-slim">
+              <span className="metric-value">{buyerSelectedOrdersCount}</span>
+              <span className="metric-label">Orders where selection_method = buyer_selected</span>
+            </div>
+            <div className="metric-card metric-card-slim">
+              <span className="metric-value">{workflowsPendingPublish.length}</span>
+              <span className="metric-label">Workflow submissions needing review</span>
+            </div>
+          </div>
+          <p className="admin-market-muted">
+            Messaging stays refresh-only for now — use admin assignment when buyers need operational help even though most matches should originate from voluntary applications visible in the counters above.
+          </p>
+          <details className="admin-market-details">
+            <summary>Open sample rows · request_applications (latest 8)</summary>
+            <table className="admin-market-mini-table">
+              <thead>
+                <tr><th>Request</th><th>Creator</th><th>Status</th><th>Applied</th></tr>
+              </thead>
+              <tbody>
+                {requestApplications.slice(0, 8).map((a) => (
+                  <tr key={a.id}>
+                    <td>{safeText(a.buyer_request_id).slice(0, 8)}…</td>
+                    <td>{safeText(a.creator_profile_id).slice(0, 8)}…</td>
+                    <td>{safeText(a.application_status, 'unknown')}</td>
+                    <td>{safeDate(a.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        </section>
 
         {/* ── Today's AI Focus ─────────────────────────────────────────────── */}
         {(!reqLoading || !appLoading) && (

@@ -17,6 +17,8 @@ import Dashboard from './pages/Dashboard';
 import DashboardProfile from './pages/DashboardProfile';
 import DashboardAnalytics from './pages/DashboardAnalytics';
 import DashboardSettings from './pages/DashboardSettings';
+import DashboardBrowse from './pages/DashboardBrowse';
+import DashboardApplications from './pages/DashboardApplications';
 import DashboardProjectWorkspace from './pages/DashboardProjectWorkspace';
 import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
@@ -53,6 +55,8 @@ export default function App() {
               <Route path="profile" element={<DashboardProfile />} />
               <Route path="analytics" element={<DashboardAnalytics />} />
               <Route path="settings" element={<DashboardSettings />} />
+              <Route path="applications" element={<DashboardApplications />} />
+              <Route path="browse" element={<DashboardBrowse />} />
               <Route path="projects/:id" element={<DashboardProjectWorkspace />} />
             </Route>
 

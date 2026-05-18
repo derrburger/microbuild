@@ -24,6 +24,10 @@ export interface OrderPipelineRow {
   admin_notes: string | null;
   microbuild_fee: string | null;
   creator_payout: string | null;
+  /** Buyer marketplace selection linkage (migration: marketplace-application-foundation.sql) */
+  request_application_id?: string | null;
+  selected_by_buyer?: boolean | null;
+  selection_method?: string | null;
   amount_cents: number;
   status: string;    // legacy field
   created_at: string;

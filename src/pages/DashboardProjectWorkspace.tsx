@@ -17,7 +17,12 @@ import {
   type BuildPacketWorkspaceRow,
   type DeliverablePlaceholder,
 } from '../lib/orders';
-import type { UserProfileRow } from '../types/database';
+import type { ProjectMessageRow, UserProfileRow } from '../types/database';
+import {
+  fetchProjectMessagesForRequest,
+  generateMessageThreadPreview,
+  insertProjectMessage,
+} from '../lib/marketplace';
 import {
   buildCreatorBriefCopy,
   buildLaunchChecklistCopy,
@@ -55,6 +60,95 @@ type BuyerSnippet = {
   deadline: string | null;
   created_at: string | null;
 };
+
+/** Refresh-only thread keyed to buyer request (marketplace messaging v1). */
+function WorkspaceRequestMessagesStub({
+  buyerRequestId,
+  userProfile,
+}: {
+  buyerRequestId: string;
+  userProfile: UserProfileRow;
+}) {
+  const [msgs, setMsgs] = useState<ProjectMessageRow[]>([]);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState<string | null>(null);
+
+  const visible = useMemo(
+    () => msgs.filter((m) => (m.visibility ?? 'participant').toLowerCase() !== 'admin_only'),
+    [msgs],
+  );
+
+  async function refresh() {
+    const rows = await fetchProjectMessagesForRequest(buyerRequestId);
+    setMsgs(rows);
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, [buyerRequestId]);
+
+  const preview = useMemo(() => generateMessageThreadPreview(visible), [visible]);
+
+  async function send() {
+    const body = text.trim();
+    if (!body.length) return;
+    setSending(true);
+    setSendErr(null);
+    const ins = await insertProjectMessage({
+      buyer_request_id: buyerRequestId,
+      sender_user_profile_id: userProfile.id ?? null,
+      sender_role: 'creator',
+      message_body: body,
+      visibility: 'buyer_creator',
+      message_type: 'general',
+    });
+    if (!ins.ok) setSendErr(ins.error ?? 'Could not save.');
+    else setText('');
+    await refresh();
+    setSending(false);
+  }
+
+  return (
+    <section className="dpw-card dpw-card--msgs">
+      <h2 className="dpw-card-title">Buyer / creator notes</h2>
+      <p className="dpw-muted">
+        Lightweight messages on this buyer request — manual refresh after send (no realtime channel yet).
+      </p>
+      <p className="dpw-msg-preview subtle">{preview}</p>
+      {sendErr ? (
+        <p className="dpw-feedback dpw-feedback--err" role="alert">
+          {sendErr}
+        </p>
+      ) : null}
+      <div className="dpw-msg-list">
+        {visible.length === 0 ?
+          <p className="dpw-muted">No messages visible yet.</p>
+        : visible.slice(-12).map((m) => (
+            <div key={m.id} className="dpw-msg-line">
+              <span className="dpw-msg-role">{safeStr(m.sender_role, 'participant')}</span>
+              <span className="dpw-msg-body">{safeStr(m.message_body, '—')}</span>
+              <span className="dpw-msg-when">{fmtDate(m.created_at)}</span>
+            </div>
+          ))
+        }
+      </div>
+      <div className="dpw-msg-compose">
+        <textarea
+          className="dpw-msg-textarea"
+          rows={3}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Leave a concise update or question — buyer sees participant-safe notes."
+          aria-label="Message to buyer"
+        />
+        <button type="button" className="btn btn-primary btn-sm" disabled={sending} onClick={() => void send()}>
+          {sending ? 'Sending…' : 'Send & refresh'}
+        </button>
+      </div>
+    </section>
+  );
+}
 
 function FormFieldsList({ form_fields }: { form_fields: unknown }) {
   const items = useMemo(() => {
@@ -518,6 +612,10 @@ export default function DashboardProjectWorkspace() {
               ))}
             </ul>
           </section>
+
+          {order.request_id && userProfile?.id ?
+            <WorkspaceRequestMessagesStub buyerRequestId={order.request_id} userProfile={userProfile} />
+          : null}
 
           {/* Submission */}
           <section className="dpw-card dpw-card--submit">

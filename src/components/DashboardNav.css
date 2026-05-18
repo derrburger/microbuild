@@ -30,3 +30,13 @@
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
+
+.dash-nav-link--muted {
+  cursor: default;
+  color: var(--text-muted);
+  opacity: 0.72;
+}
+
+.dash-nav-loading-pill {
+  pointer-events: none;
+}
