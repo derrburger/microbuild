@@ -142,21 +142,158 @@ export interface RequestApplicationWithBuyerRequest extends RequestApplicationRo
   buyer_requests?: BuyerRequestRow | BuyerRequestRow[] | null;
 }
 
-/** Creator dashboard: applications joined to buyer_requests for context cards */
-export async function getCreatorApplicationsWithBuyerRequests(
-  creatorProfileId: string,
-): Promise<RequestApplicationWithBuyerRequest[]> {
-  const { data, error } = await supabase
-    .from('request_applications')
-    .select('*, buyer_requests(*)')
-    .eq('creator_profile_id', creatorProfileId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('[marketplace] getCreatorApplicationsWithBuyerRequests:', error);
-    return [];
+/**
+ * Canonical creator_profiles resolution for authenticated marketplace flows (Browse + Applications).
+ * Tries FK on user_profiles, then creator_profiles.auth_user_id, legacy creator_profiles.user_id,
+ * then creator_profiles.user_profile_id ↔ user_profiles.id.
+ */
+export async function resolveCreatorProfileForMarketplace(
+  authUserId: string,
+  userProfile: UserProfileRow | null | undefined,
+): Promise<CreatorProfileRow | null> {
+  const cpFk = normalizeText((userProfile as { creator_profile_id?: string | null })?.creator_profile_id ?? '');
+  if (cpFk) {
+    const { data, error } = await supabase.from('creator_profiles').select('*').eq('id', cpFk).maybeSingle();
+    if (error) console.error('[marketplace] resolveCreatorProfileForMarketplace FK id:', error);
+    if (data) return data as CreatorProfileRow;
   }
-  return (data as RequestApplicationWithBuyerRequest[]) ?? [];
+
+  const { data: byAuth, error: ea } = await supabase
+    .from('creator_profiles')
+    .select('*')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle();
+
+  if (ea) console.error('[marketplace] resolveCreatorProfileForMarketplace auth_user_id:', ea);
+  if (byAuth) return byAuth as CreatorProfileRow;
+
+  const { data: legacyUid, error: eb } = await supabase
+    .from('creator_profiles')
+    .select('*')
+    .eq('user_id', authUserId)
+    .maybeSingle();
+
+  if (eb) console.error('[marketplace] resolveCreatorProfileForMarketplace user_id(auth):', eb);
+  if (legacyUid) return legacyUid as CreatorProfileRow;
+
+  const upPk = normalizeText(userProfile?.id ?? '');
+  if (upPk) {
+    const { data: byUp, error: ec } = await supabase
+      .from('creator_profiles')
+      .select('*')
+      .eq('user_profile_id', upPk)
+      .maybeSingle();
+
+    if (ec) console.error('[marketplace] resolveCreatorProfileForMarketplace user_profile_id:', ec);
+    if (byUp) return byUp as CreatorProfileRow;
+  }
+
+  return null;
+}
+
+const REQUEST_APPLICATION_LIST_FIELDS = `
+  id,
+  buyer_request_id,
+  order_id,
+  creator_profile_id,
+  creator_user_profile_id,
+  buyer_user_profile_id,
+  application_status,
+  proposal_message,
+  fit_reason,
+  estimated_timeline,
+  proposed_price,
+  relevant_workflow_id,
+  creator_questions,
+  admin_notes,
+  buyer_message,
+  created_at,
+  updated_at
+`;
+
+/** Buyer row slice for hydrated application cards (safe if RLS blocks full select). */
+const BUYER_REQUEST_CARD_FIELDS =
+  'id, business_name, industry, build_type, main_goal, current_problem, budget, deadline, applications_count, application_status, visibility_status';
+
+/**
+ * Loads request_applications for the dashboard without embedding buyer_requests (avoids RLS / FK embed failures returning empty).
+ * Optional fallback: rows keyed by creator_user_profile_id when profile-id query returns none.
+ */
+export async function getCreatorApplicationsWithBuyerRequests(
+  creatorProfileId: string | null | undefined,
+  creatorUserProfileId?: string | null,
+): Promise<{
+  data: RequestApplicationWithBuyerRequest[];
+  errorMessage: string | null;
+}> {
+  const aggregated = new Map<string, RequestApplicationWithBuyerRequest>();
+  let lastErrorMsg: string | null = null;
+
+  async function pullBy(column: 'creator_profile_id' | 'creator_user_profile_id', value: string) {
+    const { data, error } = await supabase
+      .from('request_applications')
+      .select(REQUEST_APPLICATION_LIST_FIELDS.trim().replace(/\s+/g, ' '))
+      .eq(column, value)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      const msg =
+        `[marketplace] getCreatorApplicationsWithBuyerRequests.${column}: ${error.message}${error.details ? ` — ${error.details}` : ''}${error.code ? ` (${error.code})` : ''}`;
+      console.error(msg, error);
+      lastErrorMsg = error.message ?? 'Could not load applications.';
+      return;
+    }
+
+    for (const row of ((data ?? []) as unknown as RequestApplicationWithBuyerRequest[])) {
+      if (row?.id) aggregated.set(row.id, row);
+    }
+  }
+
+  const cp = normalizeText(creatorProfileId ?? '');
+  const up = normalizeText(creatorUserProfileId ?? '');
+
+  if (cp) await pullBy('creator_profile_id', cp);
+  if (up) await pullBy('creator_user_profile_id', up);
+
+  const apps = [...aggregated.values()].sort((a, b) => {
+    const ta = Date.parse(normalizeText(a.created_at));
+    const tb = Date.parse(normalizeText(b.created_at));
+    return (isFinite(tb) ? tb : 0) - (isFinite(ta) ? ta : 0);
+  });
+
+  const requestIds = [...new Set(apps.map((a) => normalizeText(a.buyer_request_id)).filter(Boolean))];
+  let reqMap = new Map<string, BuyerRequestRow>();
+
+  if (requestIds.length > 0) {
+    const { data: reqs, error: brErr } = await supabase
+      .from('buyer_requests')
+      .select(BUYER_REQUEST_CARD_FIELDS)
+      .in('id', requestIds);
+
+    if (brErr) {
+      const msg =
+        `[marketplace] hydrate buyer_requests: ${brErr.message}${brErr.code ? ` (${brErr.code})` : ''}`;
+      console.warn(msg, brErr);
+      if (!lastErrorMsg)
+        lastErrorMsg =
+          'Applications loaded — linked buyer requests could not be fetched (permissions or network). Showing application fields only.';
+    } else {
+      for (const r of (reqs as BuyerRequestRow[]) ?? []) {
+        if (r?.id) reqMap.set(r.id, r);
+      }
+    }
+  }
+
+  const merged: RequestApplicationWithBuyerRequest[] = apps.map((a) => {
+    const brid = normalizeText(a.buyer_request_id);
+    const brRow = brid ? reqMap.get(brid) : undefined;
+    return {
+      ...a,
+      ...(brRow ? { buyer_requests: brRow as BuyerRequestRow } : {}),
+    };
+  });
+
+  return { data: merged, errorMessage: lastErrorMsg };
 }
 
 /** IDs of requests this creator still has an active application against */

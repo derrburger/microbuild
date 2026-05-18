@@ -10,6 +10,7 @@ import {
   getOpenBuyerRequests,
   getPublishedWorkflowsForBuyers,
   getActiveAppliedBuyerRequestIds,
+  resolveCreatorProfileForMarketplace,
 } from '../lib/marketplace';
 import { creatorEligibleForApplying } from '../lib/marketplaceEligibility';
 import type {
@@ -154,38 +155,11 @@ export default function Browse() {
       setCreatorRequestsLoading(true);
       const profileFromState = userProfileRow;
 
-      async function resolveCreatorProfile(profRow: UserProfileRow | null): Promise<CreatorProfileRow | null> {
-        let row: CreatorProfileRow | null = null;
+      const cp =
+        profileFromState ?
+          await resolveCreatorProfileForMarketplace(authUser.id, profileFromState)
+        : null;
 
-        const cpIdRaw =
-          typeof (profRow as { creator_profile_id?: string | null })?.creator_profile_id === 'string'
-            ? (profRow as { creator_profile_id?: string | null }).creator_profile_id
-            : '';
-
-        if (cpIdRaw && cpIdRaw.trim()) {
-          const { data } = await supabase.from('creator_profiles').select('*').eq('id', cpIdRaw).maybeSingle();
-          if (data) row = data as CreatorProfileRow;
-        }
-        if (!row) {
-          const { data } = await supabase
-            .from('creator_profiles')
-            .select('*')
-            .eq('auth_user_id', authUser.id)
-            .maybeSingle();
-          if (data) row = data as CreatorProfileRow;
-        }
-        if (!row) {
-          const { data } = await supabase
-            .from('creator_profiles')
-            .select('*')
-            .eq('user_id', authUser.id)
-            .maybeSingle();
-          if (data) row = data as CreatorProfileRow;
-        }
-        return row;
-      }
-
-      const cp = profileFromState ? await resolveCreatorProfile(profileFromState) : null;
       const reqs = await getOpenBuyerRequests();
       let appliedArr: string[] = [];
       if (cp?.id) appliedArr = await getActiveAppliedBuyerRequestIds(cp.id);

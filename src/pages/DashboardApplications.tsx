@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { getCreatorApplicationsWithBuyerRequests } from '../lib/marketplace';
+import { getCreatorApplicationsWithBuyerRequests, resolveCreatorProfileForMarketplace } from '../lib/marketplace';
 import type {
   BuyerRequestRow,
-  CreatorProfileRow,
   RequestApplicationRow,
   UserProfileRow,
 } from '../types/database';
@@ -83,6 +82,7 @@ export default function DashboardApplications() {
     ((RequestApplicationRow & { buyer_requests?: BuyerRequestRow | BuyerRequestRow[] | null }) | null)[]
   >([]);
   const [busy, setBusy] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/signin', { replace: true });
@@ -96,51 +96,53 @@ export default function DashboardApplications() {
 
     async function load() {
       setBusy(true);
+      setFetchError(null);
 
-      const { data: up } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('auth_user_id', authUid)
-        .maybeSingle();
+      try {
+        const { data: up, error: upErr } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('auth_user_id', authUid)
+          .maybeSingle();
 
-      if (!up || cancelled) {
-        if (!cancelled && !up) navigate('/onboarding', { replace: true });
-        return;
-      }
+        if (upErr) {
+          console.error('[DashboardApplications] user_profiles:', upErr);
+          if (!cancelled) setFetchError(upErr.message ?? 'Could not load your profile.');
+          return;
+        }
 
-      const prof = up as UserProfileRow;
+        if (!up || cancelled) {
+          if (!cancelled && !up) navigate('/onboarding', { replace: true });
+          return;
+        }
 
-      const t = safeStr(prof.account_type).toLowerCase();
-      if (t !== 'creator') {
-        if (!cancelled) navigate('/dashboard', { replace: true });
-        return;
-      }
+        const prof = up as UserProfileRow;
 
-      let row: CreatorProfileRow | null = null;
+        const t = safeStr(prof.account_type).toLowerCase();
+        if (t !== 'creator') {
+          if (!cancelled) navigate('/dashboard', { replace: true });
+          return;
+        }
 
-      const cpIdRaw =
-        typeof (prof as { creator_profile_id?: string | null }).creator_profile_id === 'string'
-          ? (prof as { creator_profile_id?: string | null }).creator_profile_id
-          : '';
+        const row = await resolveCreatorProfileForMarketplace(authUid, prof);
 
-      if (cpIdRaw?.trim()) {
-        const { data } = await supabase.from('creator_profiles').select('*').eq('id', cpIdRaw).maybeSingle();
-        if (data) row = data as CreatorProfileRow;
-      }
-      if (!row) {
-        const { data } = await supabase.from('creator_profiles').select('*').eq('auth_user_id', authUid).maybeSingle();
-        if (data) row = data as CreatorProfileRow;
-      }
-      if (!row) {
-        const { data } = await supabase.from('creator_profiles').select('*').eq('user_id', authUid).maybeSingle();
-        if (data) row = data as CreatorProfileRow;
-      }
+        const { data: appsMerged, errorMessage } = await getCreatorApplicationsWithBuyerRequests(
+          row?.id ?? null,
+          prof.id,
+        );
 
-      const appsRow = row?.id ? await getCreatorApplicationsWithBuyerRequests(row.id) : [];
-
-      if (!cancelled) {
-        setApplications(appsRow);
-        setBusy(false);
+        if (!cancelled) {
+          setApplications(appsMerged);
+          setFetchError(errorMessage);
+        }
+      } catch (e) {
+        console.error('[DashboardApplications] load:', e);
+        if (!cancelled) {
+          setFetchError(e instanceof Error ? e.message : 'Something went wrong loading applications.');
+          setApplications([]);
+        }
+      } finally {
+        if (!cancelled) setBusy(false);
       }
     }
 
@@ -216,6 +218,17 @@ export default function DashboardApplications() {
             </div>
           ))}
         </div>
+
+        {fetchError ?
+          (
+            <div
+              className={`mb-form-alert${fetchError.includes('could not') || fetchError.includes('permissions') ? ' mb-form-alert--muted' : ' mb-form-alert--error'}`}
+              role="status"
+            >
+              {fetchError}
+            </div>
+          )
+        : null}
 
         {applications.length === 0 ?
           (
