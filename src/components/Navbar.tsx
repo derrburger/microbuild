@@ -60,6 +60,12 @@ export default function Navbar() {
           {user ? (
             /* ── Signed-in nav ──────────────────────────────────── */
             <>
+              <NavLink to="/messages" className="nav-link-secondary mb-nav-msg" onClick={close}>
+                💬 Messages
+                <span className="navbar-msg-indicator" aria-hidden title="Unread counts coming soon">
+                  ·
+                </span>
+              </NavLink>
               <NavLink to="/dashboard" className="nav-link-secondary" onClick={close}>
                 Dashboard
               </NavLink>

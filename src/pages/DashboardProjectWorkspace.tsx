@@ -19,11 +19,7 @@ import {
 } from '../lib/orders';
 import type { UserProfileRow } from '../types/database';
 import { verifyBuyerOwnsRequest } from '../lib/marketplace';
-import ParticipantMessageThread from '../components/ParticipantMessageThread';
-import {
-  getBuyerUserProfileIdForBuyerRequest,
-  getCreatorUserProfileIdForCreatorProfile,
-} from '../lib/messages';
+import { buildMessagesHref } from '../lib/messages';
 import {
   buildCreatorBriefCopy,
   buildLaunchChecklistCopy,
@@ -603,86 +599,30 @@ export default function DashboardProjectWorkspace() {
 
           {userProfile?.id ?
             (
-              <>
-                {order.request_id ?
+              <section className="dpw-card dpw-card--msgs">
+                <h2 className="dpw-card-title">Project chat</h2>
+                <p className="dpw-muted">
+                  Messaging now lives in the central <strong>Messages</strong> inbox — order-scoped when a project exists, merging
+                  request-phase replies from the marketplace. Text-only · refresh-based · participant-safe filtering (admin-only rows
+                  never appear).
+                </p>
+                {order.request_id?.trim() && order.creator_id?.trim() ?
                   (
-                    <section className="dpw-card dpw-card--msgs">
-                      <h2 className="dpw-card-title">Request conversation</h2>
-                      <p className="dpw-muted">
-                        Earlier marketplace notes on this buyer request (not tied to the project order record). Participant-safe —
-                        refresh after send — no realtime.
-                      </p>
-                      <ParticipantMessageThread
-                        mode="request_applicant_pair"
-                        omitOrderScoped={true}
-                        viewerProfile={userProfile}
-                        viewerRole={isCreatorWorkspace ? 'creator' : 'buyer'}
-                        buyerRequestId={order.request_id}
-                        orderId={order.id}
-                        loadCounterpartUserProfileId={async () => {
-                          const brid = order.request_id;
-                          if (!brid) return null;
-                          if (isCreatorWorkspace) {
-                            return (await getBuyerUserProfileIdForBuyerRequest(brid)).id;
-                          }
-                          return order.creator_id ?
-                              (await getCreatorUserProfileIdForCreatorProfile(order.creator_id)).id
-                            : null;
-                        }}
-                        counterpartLabel={
-                          isCreatorWorkspace ? buyer?.business_name ?? 'Buyer' : (
-                            creatorAssignee?.display_name ?? creatorAssignee?.full_name ?? 'Creator'
-                          )
-                        }
-                        toggleLabel="Request messages"
-                        emptyHint="No messages yet. Ask a clear question about the build scope, timeline, or buyer goal."
-                        previewClassName="dpw-msg-preview"
-                      />
-                    </section>
+                    <Link
+                      className="btn btn-primary btn-sm dpw-open-chat"
+                      to={buildMessagesHref({
+                        buyerRequestId: order.request_id!.trim(),
+                        orderId: order.id,
+                        creatorProfileId: order.creator_id.trim(),
+                      })}
+                    >
+                      Open project chat →
+                    </Link>
                   )
                 : (
-                  <section className="dpw-card dpw-card--msgs">
-                    <h2 className="dpw-card-title">Request conversation</h2>
-                    <p className="dpw-muted">This order is not linked to a buyer request row — messaging uses Project messages below.</p>
-                  </section>
+                  <p className="dpw-muted">Chat requires a buyer request linkage and creator assignment.</p>
                 )}
-
-                <section className="dpw-card dpw-card--msgs">
-                  <h2 className="dpw-card-title">Project messages</h2>
-                  <p className="dpw-muted">
-                    Order-scoped thread after selection — text-only, refresh-based (no file uploads yet).{' '}
-                    <strong>Admin-only</strong> notes never appear here.
-                  </p>
-                  <ParticipantMessageThread
-                    mode="project_order"
-                    viewerProfile={userProfile}
-                    viewerRole={isCreatorWorkspace ? 'creator' : 'buyer'}
-                    buyerRequestId={order.request_id}
-                    orderId={order.id}
-                    loadCounterpartUserProfileId={async () => {
-                      if (!order.request_id) {
-                        return order.creator_id ?
-                            (await getCreatorUserProfileIdForCreatorProfile(order.creator_id)).id
-                          : null;
-                      }
-                      if (isCreatorWorkspace) {
-                        return (await getBuyerUserProfileIdForBuyerRequest(order.request_id)).id;
-                      }
-                      return order.creator_id ?
-                          (await getCreatorUserProfileIdForCreatorProfile(order.creator_id)).id
-                        : null;
-                    }}
-                    counterpartLabel={
-                      isCreatorWorkspace ? buyer?.business_name ?? 'Buyer' : (
-                        creatorAssignee?.display_name ?? creatorAssignee?.full_name ?? 'Creator'
-                      )
-                    }
-                    toggleLabel="Project messages"
-                    emptyHint="No messages yet. Ask a clear question about the build scope, timeline, or buyer goal."
-                    previewClassName="dpw-msg-preview"
-                  />
-                </section>
-              </>
+              </section>
             )
           : null}
 

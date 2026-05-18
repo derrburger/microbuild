@@ -339,3 +339,25 @@ export async function insertProjectMessageRow(
   }
   return { ok: true, error: null };
 }
+
+export type {
+  ConversationListItem,
+  MessagingAccountSide,
+  ParticipantConversation,
+} from './messageInbox';
+
+export {
+  buildMessagesHref,
+  createProjectConversationMessage,
+  createRequestConversationMessage,
+  fetchMessagePool,
+  getConversationContext,
+  getConversationMessages,
+  getConversationStatusLabel,
+  getConversationTitle,
+  getOtherParticipantLabel,
+  getUserConversations,
+  mergeMessagesForConversation,
+  sendConversationMessage,
+  sliceMessagesForConversation,
+} from './messageInbox';

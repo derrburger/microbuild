@@ -22,6 +22,7 @@ import DashboardApplications from './pages/DashboardApplications';
 import DashboardProjectWorkspace from './pages/DashboardProjectWorkspace';
 import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
+import Messages from './pages/Messages';
 import NotFound from './pages/NotFound';
 
 // NOTE: AdminRouteGuard (src/components/AdminRouteGuard.tsx) exists but is
@@ -48,6 +49,7 @@ export default function App() {
             {/* ── Auth routes ─────────────────────────────────────── */}
             <Route path="signin" element={<SignIn />} />
             <Route path="onboarding" element={<Onboarding />} />
+            <Route path="messages" element={<Messages />} />
 
             {/* ── Dashboard (authenticated) ───────────────────────── */}
             <Route path="dashboard">

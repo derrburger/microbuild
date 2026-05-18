@@ -67,7 +67,18 @@
   color: var(--accent) !important;
 }
 
-/* ─── Auth-aware user menu ──────────────────────────────────────────────────── */
+.mb-nav-msg {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2rem;
+}
+
+.navbar-msg-indicator {
+  display: inline-block;
+  opacity: 0.45;
+  font-weight: 700;
+  translate: 0 -0.06em;
+}
 
 .navbar-user-menu {
   position: relative;

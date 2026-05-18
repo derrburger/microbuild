@@ -13,10 +13,10 @@ This document summarizes the marketplace foundation introduced with `marketplace
 1. Submits `/request` (existing form). Request rows gain marketplace columns (`visibility_status`, `application_status`, `applications_count`, selection pointers).
 2. Open requests accept **creator voluntary applications** via `request_applications`.
 3. Buyer reviews applicants in **Dashboard → My Requests & Applicants** (expand per request — budget, deadline, marketplace status, selected creator when set, link to workspace when an order exists).
-4. Buyer taps **Select creator** → sibling active applications → `rejected`; winner → `buyer_selected`; `buyer_requests` → `creator_selected` + `visibility_status = creator_selected`; **`orders`** row created or updated (no duplicate per `request_id`) with **`creator_id`**, **`request_application_id`**, **`selection_method = buyer_selected`**, **`order_status = assigned`**.
+4. Buyer taps **Select creator** → sibling active applications → `rejected`; winner → `buyer_selected`; `buyer_requests` → `creator_selected` + `visibility_status = creator_selected`; **`orders`** row created or updated (no duplicate per `request_id`) with **`creator_id`**, **`request_application_id`**, **`selection_method = buyer_selected`**, **`order_status = assigned`** (application row also mirrors **`order_id`** when synced).
 5. **Buyer Browse** (**`/browse`**) lists `published_workflows` that are published + publicly visible plus a clearly labelled block of platform starter listings when storefront rows are sparse.
 
-**Messaging v1:** per-applicant **Message creator** on each applicant card — expandable threads tied to **`buyer_request_id`** (+ optional `recipient_user_profile_id`). **Dashboard → Project workspace** (`/dashboard/projects/:id`) exposes **Request conversation** (rows without `order_id`) and **Project messages** (`order_id`) for both **creator** (assigned profile) and **buyer** (request owner); **admin-only** `project_messages.visibility` rows never surface in participant UIs. Text-only, **refresh-based** — no realtime, no uploads yet.
+**Messaging v2 (central inbox):** Buyers & creators use **`/messages`** (linked from **`💬 Messages`** in top nav once signed-in). Rows are inferred from **`request_applications`** + **`orders`**; messages stay in **`project_messages`**. Prefer **`order_id`** as the inbox anchor whenever a matched project ties the buyer request + creator; otherwise show an **application** thread. Threads **merge** request-phase (**no `order_id`**) and order-phase (**`order_id`)** participant rows for one continuous chat per pairing. **`admin`** accounts see an intentionally **empty inbox** until moderation tooling exists (admin doesn’t silently read creator/buyer DMs).
 
 ---
 
@@ -26,7 +26,7 @@ This document summarizes the marketplace foundation introduced with `marketplace
 2. **Dashboard · Applications (`/dashboard/applications`)** summarizes + lists that creator's `request_applications` (distinct from discovering new open scopes).
 3. Creator submits lightweight application (proposal, fit, timeline, optional price/link/questions).
 4. Duplicate **active** applications are blocked (`submitted` / `shortlisted` / `buyer_selected`).
-5. When a buyer selects them, the linked `orders` row appears in the existing Creator Project Pipeline/workspace. **Dashboard · Applications** shows **Open Project Workspace** when `order_id` is linked; **Message buyer** threads use the same **`project_messages`** foundation (pair-scoped refresh UI).
+5. When a buyer selects them, the linked `orders` row appears in the existing Creator Project Pipeline/workspace. **Dashboard · Applications** shows **Open Project Workspace** when `order_id` is linked; **Message buyer** links jump to **`/messages`** for that **`buyer_request_id` × creator**.
 
 Creators publish reusable storefront templates through `published_workflows` going forward — UI for authoring stays incremental in later milestones.
 
@@ -95,15 +95,15 @@ Legacy admin assignment retains `selection_method = 'admin_assigned'`.
 
 ---
 
-## Messaging v1 (refresh-based)
+## Messaging v2 (refresh-based inbox)
 
-- **Implementation:** `src/lib/messages.ts` — explicit column selects on `project_messages`, participant-safe filtering (**hides `admin_only` visibility** in buyer/creator UIs), `sendRequestMessage` / `sendProjectMessage`, thread preview + visibility labels. `marketplace.ts` re-exports `fetchProjectMessagesForRequest`, `insertProjectMessage`, and `generateMessageThreadPreview` as thin aliases into `messages.ts`.
-- **Surfaces:**
-  - **Buyer → applicants:** **Message creator** on each applicant row — threads scoped by `buyer_request_id` plus participant pairing when IDs exist.
-  - **Creator → applications:** **Message buyer** on each application card — buyer profile resolved from `buyer_requests.email` when needed.
-  - **Workspace (`/dashboard/projects/:id`):** **Request conversation** (messages without `order_id`) and **Project messages** (`order_id`); **assigned creator** and **request-owning buyer** both get access — deliverable submission remains **creator-only**.
-- **Not in v1:** Realtime/WebSockets, file uploads, read receipts (**`getUnreadPlaceholderCount`** is a placeholder), robust admin moderation (**`/admin`** shows “moderation coming later” on pipeline cards).
-- **Production:** RLS must restrict who can read/write `project_messages`; TEMP DEV permissive policies are unsafe.
+- **Libraries:** `src/lib/messages.ts` (explicit selects, **`sendRequestMessage`** / **`sendProjectMessage`**, filtering) + **`src/lib/messageInbox.ts`** (**`getUserConversations`**, **`sendConversationMessage`**, **`mergeMessagesForConversation`**, **`buildMessagesHref`**, **`fetchMessagePool`**). Re-exports for convenience mirror `messages.ts`.
+- **Route:** **`/messages`** (+ signed-out redirect to **`/signin`**, onboarding guard when profile missing).
+- **Surfaces:** Applicant/application cards (**Message creator** / **Message buyer** → query-string deep links); buyer active request (**Message creator**); creator pipeline (**Message buyer**); workspace (**Open project chat**).
+- **Grouping logic:** Prefer **`orders.id`** conversations when **`request_id`** + **`creator_id`** overlap an application; suppress duplicate application stubs in that scenario. Threads merge **pair-scoped** request rows (**`order_id` IS NULL**) with order rows for the participant pair.
+- **Admin:** moderation consoles stay future work — **`account_type === 'admin'` resolves to an intentionally empty inbox** (no voyeur tooling).
+- **Still missing:** realtime, uploads, truthful unread badges, hardened RLS (**TEMP DEV permissive inserts/selects remain unsafe for prod**).
+
 
 ## Next build phases
 

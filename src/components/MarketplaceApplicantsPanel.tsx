@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { analyzeProfileStrength } from '../lib/profileAI';
-import ParticipantMessageThread from './ParticipantMessageThread';
+import CentralMessageLauncher from './CentralMessageLauncher';
 import type { BuyerRequestRow, CreatorProfileRow, UserProfileRow } from '../types/database';
 import type { OrderPipelineRow } from '../lib/orders';
 import { supabase } from '../lib/supabase';
@@ -163,7 +163,7 @@ export default function MarketplaceApplicantsPanel({
           const ord = ordersByRequestId[r.id];
 
           return (
-            <div key={r.id} className="mb-applicants-details">
+            <div key={r.id} className="mb-applicants-details" id={`mb-buyer-applicants-${r.id}`}>
               <button
                 type="button"
                 className="mb-applicants-summary-btn mb-applicants-summary-btn--rich"
@@ -216,8 +216,8 @@ export default function MarketplaceApplicantsPanel({
               {open ?
                 (
                   <p className="subtle mb-applicants-msg-hint">
-                    Message a specific applicant with <strong>Message creator</strong> on each row below (thread is scoped to
-                    that creator).
+                    Message a specific applicant with <strong>Message creator</strong> on each row below — conversations open in{' '}
+                    <strong>Messages</strong> (central inbox).
                   </p>
                 )
               : null}
@@ -430,15 +430,11 @@ function ApplicantRow({
         </button>
       </div>
 
-      <ParticipantMessageThread
-        mode="request_applicant_pair"
-        viewerProfile={buyerProfile}
-        viewerRole="buyer"
+      <CentralMessageLauncher
         buyerRequestId={request.id}
-        counterpartUserProfileId={creatorApplicantCounterpartProfileId(app)}
-        counterpartLabel={name}
-        toggleLabel={`Message creator — ${name}`.slice(0, 80)}
-        emptyHint="No messages yet. Ask a clear question about the build scope, timeline, or buyer goal."
+        creatorProfileId={prof?.id ?? null}
+        orderId={orderId}
+        label={`Message creator — ${name}`.slice(0, 80)}
         className="mb-applicant-msg-thread"
       />
 
@@ -472,14 +468,6 @@ function portfolioFirstUrl(prof: CreatorProfileRow | null): string | null {
   return prof.portfolio_url?.trim() || null;
 }
 
-function creatorApplicantCounterpartProfileId(app: BuyerApplicantResolved): string | null {
-  const a = normalizeMessageText(typeof app.creator_user_profile_id === 'string' ? app.creator_user_profile_id : null);
-  if (a) return a;
-  const p = oneProfile(app.creator_profiles ?? null);
-  const pid = normalizeMessageText(p?.user_profile_id ?? null);
-  return pid?.trim().length ? pid : null;
-}
-
 function MessageModerationPlaceholder() {
   return (
     <div className="buyer-muted-hint subtle mb-msg-mod">
@@ -499,11 +487,6 @@ function safeStr(v: unknown, fb = '') {
 
 function normalize(s: unknown) {
   return typeof s === 'string' ? s.toLowerCase().trim() : '';
-}
-
-function normalizeMessageText(v: unknown): string | null {
-  const t = typeof v === 'string' ? v.trim() : '';
-  return t.length ? t : null;
 }
 
 function readableStatus(s: string): string {

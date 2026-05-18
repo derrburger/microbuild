@@ -33,6 +33,7 @@ import {
 import type { UserProfileRow, CreatorProfileRow } from '../types/database';
 import DashboardNav from '../components/DashboardNav';
 import MarketplaceApplicantsPanel from '../components/MarketplaceApplicantsPanel';
+import CentralMessageLauncher from '../components/CentralMessageLauncher';
 import './Dashboard.css';
 
 // ─── Safe helpers ──────────────────────────────────────────────────────────────
@@ -385,6 +386,18 @@ function CreatorProjectPipeline({ creatorProfileId }: { creatorProfileId: string
                       <span className="cd-project-date">{fmtDate(order.created_at)}</span>
                     </div>
                     <div className="cd-project-next">→ {getNextOrderAction(order.order_status)}</div>
+                    {order.request_id?.trim() && order.creator_id?.trim() ?
+                      (
+                        <CentralMessageLauncher
+                          buyerRequestId={order.request_id.trim()}
+                          creatorProfileId={order.creator_id.trim()}
+                          orderId={order.id}
+                          variant="inline"
+                          label="Message buyer"
+                          className="cd-project-msg"
+                        />
+                      )
+                    : null}
                     <Link className="cd-project-open" to={`/dashboard/projects/${order.id}`}>
                       Open workspace →
                     </Link>
@@ -828,6 +841,22 @@ function ActiveRequestCard({
           </div>
         </div>
       )}
+
+      {(linkedOrder?.creator_id?.trim() || request.selected_creator_profile_id?.trim()) && request.id ?
+        (
+          <div className="buyer-msg-launcher-row">
+            <CentralMessageLauncher
+              buyerRequestId={request.id}
+              creatorProfileId={
+                linkedOrder?.creator_id?.trim() || request.selected_creator_profile_id?.trim() || null
+              }
+              orderId={linkedOrder?.id ?? null}
+              label="Message creator"
+              variant="inline"
+            />
+          </div>
+        )
+      : null}
 
       <RequestTimeline status={request.status} />
 
