@@ -13,11 +13,14 @@ import { supabase } from './supabase';
 import type {
   BuyerRequestRow,
   CreatorProfileRow,
+  PublishedWorkflowInsert,
   PublishedWorkflowRow,
   RequestApplicationInsert,
   RequestApplicationRow,
   UserProfileRow,
 } from '../types/database';
+import { runWorkflowAIReview } from './workflowAI';
+import type { WorkflowReviewInput } from './workflowAI';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -385,13 +388,14 @@ export async function syncBuyerRequestApplicationCount(requestId: string): Promi
   return finalCount;
 }
 
-/** Buyers browse workflows (published storefront slice). */
+/** Buyers browse workflows (published storefront slice — AI-visible only). */
 export async function getPublishedWorkflowsForBuyers(): Promise<PublishedWorkflowRow[]> {
   const { data, error } = await supabase
     .from('published_workflows')
     .select('*')
     .eq('workflow_status', 'published')
     .eq('visibility_status', 'public')
+    .in('ai_review_status', ['published', 'ai_approved'])
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -399,7 +403,11 @@ export async function getPublishedWorkflowsForBuyers(): Promise<PublishedWorkflo
     return [];
   }
 
-  return (data as PublishedWorkflowRow[]) ?? [];
+  const rows = (data as PublishedWorkflowRow[]) ?? [];
+  return rows.filter((r) => {
+    const risks = r.ai_risk_flags;
+    return !Array.isArray(risks) || risks.length === 0;
+  });
 }
 
 export async function getCreatorPublishedWorkflows(
@@ -417,6 +425,311 @@ export async function getCreatorPublishedWorkflows(
   }
 
   return (data as PublishedWorkflowRow[]) ?? [];
+}
+
+function slugifyWorkflowTitle(title: string): string {
+  const s = normalizeText(title)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+  return s || 'workflow';
+}
+
+function parseWorkflowPrice(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function publishedWorkflowToReviewInput(
+  row: PublishedWorkflowRow,
+  creator?: CreatorProfileRow | null,
+): WorkflowReviewInput {
+  return {
+    title: normalizeText(row.title),
+    category: normalizeText(row.category ?? ''),
+    targetIndustry: normalizeText(row.target_industry ?? ''),
+    description: normalizeText(row.description ?? ''),
+    includedFeatures: normalizeText(row.included_features ?? ''),
+    setupRequirements: normalizeText(row.setup_requirements ?? ''),
+    startingPrice: parseWorkflowPrice(row.starting_price),
+    estimatedTurnaround: normalizeText(row.estimated_turnaround ?? ''),
+    previewUrl: normalizeText(row.preview_url ?? ''),
+    creatorProfile: creator ?? null,
+  };
+}
+
+export async function fetchPublishedWorkflowForCreator(
+  workflowId: string,
+  creatorProfileId: string,
+): Promise<PublishedWorkflowRow | null> {
+  const { data, error } = await supabase
+    .from('published_workflows')
+    .select('*')
+    .eq('id', workflowId)
+    .eq('creator_profile_id', creatorProfileId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[marketplace] fetchPublishedWorkflowForCreator:', error);
+    return null;
+  }
+  return (data as PublishedWorkflowRow) ?? null;
+}
+
+export type CreatorWorkflowContentPatch = Pick<
+  PublishedWorkflowRow,
+  | 'title'
+  | 'slug'
+  | 'category'
+  | 'target_industry'
+  | 'description'
+  | 'included_features'
+  | 'setup_requirements'
+  | 'starting_price'
+  | 'estimated_turnaround'
+  | 'preview_url'
+  | 'cover_image_url'
+>;
+
+/** Create draft workflow (hidden, AI not reviewed). */
+export async function insertCreatorWorkflowDraft(params: {
+  creatorProfileId: string;
+  title: string;
+  content?: Partial<CreatorWorkflowContentPatch>;
+}): Promise<{ ok: boolean; row: PublishedWorkflowRow | null; error: string | null }> {
+  const title = normalizeText(params.title);
+  if (title.length < 2) {
+    return { ok: false, row: null, error: 'Title is required.' };
+  }
+  const c = params.content ?? {};
+  const slugRaw = normalizeText(c.slug ?? '');
+  const slug = slugRaw || slugifyWorkflowTitle(title);
+
+  const insert: PublishedWorkflowInsert = {
+    creator_profile_id: params.creatorProfileId,
+    title,
+    slug,
+    category: normalizeText(c.category ?? '') || null,
+    target_industry: normalizeText(c.target_industry ?? '') || null,
+    description: normalizeText(c.description ?? '') || null,
+    included_features: normalizeText(c.included_features ?? '') || null,
+    setup_requirements: normalizeText(c.setup_requirements ?? '') || null,
+    starting_price:
+      c.starting_price != null && c.starting_price !== ('' as unknown)
+        ? parseWorkflowPrice(c.starting_price)
+        : null,
+    estimated_turnaround: normalizeText(c.estimated_turnaround ?? '') || null,
+    preview_url: normalizeText(c.preview_url ?? '') || null,
+    cover_image_url: normalizeText(c.cover_image_url ?? '') || null,
+    workflow_status: 'draft',
+    visibility_status: 'hidden',
+    ai_review_status: 'not_reviewed',
+    ai_quality_score: 0,
+    ai_publish_readiness: 'not_ready',
+    auto_publish_eligible: false,
+  };
+
+  const { data, error } = await supabase.from('published_workflows').insert(insert).select('*').maybeSingle();
+
+  if (error) {
+    console.error('[marketplace] insertCreatorWorkflowDraft:', error);
+    return { ok: false, row: null, error: error.message || 'Could not create workflow.' };
+  }
+
+  return { ok: true, row: (data as PublishedWorkflowRow) ?? null, error: null };
+}
+
+/** Creator updates editable storefront fields only (not lifecycle / AI columns). */
+export async function updateCreatorWorkflowContent(
+  workflowId: string,
+  creatorProfileId: string,
+  patch: Partial<CreatorWorkflowContentPatch>,
+): Promise<{ ok: boolean; error: string | null }> {
+  const title = patch.title != null ? normalizeText(patch.title) : undefined;
+  if (title !== undefined && title.length < 2) {
+    return { ok: false, error: 'Title is required.' };
+  }
+
+  const row: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (patch.title != null) row.title = title;
+  if (patch.slug !== undefined) {
+    const raw = normalizeText(patch.slug ?? '');
+    if (raw) row.slug = slugifyWorkflowTitle(raw);
+    else if (patch.title != null) row.slug = slugifyWorkflowTitle(normalizeText(patch.title));
+  }
+  if (patch.category !== undefined) row.category = normalizeText(patch.category ?? '') || null;
+  if (patch.target_industry !== undefined) {
+    row.target_industry = normalizeText(patch.target_industry ?? '') || null;
+  }
+  if (patch.description !== undefined) row.description = normalizeText(patch.description ?? '') || null;
+  if (patch.included_features !== undefined) {
+    row.included_features = normalizeText(patch.included_features ?? '') || null;
+  }
+  if (patch.setup_requirements !== undefined) {
+    row.setup_requirements = normalizeText(patch.setup_requirements ?? '') || null;
+  }
+  if (patch.estimated_turnaround !== undefined) {
+    row.estimated_turnaround = normalizeText(patch.estimated_turnaround ?? '') || null;
+  }
+  if (patch.preview_url !== undefined) row.preview_url = normalizeText(patch.preview_url ?? '') || null;
+  if (patch.cover_image_url !== undefined) {
+    row.cover_image_url = normalizeText(patch.cover_image_url ?? '') || null;
+  }
+  if (patch.starting_price !== undefined) {
+    const p = parseWorkflowPrice(patch.starting_price);
+    row.starting_price = p;
+  }
+
+  const { error } = await supabase
+    .from('published_workflows')
+    .update(row)
+    .eq('id', workflowId)
+    .eq('creator_profile_id', creatorProfileId);
+
+  if (error) {
+    console.error('[marketplace] updateCreatorWorkflowContent:', error);
+    return { ok: false, error: error.message || 'Could not save workflow.' };
+  }
+  return { ok: true, error: null };
+}
+
+/** Persist rules-based AI fields without changing publish lifecycle (preview / refresh). */
+export async function runStoredWorkflowAIReviewOnly(params: {
+  workflowId: string;
+  creatorProfileId: string;
+  creatorProfile: CreatorProfileRow | null;
+}): Promise<{ ok: boolean; error: string | null }> {
+  const row = await fetchPublishedWorkflowForCreator(params.workflowId, params.creatorProfileId);
+  if (!row) return { ok: false, error: 'Workflow not found.' };
+
+  const analysis = runWorkflowAIReview(publishedWorkflowToReviewInput(row, params.creatorProfile));
+
+  const { error } = await supabase
+    .from('published_workflows')
+    .update({
+      ai_quality_score: analysis.qualityScore,
+      ai_missing_items: analysis.missingItems,
+      ai_risk_flags: analysis.riskFlags,
+      ai_suggested_improvements: analysis.suggestedImprovements,
+      ai_publish_readiness: analysis.readinessLabel,
+      ai_recommended_action: analysis.recommendedAction,
+      ai_review_summary: analysis.summary,
+      ai_review_status: analysis.aiReviewStatus,
+      auto_publish_eligible: analysis.autoPublishEligible,
+      ai_reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.workflowId)
+    .eq('creator_profile_id', params.creatorProfileId);
+
+  if (error) {
+    console.error('[marketplace] runStoredWorkflowAIReviewOnly:', error);
+    return { ok: false, error: error.message || 'AI review failed to save.' };
+  }
+  return { ok: true, error: null };
+}
+
+/** Submit for AI review — applies AI-first lifecycle (may auto-publish). */
+export async function submitStoredWorkflowForAIReview(params: {
+  workflowId: string;
+  creatorProfileId: string;
+  creatorProfile: CreatorProfileRow | null;
+}): Promise<{ ok: boolean; error: string | null }> {
+  const row = await fetchPublishedWorkflowForCreator(params.workflowId, params.creatorProfileId);
+  if (!row) return { ok: false, error: 'Workflow not found.' };
+
+  const analysis = runWorkflowAIReview(publishedWorkflowToReviewInput(row, params.creatorProfile));
+
+  let workflow_status: string;
+  let visibility_status: string;
+  let ai_review_status: string;
+
+  if (analysis.riskFlags.length > 0) {
+    workflow_status = 'hidden';
+    visibility_status = 'hidden';
+    ai_review_status = 'risk_flagged';
+  } else if (analysis.autoPublishEligible) {
+    workflow_status = 'published';
+    visibility_status = 'public';
+    ai_review_status = 'published';
+  } else if (analysis.aiReviewStatus === 'ai_approved') {
+    workflow_status = 'submitted_for_review';
+    visibility_status = 'hidden';
+    ai_review_status = 'ai_approved';
+  } else {
+    workflow_status = 'draft';
+    visibility_status = 'hidden';
+    ai_review_status = 'needs_improvement';
+  }
+
+  const { error } = await supabase
+    .from('published_workflows')
+    .update({
+      ai_quality_score: analysis.qualityScore,
+      ai_missing_items: analysis.missingItems,
+      ai_risk_flags: analysis.riskFlags,
+      ai_suggested_improvements: analysis.suggestedImprovements,
+      ai_publish_readiness: analysis.readinessLabel,
+      ai_recommended_action: analysis.recommendedAction,
+      ai_review_summary: analysis.summary,
+      ai_review_status,
+      auto_publish_eligible: analysis.autoPublishEligible,
+      ai_reviewed_at: new Date().toISOString(),
+      workflow_status,
+      visibility_status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.workflowId)
+    .eq('creator_profile_id', params.creatorProfileId);
+
+  if (error) {
+    console.error('[marketplace] submitStoredWorkflowForAIReview:', error);
+    return { ok: false, error: error.message || 'Submit for review failed.' };
+  }
+  return { ok: true, error: null };
+}
+
+/** Creator publish after AI approval (score 70–84 band). */
+export async function publishCreatorWorkflowAfterAIApproval(params: {
+  workflowId: string;
+  creatorProfileId: string;
+}): Promise<{ ok: boolean; error: string | null }> {
+  const row = await fetchPublishedWorkflowForCreator(params.workflowId, params.creatorProfileId);
+  if (!row) return { ok: false, error: 'Workflow not found.' };
+
+  const aiSt = normalizeText(row.ai_review_status ?? '');
+  if (aiSt !== 'ai_approved') {
+    return {
+      ok: false,
+      error: 'Only workflows that passed AI review can be published.',
+    };
+  }
+  const risks = row.ai_risk_flags;
+  if (Array.isArray(risks) && risks.length > 0) {
+    return { ok: false, error: 'Risk-flagged workflows cannot be made public.' };
+  }
+
+  const { error } = await supabase
+    .from('published_workflows')
+    .update({
+      workflow_status: 'published',
+      visibility_status: 'public',
+      ai_review_status: 'published',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.workflowId)
+    .eq('creator_profile_id', params.creatorProfileId);
+
+  if (error) {
+    console.error('[marketplace] publishCreatorWorkflowAfterAIApproval:', error);
+    return { ok: false, error: error.message || 'Could not publish workflow.' };
+  }
+  return { ok: true, error: null };
 }
 
 // ─── Rules-based “AI” summaries ────────────────────────────────────────────────

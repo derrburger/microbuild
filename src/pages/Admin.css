@@ -2946,3 +2946,15 @@
   padding: 0.35rem;
   text-align: left;
 }
+
+.wf-admin-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.wf-admin-row-actions .batch-btn {
+  font-size: 0.65rem;
+  padding: 0.2rem 0.45rem;
+}

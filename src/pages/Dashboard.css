@@ -2039,3 +2039,225 @@
 .mb-applicant-msg-thread {
   margin-top: 0.5rem;
 }
+
+/* ─── Creator workflow dashboard ─────────────────────────────────────────── */
+
+.wf-dash-gate {
+  margin-top: 1rem;
+}
+
+.wf-dash-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.wf-dash-section {
+  margin-bottom: 2rem;
+}
+
+.wf-dash-section-title {
+  font-size: 1.05rem;
+  margin-bottom: 0.75rem;
+}
+
+.wf-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.wf-dash-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  background: var(--surface, var(--bg-secondary));
+}
+
+.wf-dash-card-head {
+  margin-bottom: 0.35rem;
+}
+
+.wf-dash-card-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.wf-dash-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.wf-dash-dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+}
+
+.wf-dash-dl dt {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wf-dash-dl dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.wf-dash-summary {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin: 0 0 0.5rem;
+}
+
+.wf-dash-list-block {
+  font-size: 0.78rem;
+  margin-bottom: 0.5rem;
+}
+
+.wf-dash-list-block--risk {
+  color: #f87171;
+}
+
+.wf-dash-ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.wf-dash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.wf-dash-inline-msg {
+  font-size: 0.78rem;
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+}
+
+.wf-dash-inline-msg--err {
+  color: #f87171;
+}
+
+.wf-dash-hint {
+  font-size: 0.76rem;
+  margin: 0.35rem 0 0;
+}
+
+.wf-edit-toolbar {
+  margin: 0.75rem 0;
+}
+
+.wf-flash {
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.wf-flash--ok {
+  background: rgba(0, 212, 120, 0.1);
+  border: 1px solid rgba(0, 212, 120, 0.25);
+}
+
+.wf-flash--err {
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+.wf-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .wf-edit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.82rem;
+}
+
+.wf-field span {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.wf-field input,
+.wf-field textarea {
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.wf-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .wf-field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wf-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.wf-edit-aside {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  background: var(--surface, var(--bg-secondary));
+  position: sticky;
+  top: 1rem;
+}
+
+.wf-aside-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.wf-aside-line {
+  margin: 0.15rem 0;
+  font-size: 0.8rem;
+}
+
+.wf-aside-summary {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 0.5rem 0;
+}
+
+.wf-aside-block {
+  font-size: 0.78rem;
+  margin-top: 0.65rem;
+}
+
+.wf-aside-block--risk {
+  color: #f87171;
+}

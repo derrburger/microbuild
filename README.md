@@ -10,11 +10,11 @@ A marketplace for focused, affordable web tools built for local service business
 
 | Concept | Detail |
 |---------|--------|
-| SQL | `supabase/migrations/marketplace-application-foundation.sql` adds `request_applications`, `published_workflows`, `project_messages`; extends `buyer_requests` + `orders`. |
-| Role-aware Browse | **`/browse`** — after auth resolves `account_type`, creators browse open marketplace buyer requests (+ Apply), buyers browse **`published_workflows`** plus labelled **Platform starter MicroBuilds**, logged-out sees public templates only. **`/dashboard/browse`** now **redirects** (creators → `/dashboard/applications`, everyone else → `/browse`). Creator dashboard **`Applications`** tab lists their **`request_applications`**. |
+| SQL | `marketplace-application-foundation.sql` adds `request_applications`, `published_workflows`, `project_messages`; extends `buyer_requests` + `orders`. **`workflow-ai-review-fields.sql`** adds rules-based AI review columns on `published_workflows` (quality score, readiness, risk flags, etc.). |
+| Role-aware Browse | **`/browse`** — creators browse open marketplace buyer requests (+ Apply). Buyers, admins, and logged-out visitors see **creator `published_workflows`** that are **published + public + AI-visible** (`ai_review_status` in **`published` / `ai_approved`**, no risk flags), plus labelled **Platform starter examples**. **`/dashboard/browse`** redirects (creators → `/dashboard/applications`, everyone else → `/browse`). Creator dashboard includes **`Applications`** and **`Workflows`** (`/dashboard/workflows`). |
 | Buyer selection | **My Requests & Applicants** — applicant cards + **Message creator** links to **`/messages`**; **Select** finalizes lineage on **`buyer_requests`** + **`orders`**. |
 | Messaging | **`/messages`** + **`src/lib/messages.ts`** + **`src/lib/messageInbox.ts`** — grouped conversations (**order** anchor preferred; application-only before selection), explicit column selects on **`project_messages`**, **`admin_only`** hidden in participant UI. **Signed-out** cannot open inbox; **`account_type === 'admin'`** returns an empty inbox (moderation dashboards later). Refresh-only · no realtime · no uploads. |
-| Admin | **`/admin`** pipeline cards show moderation placeholder text; Buyer-selected badge + oversight panels unchanged. Manual assignment remains fallback. Console does **not** expose private **`project_messages`** content in v2. |
+| Admin | **`/admin`** pipeline cards show moderation placeholder text; **Workflow AI overview** surfaces AI-reviewed `published_workflows` with secondary override actions (publish/hide/archive/mark needs improvement). Buyer-selected badge + oversight panels unchanged. Manual assignment remains fallback. Console does **not** expose private **`project_messages`** content in v2. |
 | Future | Stripe, production-scoped policies, realtime messaging. |
 
 ### Project Workspace Polish v2
@@ -60,7 +60,7 @@ MicroBuild solves this by offering five standardized "MicroBuilds" â€” smal
 | Database | Supabase (PostgreSQL) |
 | Auth | Supabase Auth â€” email/password sign-up + sign-in. GitHub OAuth deferred until stable domain. |
 | Payments | Not yet implemented â€” Stripe deferred (Phase 4) |
-| AI | Rules-based only â€” `src/lib/profileAI.ts`, `src/lib/buildPacket.ts`. No external APIs. |
+| AI | Rules-based only — `src/lib/profileAI.ts`, `src/lib/buildPacket.ts`, **`src/lib/workflowAI.ts`** (creator workflow quality scoring). No external APIs; future model calls should run via **Supabase Edge Functions** only. |
 | Deployment | Hostinger (planned) |
 
 ---
@@ -87,6 +87,7 @@ supabase/
     project-pipeline-foundation.sql           # Orders pipeline, build_packets + deliverables extras (run before workspace features)
     deliverables-revision-note.sql           # Adds revision_note on deliverables for admin→creator revision feedback
     marketplace-application-foundation.sql   # Marketplace: request_applications, published_workflows, project_messages, buyer/request selection fields — TEMP DEV RLS flagged in-file
+    workflow-ai-review-fields.sql            # Additive AI review columns + indexes on published_workflows
 docs/
   database-schema.md
   marketplace-application-flow.md

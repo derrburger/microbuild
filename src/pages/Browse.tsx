@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import MicroBuildCard from '../components/MicroBuildCard';
 import CreatorBuyerRequestsBrowse from '../components/marketplace/CreatorBuyerRequestsBrowse';
 import BuyerWorkflowsPublicBrowse from '../components/marketplace/BuyerWorkflowsPublicBrowse';
 import { fetchTemplates } from '../lib/templates';
@@ -64,7 +63,9 @@ export default function Browse() {
 
   const [buyerWorkflowsLoading, setBuyerWorkflowsLoading] = useState(false);
   const [workflows, setWorkflows] = useState<PublishedWorkflowRow[]>([]);
-  const [workflowCreators, setWorkflowCreators] = useState<Record<string, string>>({});
+  const [workflowCreatorMeta, setWorkflowCreatorMeta] = useState<
+    Record<string, { displayName: string; tier: string; verification_status: string }>
+  >({});
 
   // Sync category filter with URL params (public browse only uses this prominently)
   useEffect(() => {
@@ -179,9 +180,10 @@ export default function Browse() {
     };
   }, [user, accountPhase, userProfileRow]);
 
-  // Buyer / Admin: storefront workflows (+ optional starter templates reuse same fetchTemplates effect)
+  // Buyer / Admin / Guest: published storefront workflows (+ starter templates from fetchTemplates)
   useEffect(() => {
-    if (!user || (accountPhase !== 'buyer' && accountPhase !== 'admin')) return;
+    if (authLoading || accountPhase === 'loading') return;
+    if (accountPhase !== 'guest' && accountPhase !== 'buyer' && accountPhase !== 'admin') return;
 
     let cancelled = false;
 
@@ -193,25 +195,31 @@ export default function Browse() {
 
       setWorkflows(w);
       const ids = [...new Set(w.map((x) => x.creator_profile_id))];
-      let map: Record<string, string> = {};
+      let map: Record<string, { displayName: string; tier: string; verification_status: string }> = {};
       if (ids.length > 0) {
         const { data: cps } = await supabase
           .from('creator_profiles')
-          .select('id, display_name, full_name')
+          .select('id, display_name, full_name, tier, verification_status')
           .in('id', ids);
         map = {};
         for (const c of (cps ?? []) as {
           id?: string;
           display_name?: string | null;
           full_name?: string | null;
+          tier?: string | null;
+          verification_status?: string | null;
         }[]) {
           const id = safeStr(c.id);
           const label = `${safeStr(c.display_name)}`.trim() || safeStr(c.full_name, 'Creator').trim();
-          map[id] = label || 'Creator';
+          map[id] = {
+            displayName: label || 'Creator',
+            tier: safeStr(c.tier, 'free'),
+            verification_status: safeStr(c.verification_status, 'unverified'),
+          };
         }
       }
       if (!cancelled) {
-        setWorkflowCreators(map);
+        setWorkflowCreatorMeta(map);
         setBuyerWorkflowsLoading(false);
       }
     }
@@ -221,7 +229,7 @@ export default function Browse() {
     return () => {
       cancelled = true;
     };
-  }, [user, accountPhase]);
+  }, [authLoading, accountPhase]);
 
   const filteredPublic = useMemo(() => {
     return publicListings.filter((l) => {
@@ -238,7 +246,9 @@ export default function Browse() {
 
   const headline = useMemo(() => {
     if (accountPhase === 'creator') return 'Browse Buyer Requests';
-    if (accountPhase === 'buyer' || accountPhase === 'admin') return 'Browse Workflows';
+    if (accountPhase === 'buyer' || accountPhase === 'admin' || accountPhase === 'guest') {
+      return 'Browse Workflows';
+    }
     return 'Browse MicroBuilds';
   }, [accountPhase]);
 
@@ -264,6 +274,14 @@ export default function Browse() {
         </>
       );
     }
+    if (accountPhase === 'guest') {
+      return (
+        <>
+          Explore reusable creator workflows when available, plus labelled platform starter examples for inspiration.
+          Sign in as a buyer to track requests from your dashboard.
+        </>
+      );
+    }
     return <>Focused revenue tools for local service businesses. Filter by type or search by trade.</>;
   }, [accountPhase]);
 
@@ -274,13 +292,14 @@ export default function Browse() {
 
   const identityBusy = authLoading || (user !== null && accountPhase === 'loading');
   const creatorBusy = accountPhase === 'creator' && creatorRequestsLoading;
-  const buyerBusy = (accountPhase === 'buyer' || accountPhase === 'admin') && buyerWorkflowsLoading;
+  const workflowBrowseBusy =
+    (accountPhase === 'guest' || accountPhase === 'buyer' || accountPhase === 'admin') && buyerWorkflowsLoading;
   const templateBusy =
     accountPhase === 'guest' || accountPhase === 'incomplete' || accountPhase === 'buyer' || accountPhase === 'admin'
       ? publicLoading
       : false;
 
-  const showSkeleton = identityBusy || creatorBusy || buyerBusy || templateBusy;
+  const showSkeleton = identityBusy || creatorBusy || workflowBrowseBusy || templateBusy;
 
   return (
     <div className="browse-page">
@@ -325,13 +344,13 @@ export default function Browse() {
           (
             <BuyerWorkflowsPublicBrowse
               workflows={workflows}
-              creatorLabels={workflowCreators}
+              creatorMeta={workflowCreatorMeta}
               platformTemplates={publicListings}
               platformLoading={publicLoading}
-              platformNotice="Sample storefront templates — illustrative until more creators publish `published_workflows`."
+              platformNotice="Sample storefront templates — illustrative until more creators publish live workflows."
             />
           )
-        :
+        : accountPhase === 'guest' ?
           (
             <>
               {publicMock && !publicLoading && (
@@ -339,7 +358,6 @@ export default function Browse() {
                   Showing sample listings — live data unavailable. Check your Supabase connection and RLS policies.
                 </div>
               )}
-
               <div className="browse-controls">
                 <div className="browse-filters">
                   <button
@@ -361,46 +379,23 @@ export default function Browse() {
                 <input
                   className="browse-search"
                   type="text"
-                  placeholder="Search by trade or keyword…"
+                  placeholder="Search starter examples…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-
-              {publicLoading ?
-                (
-                  <div className="browse-loading">
-                    <div className="cards-grid">
-                      {[1, 2, 3].map((n) => (
-                        <div key={n} className="card-skeleton" />
-                      ))}
-                    </div>
-                  </div>
-                )
-              : filteredPublic.length > 0 ?
-                (
-                  <div className="cards-grid">
-                    {filteredPublic.map((listing) => (
-                      <MicroBuildCard key={listing.id} listing={listing} />
-                    ))}
-                  </div>
-                )
-              : (
-                  <div className="browse-empty">
-                    <p>No MicroBuilds match your search. Try a different keyword or filter.</p>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => {
-                        setActiveCategory('All');
-                        setSearch('');
-                      }}
-                    >
-                      Clear filters
-                    </button>
-                  </div>
-                )}
+              <BuyerWorkflowsPublicBrowse
+                workflows={workflows}
+                creatorMeta={workflowCreatorMeta}
+                platformTemplates={filteredPublic}
+                platformLoading={publicLoading}
+                platformNotice="Platform starter examples — not tied to a live creator storefront yet."
+              />
             </>
-          )}
+          )
+        : (
+          <p className="browse-empty subtle">Browse is unavailable for this account state.</p>
+        )}
       </div>
     </div>
   );

@@ -3523,7 +3523,7 @@ function AdminSectionNav() {
     { id: 'pipeline',  label: '🚀 Pipeline'  },
     { id: 'creators',  label: '👤 Creators'  },
     { id: 'profiles',  label: '🔍 Profiles'   },
-    { id: 'templates', label: '📝 Templates' },
+    { id: 'workflows-ai', label: '🤖 Workflows AI' },
     { id: 'health',    label: '📊 Health'    },
   ];
   return (
@@ -3916,6 +3916,16 @@ interface PublishedWorkflowAdminRow {
   creator_profile_id: string;
   workflow_status: string | null;
   visibility_status: string | null;
+  ai_review_status: string | null;
+  ai_quality_score: number | null;
+  ai_publish_readiness: string | null;
+  ai_review_summary: string | null;
+  ai_missing_items: string[];
+  ai_risk_flags: string[];
+  ai_suggested_improvements: string[];
+  ai_recommended_action: string | null;
+  ai_reviewed_at: string | null;
+  auto_publish_eligible: boolean | null;
 }
 
 export default function Admin() {
@@ -3942,6 +3952,9 @@ export default function Admin() {
   const [selectedReqs, setSelectedReqs]     = useState<Set<string>>(new Set());
   const [requestApplications, setRequestApplications] = useState<MarketplaceReqAppRow[]>([]);
   const [publishedWorkflowRows, setPublishedWorkflowRows] = useState<PublishedWorkflowAdminRow[]>([]);
+  const [workflowAdminTab, setWorkflowAdminTab] = useState<
+    'published' | 'ai_ok' | 'needs' | 'risk' | 'hidden' | 'all'
+  >('all');
 
   useEffect(() => {
     supabase
@@ -4038,18 +4051,53 @@ export default function Admin() {
 
     supabase
       .from('published_workflows')
-      .select('id,title,creator_profile_id,workflow_status,visibility_status')
+      .select(
+        [
+          'id',
+          'title',
+          'creator_profile_id',
+          'workflow_status',
+          'visibility_status',
+          'ai_review_status',
+          'ai_quality_score',
+          'ai_publish_readiness',
+          'ai_review_summary',
+          'ai_missing_items',
+          'ai_risk_flags',
+          'ai_suggested_improvements',
+          'ai_recommended_action',
+          'ai_reviewed_at',
+          'auto_publish_eligible',
+        ].join(','),
+      )
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) console.error('[Admin] published_workflows:', error);
         else {
           setPublishedWorkflowRows(
-            ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+            ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({
               id:                 safeText(r.id, ''),
               title:              safeText(r.title, ''),
               creator_profile_id: safeText(r.creator_profile_id),
               workflow_status:    r.workflow_status != null ? safeText(r.workflow_status) : null,
               visibility_status:  r.visibility_status != null ? safeText(r.visibility_status) : null,
+              ai_review_status:   r.ai_review_status != null ? safeText(r.ai_review_status) : null,
+              ai_quality_score:
+                typeof r.ai_quality_score === 'number' && Number.isFinite(r.ai_quality_score) ?
+                  r.ai_quality_score
+                : null,
+              ai_publish_readiness:
+                r.ai_publish_readiness != null ? safeText(r.ai_publish_readiness) : null,
+              ai_review_summary: r.ai_review_summary != null ? safeText(r.ai_review_summary) : null,
+              ai_missing_items: Array.isArray(r.ai_missing_items) ? r.ai_missing_items.map(String) : [],
+              ai_risk_flags: Array.isArray(r.ai_risk_flags) ? r.ai_risk_flags.map(String) : [],
+              ai_suggested_improvements:
+                Array.isArray(r.ai_suggested_improvements) ? r.ai_suggested_improvements.map(String) : [],
+              ai_recommended_action:
+                r.ai_recommended_action != null ? safeText(r.ai_recommended_action) : null,
+              ai_reviewed_at: r.ai_reviewed_at != null ? safeText(r.ai_reviewed_at) : null,
+              auto_publish_eligible:
+                typeof r.auto_publish_eligible === 'boolean' ? r.auto_publish_eligible : null,
             }))
           );
         }
@@ -4162,14 +4210,184 @@ export default function Admin() {
     [requestApplications],
   );
 
-  const workflowsPendingPublish = useMemo(
+  const workflowsPublishedLive = useMemo(
     () =>
       publishedWorkflowRows.filter((w) => {
         const s = safeText(w.workflow_status, '').toLowerCase();
-        return s === 'submitted_for_review';
+        const vis = safeText(w.visibility_status, '').toLowerCase();
+        return s === 'published' && vis === 'public';
       }),
     [publishedWorkflowRows],
   );
+
+  const workflowsAiApprovedQueue = useMemo(
+    () =>
+      publishedWorkflowRows.filter((w) => safeText(w.ai_review_status, '').toLowerCase() === 'ai_approved'),
+    [publishedWorkflowRows],
+  );
+
+  const workflowsNeedsImprovement = useMemo(
+    () =>
+      publishedWorkflowRows.filter(
+        (w) => safeText(w.ai_review_status, '').toLowerCase() === 'needs_improvement',
+      ),
+    [publishedWorkflowRows],
+  );
+
+  const workflowsRiskFlagged = useMemo(
+    () =>
+      publishedWorkflowRows.filter(
+        (w) => safeText(w.ai_review_status, '').toLowerCase() === 'risk_flagged',
+      ),
+    [publishedWorkflowRows],
+  );
+
+  const workflowsHidden = useMemo(
+    () =>
+      publishedWorkflowRows.filter((w) => {
+        const s = safeText(w.workflow_status, '').toLowerCase();
+        const vis = safeText(w.visibility_status, '').toLowerCase();
+        return s === 'hidden' || vis === 'hidden' || s === 'archived';
+      }),
+    [publishedWorkflowRows],
+  );
+
+  const workflowsAdminFiltered = useMemo(() => {
+    switch (workflowAdminTab) {
+      case 'published': return workflowsPublishedLive;
+      case 'ai_ok': return workflowsAiApprovedQueue;
+      case 'needs': return workflowsNeedsImprovement;
+      case 'risk': return workflowsRiskFlagged;
+      case 'hidden': return workflowsHidden;
+      default: return publishedWorkflowRows;
+    }
+  }, [
+    workflowAdminTab,
+    publishedWorkflowRows,
+    workflowsPublishedLive,
+    workflowsAiApprovedQueue,
+    workflowsNeedsImprovement,
+    workflowsRiskFlagged,
+    workflowsHidden,
+  ]);
+
+  const [workflowAdminNotice, setWorkflowAdminNotice] = useState<string | null>(null);
+
+  function creatorLabelForWorkflowProfile(cpId: string): string {
+    const id = safeText(cpId);
+    const p = creatorProfiles.find((c) => safeText(c.id) === id);
+    if (!p) return `${id.slice(0, 8)}…`;
+    const nm = `${safeText(p.display_name)}`.trim() || safeText(p.full_name, 'Creator').trim();
+    return nm || 'Creator';
+  }
+
+  async function adminWorkflowOverridePublish(id: string) {
+    setWorkflowAdminNotice(null);
+    const ts = new Date().toISOString();
+    const { error } = await supabase
+      .from('published_workflows')
+      .update({
+        workflow_status: 'published',
+        visibility_status: 'public',
+        ai_review_status: 'published',
+        updated_at: ts,
+      })
+      .eq('id', id);
+    if (error) {
+      setWorkflowAdminNotice(error.message);
+      return;
+    }
+    setPublishedWorkflowRows((prev) =>
+      prev.map((w) =>
+        w.id === id ?
+          {
+            ...w,
+            workflow_status: 'published',
+            visibility_status: 'public',
+            ai_review_status: 'published',
+          }
+        : w,
+      ),
+    );
+  }
+
+  async function adminWorkflowHide(id: string) {
+    setWorkflowAdminNotice(null);
+    const ts = new Date().toISOString();
+    const { error } = await supabase
+      .from('published_workflows')
+      .update({
+        workflow_status: 'hidden',
+        visibility_status: 'hidden',
+        updated_at: ts,
+      })
+      .eq('id', id);
+    if (error) {
+      setWorkflowAdminNotice(error.message);
+      return;
+    }
+    setPublishedWorkflowRows((prev) =>
+      prev.map((w) =>
+        w.id === id ?
+          { ...w, workflow_status: 'hidden', visibility_status: 'hidden' }
+        : w,
+      ),
+    );
+  }
+
+  async function adminWorkflowArchive(id: string) {
+    setWorkflowAdminNotice(null);
+    const ts = new Date().toISOString();
+    const { error } = await supabase
+      .from('published_workflows')
+      .update({
+        workflow_status: 'archived',
+        visibility_status: 'hidden',
+        updated_at: ts,
+      })
+      .eq('id', id);
+    if (error) {
+      setWorkflowAdminNotice(error.message);
+      return;
+    }
+    setPublishedWorkflowRows((prev) =>
+      prev.map((w) =>
+        w.id === id ?
+          { ...w, workflow_status: 'archived', visibility_status: 'hidden' }
+        : w,
+      ),
+    );
+  }
+
+  async function adminWorkflowMarkNeedsImprovement(id: string) {
+    setWorkflowAdminNotice(null);
+    const ts = new Date().toISOString();
+    const { error } = await supabase
+      .from('published_workflows')
+      .update({
+        workflow_status: 'draft',
+        visibility_status: 'hidden',
+        ai_review_status: 'needs_improvement',
+        updated_at: ts,
+      })
+      .eq('id', id);
+    if (error) {
+      setWorkflowAdminNotice(error.message);
+      return;
+    }
+    setPublishedWorkflowRows((prev) =>
+      prev.map((w) =>
+        w.id === id ?
+          {
+            ...w,
+            workflow_status: 'draft',
+            visibility_status: 'hidden',
+            ai_review_status: 'needs_improvement',
+          }
+        : w,
+      ),
+    );
+  }
 
   const buyerSelectedOrdersCount = useMemo(
     () => orders.filter((o) => safeText(o.selection_method, '').toLowerCase() === 'buyer_selected').length,
@@ -4276,8 +4494,12 @@ export default function Admin() {
               <span className="metric-label">Orders where selection_method = buyer_selected</span>
             </div>
             <div className="metric-card metric-card-slim">
-              <span className="metric-value">{workflowsPendingPublish.length}</span>
-              <span className="metric-label">Workflow submissions needing review</span>
+              <span className="metric-value">{workflowsPublishedLive.length}</span>
+              <span className="metric-label">Workflows live on buyer Browse</span>
+            </div>
+            <div className="metric-card metric-card-slim">
+              <span className="metric-value">{workflowsRiskFlagged.length}</span>
+              <span className="metric-label">Workflows AI risk-flagged (hidden)</span>
             </div>
           </div>
           <p className="admin-market-muted">
@@ -4301,6 +4523,115 @@ export default function Admin() {
               </tbody>
             </table>
           </details>
+        </section>
+
+        <section className="admin-section" id="section-workflows-ai">
+          <div className="admin-section-header">
+            <h2>Workflow AI overview</h2>
+            {!profilesLoading && (
+              <span className="admin-count">{publishedWorkflowRows.length}</span>
+            )}
+          </div>
+          <p className="admin-market-desc">
+            Creators pass through rules-based AI review before buyer-facing Browse. These controls are secondary —
+            prefer letting creators iterate on AI feedback unless you need compliance or safety overrides.
+          </p>
+          {workflowAdminNotice ?
+            <div className="admin-auth-warning">
+              <strong>Workflow action error:</strong> {workflowAdminNotice}
+            </div>
+          : null}
+
+          <div className="req-filter-bar" style={{ marginBottom: '1rem' }}>
+            {(
+              [
+                ['all', 'All workflows', publishedWorkflowRows.length],
+                ['published', 'Published (live)', workflowsPublishedLive.length],
+                ['ai_ok', 'AI approved queue', workflowsAiApprovedQueue.length],
+                ['needs', 'Needs improvement', workflowsNeedsImprovement.length],
+                ['risk', 'Risk flagged', workflowsRiskFlagged.length],
+                ['hidden', 'Hidden / delisted', workflowsHidden.length],
+              ] as const
+            ).map(([key, label, count]) => (
+              <button
+                key={key}
+                type="button"
+                className={`req-filter-tab${workflowAdminTab === key ? ' active' : ''}`}
+                onClick={() => setWorkflowAdminTab(key)}
+              >
+                {label}
+                <span className="req-filter-count">{count}</span>
+              </button>
+            ))}
+          </div>
+
+          {workflowsAdminFiltered.length === 0 ?
+            <div className="admin-state-row admin-empty">No workflows in this filter.</div>
+          : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="admin-market-mini-table">
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Creator</th>
+                    <th>WF status</th>
+                    <th>AI status</th>
+                    <th>Score</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workflowsAdminFiltered.slice(0, 50).map((w) => (
+                    <tr key={w.id}>
+                      <td>{safeText(w.title)}</td>
+                      <td>{creatorLabelForWorkflowProfile(w.creator_profile_id)}</td>
+                      <td>{safeText(w.workflow_status, '—')}</td>
+                      <td>{safeText(w.ai_review_status, '—')}</td>
+                      <td>{w.ai_quality_score ?? '—'}</td>
+                      <td>
+                        <details style={{ maxWidth: 280 }}>
+                          <summary className="subtle">View AI review</summary>
+                          <div style={{ marginTop: '0.35rem', fontSize: '0.78rem' }}>
+                            <p>{safeText(w.ai_review_summary, '—')}</p>
+                            <p>{safeText(w.ai_recommended_action, '')}</p>
+                            {w.ai_risk_flags.length > 0 ?
+                              (
+                                <p>
+                                  <strong>Risks:</strong> {w.ai_risk_flags.join('; ')}
+                                </p>
+                              )
+                            : null}
+                          </div>
+                        </details>
+                        <div className="wf-admin-row-actions">
+                          <button
+                            type="button"
+                            className="batch-btn"
+                            onClick={() => void adminWorkflowOverridePublish(w.id)}
+                          >
+                            Override publish
+                          </button>
+                          <button type="button" className="batch-btn" onClick={() => void adminWorkflowHide(w.id)}>
+                            Hide
+                          </button>
+                          <button type="button" className="batch-btn" onClick={() => void adminWorkflowArchive(w.id)}>
+                            Archive
+                          </button>
+                          <button
+                            type="button"
+                            className="batch-btn"
+                            onClick={() => void adminWorkflowMarkNeedsImprovement(w.id)}
+                          >
+                            Mark needs improvement
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         {/* ── Today's AI Focus ─────────────────────────────────────────────── */}

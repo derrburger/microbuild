@@ -19,6 +19,8 @@ import DashboardAnalytics from './pages/DashboardAnalytics';
 import DashboardSettings from './pages/DashboardSettings';
 import DashboardBrowse from './pages/DashboardBrowse';
 import DashboardApplications from './pages/DashboardApplications';
+import DashboardWorkflows from './pages/DashboardWorkflows';
+import DashboardWorkflowEdit from './pages/DashboardWorkflowEdit';
 import DashboardProjectWorkspace from './pages/DashboardProjectWorkspace';
 import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
@@ -58,6 +60,8 @@ export default function App() {
               <Route path="analytics" element={<DashboardAnalytics />} />
               <Route path="settings" element={<DashboardSettings />} />
               <Route path="applications" element={<DashboardApplications />} />
+              <Route path="workflows" element={<DashboardWorkflows />} />
+              <Route path="workflows/:id/edit" element={<DashboardWorkflowEdit />} />
               <Route path="browse" element={<DashboardBrowse />} />
               <Route path="projects/:id" element={<DashboardProjectWorkspace />} />
             </Route>

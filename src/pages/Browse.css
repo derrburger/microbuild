@@ -160,3 +160,46 @@
     width: 100%;
   }
 }
+
+.mb-workflow-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.mb-workflow-ai-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(0, 212, 120, 0.12);
+  color: var(--accent, #00d478);
+  border: 1px solid rgba(0, 212, 120, 0.25);
+}
+
+.mb-workflow-ai-pill--muted {
+  background: rgba(99, 179, 237, 0.1);
+  color: #63b3ed;
+  border-color: rgba(99, 179, 237, 0.28);
+}
+
+.mb-workflow-tier {
+  text-transform: capitalize;
+  opacity: 0.85;
+}
+
+.mb-workflow-verified {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #00d478;
+}
+
+.mb-workflow-desc,
+.mb-workflow-features {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 0.35rem 0 0;
+}

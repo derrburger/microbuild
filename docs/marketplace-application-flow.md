@@ -2,9 +2,9 @@
 
 ## Primary product direction (v1 foundation)
 
-MicroBuild is shifting from admin-only assignment to an **optional marketplace**: buyers post **open requests**, creators **apply**, buyers **pick** a creator, and the system **instantiates / updates** the pipeline `orders` row. Admin still **observes**, can **fallback-assign**, **override**, and manages **workflow publishing**.
+MicroBuild is shifting from admin-only assignment to an **optional marketplace**: buyers post **open requests**, creators **apply**, buyers **pick** a creator, and the system **instantiates / updates** the pipeline `orders` row. Admin still **observes**, can **fallback-assign**, **override**, and provides **AI oversight** on published workflows — but **workflow publishing is AI-first**, not an admin approval queue.
 
-This document summarizes the marketplace foundation introduced with `marketplace-application-foundation.sql`, **`/browse` role-aware storefront routing**, **`/dashboard/applications` creator history**, and the legacy shim **`/dashboard/browse` → redirect**.
+This document summarizes the marketplace foundation introduced with `marketplace-application-foundation.sql`, **`workflow-ai-review-fields.sql`** (additive AI columns on `published_workflows`), **`/browse` role-aware storefront routing**, **`/dashboard/applications` creator history**, **`/dashboard/workflows` creator workflow studio**, and the legacy shim **`/dashboard/browse` → redirect**.
 
 ---
 
@@ -14,7 +14,13 @@ This document summarizes the marketplace foundation introduced with `marketplace
 2. Open requests accept **creator voluntary applications** via `request_applications`.
 3. Buyer reviews applicants in **Dashboard → My Requests & Applicants** (expand per request — budget, deadline, marketplace status, selected creator when set, link to workspace when an order exists).
 4. Buyer taps **Select creator** → sibling active applications → `rejected`; winner → `buyer_selected`; `buyer_requests` → `creator_selected` + `visibility_status = creator_selected`; **`orders`** row created or updated (no duplicate per `request_id`) with **`creator_id`**, **`request_application_id`**, **`selection_method = buyer_selected`**, **`order_status = assigned`** (application row also mirrors **`order_id`** when synced).
-5. **Buyer Browse** (**`/browse`**) lists `published_workflows` that are published + publicly visible plus a clearly labelled block of platform starter listings when storefront rows are sparse.
+5. **Buyer Browse** (**`/browse`**) lists **`published_workflows`** that meet **all** of:
+   - `workflow_status = published`
+   - `visibility_status = public`
+   - `ai_review_status` in **`published`** or **`ai_approved`**
+   - **no** `ai_risk_flags` (client-side defense in list loader)
+   
+   When no rows qualify, buyers see **“Reusable creator workflows are coming soon.”** Under that, **Platform starter examples** (curated template cards) stay clearly labelled as platform content.
 
 **Messaging v2 (central inbox):** Buyers & creators use **`/messages`** (linked from **`💬 Messages`** in top nav once signed-in). Rows are inferred from **`request_applications`** + **`orders`**; messages stay in **`project_messages`**. Prefer **`order_id`** as the inbox anchor whenever a matched project ties the buyer request + creator; otherwise show an **application** thread. Threads **merge** request-phase (**no `order_id`**) and order-phase (**`order_id`)** participant rows for one continuous chat per pairing. **`admin`** accounts see an intentionally **empty inbox** until moderation tooling exists (admin doesn’t silently read creator/buyer DMs).
 
@@ -24,17 +30,41 @@ This document summarizes the marketplace foundation introduced with `marketplace
 
 1. Top navigation **Buyer Requests** (same route **`/browse`**) exposes **Browse Buyer Requests** cards with Apply / eligibility messaging.
 2. **Dashboard · Applications (`/dashboard/applications`)** summarizes + lists that creator's `request_applications` (distinct from discovering new open scopes).
-3. Creator submits lightweight application (proposal, fit, timeline, optional price/link/questions).
-4. Duplicate **active** applications are blocked (`submitted` / `shortlisted` / `buyer_selected`).
-5. When a buyer selects them, the linked `orders` row appears in the existing Creator Project Pipeline/workspace. **Dashboard · Applications** shows **Open Project Workspace** when `order_id` is linked; **Message buyer** links jump to **`/messages`** for that **`buyer_request_id` × creator**.
+3. **Dashboard · Workflows (`/dashboard/workflows`)** — approved creators author **`published_workflows`**: drafts, AI review, improvement loop, optional publish after AI approval or auto-publish when the rules engine clears the top band.
+4. Creator submits lightweight application (proposal, fit, timeline, optional price/link/questions).
+5. Duplicate **active** applications are blocked (`submitted` / `shortlisted` / `buyer_selected`).
+6. When a buyer selects them, the linked `orders` row appears in the existing Creator Project Pipeline/workspace. **Dashboard · Applications** shows **Open Project Workspace** when `order_id` is linked; **Message buyer** links jump to **`/messages`** for that **`buyer_request_id` × creator**.
 
-Creators publish reusable storefront templates through `published_workflows` going forward — UI for authoring stays incremental in later milestones.
+---
+
+## AI-first published workflows (rules-based v1)
+
+- **Library:** `src/lib/workflowAI.ts` — scoring, missing items, risk flags, readiness label, recommended action, suggested improvements, auto-publish eligibility. **No external AI APIs** in the browser.
+- **Persistence:** `published_workflows` columns from **`workflow-ai-review-fields.sql`**: `ai_review_status`, `ai_quality_score`, `ai_publish_readiness`, `ai_review_summary`, `ai_missing_items`, `ai_risk_flags`, `ai_suggested_improvements`, `ai_recommended_action`, `ai_reviewed_at`, `auto_publish_eligible`.
+- **Creator actions:**
+  - **Save draft** — content fields only; lifecycle defaults remain `workflow_status = draft`, `visibility_status = hidden`, AI reset/`not_reviewed` on create (insert defaults).
+  - **Run AI review** — writes AI fields **without** advancing publish state (preview / refresh).
+  - **Submit for AI review** — runs the engine and applies lifecycle:
+    - **Risk flags** → `ai_review_status = risk_flagged`, `workflow_status = hidden`, `visibility_status = hidden` (stays off buyer Browse).
+    - **Score ≥ 85 & no risks** → auto-publish: `workflow_status = published`, `visibility_status = public`, `ai_review_status = published`.
+    - **Score 70–84 & no risks** → `ai_review_status = ai_approved`, `workflow_status = submitted_for_review`, `visibility_status = hidden`; creator may **Publish (AI approved)** to flip to live storefront + `ai_review_status = published`.
+    - **Below thresholds** → `ai_review_status = needs_improvement`, back to **draft** / hidden with checklist surfaced in-dashboard.
+- **Admin:** **`/admin` → Workflow AI overview** — filters (published live, AI-approved queue, needs improvement, risk-flagged, hidden). Actions are **secondary**: view stored AI summary, **override publish**, **hide**, **archive**, **mark needs improvement**. Primary path remains creator ↔ AI loop.
+
+### AI review status values (documented target set)
+
+`not_reviewed`, `needs_review`, `ai_approved`, `needs_improvement`, `risk_flagged`, `published`, plus alignment aliases `hidden`, `rejected`, `archived` reserved for overrides / archival flows.
+
+### Publish readiness labels
+
+`not_ready`, `needs_work`, `almost_ready`, `ready`, `public_ready` — populated by the rules engine (see `workflowAI.ts`).
 
 ---
 
 ## Admin flow
 
-- `/admin` includes a **Marketplace foundation oversight** panel with counts pulled from Supabase joins (open requests accepting bids, awaiting buyer/admin attention on applications, workflows submitted for review, buyer-selected pipeline rows).
+- `/admin` includes a **Marketplace foundation oversight** panel with counts pulled from Supabase (open requests accepting bids, applications awaiting buyer/admin attention, **workflows live on Browse**, **risk-flagged workflows**, buyer-selected pipeline rows).
+- **Workflow AI overview** section — AI-first posture; admin is **oversight / override**, not the default publisher.
 - **Manual assignment fallback** persists through existing admin pipeline actions and should be positioned as escalation rather than implying it is the only fulfillment path.
 
 Overrides (hide/close buyer requests, reassign creators) reuse existing buyer request + order tooling; broaden `buyer_requests` marketplace columns as needed operationally via SQL/UI next phases.
@@ -48,7 +78,7 @@ Buyer/creator **`project_messages`** are visible in-product; **moderation dashbo
 | Table | Purpose |
 |-------|---------|
 | `request_applications` | Creator interest rows tied to buyer requests (`application_status`). |
-| `published_workflows` | Creator-published reusable storefront flows for buyer browse (workflow + visibility enums). |
+| `published_workflows` | Creator-published reusable storefront flows for buyer browse (`workflow_status`, `visibility_status`) **+ AI review columns** (`workflow-ai-review-fields.sql`). |
 | `project_messages` | Refresh-based buyer/creator/admin notes around requests/orders (`message_type`, `visibility`). |
 | Extended `buyer_requests` fields | Tracks marketplace openness, counters, pointers to selections. |
 | Extended `orders` fields | Tracks buyer vs admin vs system lineage (`selection_method`, `selected_by_buyer`, `request_application_id`). |
@@ -61,13 +91,13 @@ Partial unique index enforces single **active** application per `(buyer_request_
 
 | Account | Primary Browse surface | Creator discovery vs history |
 |---------|-----------------------|------------------------------|
-| Creator signed-in | `/browse` title **Browse Buyer Requests** · open scopes + Apply | Track submissions at `/dashboard/applications` |
-| Buyer / Admin signed-in | `/browse` title **Browse Workflows** (`published_workflows` + labelled starters) | Own requests/applicants stay on Dashboard |
-| Logged-out / onboarding incomplete | `/browse` unchanged public template grid **or** onboarding prompt when profile missing |
+| Creator signed-in | `/browse` title **Browse Buyer Requests** · open scopes + Apply | **`/dashboard/applications`** (applications) · **`/dashboard/workflows`** (published workflows) |
+| Buyer / Admin signed-in | `/browse` title **Browse Workflows** · AI-visible `published_workflows` + **Platform starter examples** | Own requests/applicants stay on Dashboard |
+| Logged-out | `/browse` **Browse Workflows** — same public workflow slice when available + starter examples (filters apply to starter grid); sign-in still required for dashboard flows |
 
 Legacy **`/dashboard/browse`** now redirects: creators ⇒ `/dashboard/applications`, buyers/admin ⇒ `/browse`.
 
-Dashboard secondary nav reinforces the split — creators see **Applications**, buyers/admins retain **Browse** pointing at `/browse`.
+Dashboard secondary nav — creators see **Applications** + **Workflows**; buyers/admins retain **Browse** pointing at `/browse`.
 
 ---
 
@@ -108,8 +138,8 @@ Legacy admin assignment retains `selection_method = 'admin_assigned'`.
 ## Next build phases
 
 1. Harden Row Level Security (replace TEMP DEV marketplace policies).
-2. Creator authoring UI for published workflows + SEO slugs + admin publish approval workflow.
-3. Stripe quotes/payments tying `proposed_price` → executed agreements.
+2. Move workflow AI scoring server-side (**Supabase Edge Functions**) + optional real models; keep browser thin.
+3. Stripe quotes/payments tying `proposed_price` → executed agreements (`published_workflows` checkout remains deferred).
 4. Realtime inbox + moderation tooling (`admin_only`, participant nuances).
 
 ---

@@ -16,6 +16,7 @@ export default function Navbar() {
   const browseLabel =
     profileLoading ? 'Browse' :
     user && isCreator ? 'Buyer Requests'
+    : user ? 'Browse workflows'
     : 'Browse';
 
   const close = () => { setMenuOpen(false); setUserMenu(false); };

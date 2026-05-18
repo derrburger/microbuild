@@ -62,6 +62,25 @@ export type PublishedWorkflowStatus =
 
 export type PublishedWorkflowVisibilityStatus = 'hidden' | 'public' | 'paused';
 
+/** Rules-based AI workflow review lifecycle (workflow-ai-review-fields.sql) */
+export type WorkflowAiReviewStatus =
+  | 'not_reviewed'
+  | 'needs_review'
+  | 'ai_approved'
+  | 'needs_improvement'
+  | 'risk_flagged'
+  | 'published'
+  | 'hidden'
+  | 'rejected'
+  | 'archived';
+
+export type WorkflowAiPublishReadiness =
+  | 'not_ready'
+  | 'needs_work'
+  | 'almost_ready'
+  | 'ready'
+  | 'public_ready';
+
 export type ProjectMessageType =
   | 'general'
   | 'question'
@@ -431,6 +450,16 @@ export interface PublishedWorkflowRow {
   workflow_status: PublishedWorkflowStatus | string;
   visibility_status: PublishedWorkflowVisibilityStatus | string;
   admin_notes: string | null;
+  ai_review_status?: WorkflowAiReviewStatus | string | null;
+  ai_quality_score?: number | null;
+  ai_publish_readiness?: WorkflowAiPublishReadiness | string | null;
+  ai_review_summary?: string | null;
+  ai_missing_items?: string[] | null;
+  ai_risk_flags?: string[] | null;
+  ai_suggested_improvements?: string[] | null;
+  ai_recommended_action?: string | null;
+  ai_reviewed_at?: string | null;
+  auto_publish_eligible?: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -483,6 +512,16 @@ export interface PublishedWorkflowInsert {
   cover_image_url?: string | null;
   workflow_status?: PublishedWorkflowStatus | string;
   visibility_status?: PublishedWorkflowVisibilityStatus | string;
+  ai_review_status?: WorkflowAiReviewStatus | string;
+  ai_quality_score?: number | null;
+  ai_publish_readiness?: WorkflowAiPublishReadiness | string;
+  ai_review_summary?: string | null;
+  ai_missing_items?: string[] | null;
+  ai_risk_flags?: string[] | null;
+  ai_suggested_improvements?: string[] | null;
+  ai_recommended_action?: string | null;
+  ai_reviewed_at?: string | null;
+  auto_publish_eligible?: boolean | null;
 }
 
 export interface ProjectMessageInsert {

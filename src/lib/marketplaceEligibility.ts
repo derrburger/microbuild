@@ -34,3 +34,11 @@ export function creatorEligibleForApplying(p: CreatorProfileRow | null): { ok: b
 
   return { ok: true, message: '' };
 }
+
+/** Same eligibility gate as marketplace applications — authoring published workflows. */
+export function creatorEligibleForWorkflowAuthoring(p: CreatorProfileRow | null): {
+  ok: boolean;
+  message: string;
+} {
+  return creatorEligibleForApplying(p);
+}

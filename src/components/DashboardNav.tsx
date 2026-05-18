@@ -25,13 +25,22 @@ export default function DashboardNav() {
         )
       : isCreator ?
         (
-          <NavLink
-            to="/dashboard/applications"
-            className={({ isActive }) =>
-              `dash-nav-link${isActive ? ' dash-nav-link--active' : ''}`}
-          >
-            Applications
-          </NavLink>
+          <>
+            <NavLink
+              to="/dashboard/applications"
+              className={({ isActive }) =>
+                `dash-nav-link${isActive ? ' dash-nav-link--active' : ''}`}
+            >
+              Applications
+            </NavLink>
+            <NavLink
+              to="/dashboard/workflows"
+              className={({ isActive }) =>
+                `dash-nav-link${isActive ? ' dash-nav-link--active' : ''}`}
+            >
+              Workflows
+            </NavLink>
+          </>
         )
       : (
           <NavLink
