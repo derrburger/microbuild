@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -644,11 +644,14 @@ interface BuyerRequest {
   budget: string | null;
   deadline: string | null;
   main_goal: string | null;
+  current_problem?: string | null;
   industry: string | null;
   website_social: string | null;
   applications_count?: number | null;
   application_status?: string | null;
   selected_creator_profile_id?: string | null;
+  selected_request_application_id?: string | null;
+  user_id?: string | null;
 }
 
 // ─── Buyer: project journey (friendly labels) ──────────────────────────────────
@@ -974,36 +977,59 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
   const [deliverables, setDeliverables] = useState<Record<string, DeliverablePlaceholder>>({});
   const [loadingReqs,  setLoadingReqs]  = useState(true);
 
-  useEffect(() => {
-    supabase
+  const loadBuyerRequests = useCallback(async () => {
+    setLoadingReqs(true);
+    const email = userProfile.email;
+    const uid = userProfile.auth_user_id;
+
+    let q = supabase
       .from('buyer_requests')
       .select(
-        'id, business_name, build_type, status, created_at, budget, deadline, main_goal, industry, website_social, applications_count, application_status, selected_creator_profile_id',
+        'id, business_name, build_type, status, created_at, budget, deadline, main_goal, current_problem, industry, website_social, applications_count, application_status, selected_creator_profile_id, selected_request_application_id, user_id',
       )
-      .eq('email', userProfile.email)
       .order('created_at', { ascending: false })
-      .limit(10)
-      .then(({ data }) => {
-        const reqs = (data as BuyerRequest[]) ?? [];
-        setRequests(reqs);
-        setLoadingReqs(false);
-        // Fetch linked orders once we have request IDs
-        if (reqs.length > 0) {
-          fetchOrdersByRequestIds(reqs.map((r) => r.id)).then((ords) => {
-            setOrders(ords);
-            const oids = ords.map((o) => o.id);
-            if (oids.length > 0) {
-              fetchDeliverablesByOrderIds(oids).then(setDeliverables);
-            } else {
-              setDeliverables({});
-            }
-          });
-        } else {
-          setOrders([]);
-          setDeliverables({});
-        }
-      });
-  }, [userProfile.email]);
+      .limit(20);
+
+    if (uid) {
+      q = q.or(`email.eq.${email},user_id.eq.${uid}`);
+    } else {
+      q = q.eq('email', email);
+    }
+
+    const { data, error } = await q;
+    if (error) {
+      console.error('[Dashboard] buyer_requests load:', error);
+      setRequests([]);
+      setOrders([]);
+      setDeliverables({});
+      setLoadingReqs(false);
+      return;
+    }
+
+    const reqs = (data as BuyerRequest[]) ?? [];
+    setRequests(reqs);
+
+    if (reqs.length > 0) {
+      const ords = await fetchOrdersByRequestIds(reqs.map((r) => r.id));
+      setOrders(ords);
+      const oids = ords.map((o) => o.id);
+      if (oids.length > 0) {
+        const dels = await fetchDeliverablesByOrderIds(oids);
+        setDeliverables(dels);
+      } else {
+        setDeliverables({});
+      }
+    } else {
+      setOrders([]);
+      setDeliverables({});
+    }
+
+    setLoadingReqs(false);
+  }, [userProfile.email, userProfile.auth_user_id]);
+
+  useEffect(() => {
+    void loadBuyerRequests();
+  }, [loadBuyerRequests]);
 
   const orderByRequestId = useMemo<Record<string, OrderPipelineRow>>(() => {
     const map: Record<string, OrderPipelineRow> = {};
@@ -1047,7 +1073,16 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
       {/* Status overview cards */}
       <BuyerStatusOverview requests={requests} loadingReqs={loadingReqs} />
 
-      {!loadingReqs ? <MarketplaceApplicantsPanel buyerProfile={userProfile} requests={requests} /> : null}
+      {!loadingReqs ?
+        (
+          <MarketplaceApplicantsPanel
+            buyerProfile={userProfile}
+            requests={requests}
+            ordersByRequestId={orderByRequestId}
+            onMarketplaceEvent={loadBuyerRequests}
+          />
+        )
+      : null}
 
       {/* Active requests with timeline */}
       <div className="buyer-section">

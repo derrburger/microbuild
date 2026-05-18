@@ -584,20 +584,59 @@ export async function selectCreatorForRequest(params: {
 
   const { data: appRaw, error: appErr } = await supabase
     .from('request_applications')
-    .select('id, buyer_request_id, creator_profile_id')
+    .select('id, buyer_request_id, creator_profile_id, application_status')
     .eq('id', params.requestApplicationId)
     .maybeSingle();
 
   if (appErr || !appRaw) return { ok: false, error: 'Application not found.' };
 
-  const app = appRaw as { id: string; buyer_request_id: string; creator_profile_id: string };
+  const app = appRaw as {
+    id: string;
+    buyer_request_id: string;
+    creator_profile_id: string;
+    application_status?: string | null;
+  };
   if (app.buyer_request_id !== params.buyerRequestId) {
     return { ok: false, error: 'Application does not match this request.' };
   }
 
+  const appSt = normalizeText(app.application_status).toLowerCase();
+
   const { data: br } = await supabase.from('buyer_requests').select('*').eq('id', params.buyerRequestId).maybeSingle();
   const request = br as BuyerRequestRow | null;
   if (!request) return { ok: false, error: 'Request not found.' };
+
+  const reqAppSt = normalizeText(request.application_status).toLowerCase();
+  const existingPick = normalizeText(request.selected_request_application_id);
+
+  if (
+    appSt === 'buyer_selected' &&
+    app.id === params.requestApplicationId &&
+    reqAppSt === 'creator_selected' &&
+    existingPick === params.requestApplicationId
+  ) {
+    const orderRes = await createOrUpdateOrderFromSelectedApplication({
+      buyerRequest: request,
+      creatorProfileId: app.creator_profile_id,
+      requestApplicationId: params.requestApplicationId,
+      buyerDbUserId: request.user_id,
+    });
+    if (!orderRes.ok) return { ok: false, error: orderRes.error ?? 'Could not sync project order.' };
+    await syncBuyerRequestApplicationCount(params.buyerRequestId);
+    return { ok: true, error: null };
+  }
+
+  if (!['submitted', 'shortlisted'].includes(appSt)) {
+    return { ok: false, error: 'This application cannot be selected in its current state.' };
+  }
+
+  if (
+    existingPick &&
+    existingPick !== params.requestApplicationId &&
+    ['creator_selected', 'in_progress', 'completed'].includes(reqAppSt)
+  ) {
+    return { ok: false, error: 'A creator is already selected for this request.' };
+  }
 
   await supabase
     .from('request_applications')
@@ -621,6 +660,7 @@ export async function selectCreatorForRequest(params: {
       selected_creator_profile_id: app.creator_profile_id,
       selected_request_application_id: params.requestApplicationId,
       application_status: 'creator_selected',
+      visibility_status: 'creator_selected',
       updated_at: new Date().toISOString(),
     })
     .eq('id', params.buyerRequestId);
@@ -658,7 +698,13 @@ export async function createOrUpdateOrderFromSelectedApplication(params: {
     orderId = created.id;
   }
 
-  await assignCreatorToOrder(orderId, params.creatorProfileId);
+  const assigned = await assignCreatorToOrder(orderId, params.creatorProfileId);
+  if (!assigned) return { ok: false, error: 'Could not assign creator to project order.' };
+
+  const titleFromRequest = normalizeText(params.buyerRequest.business_name)
+    ? `MicroBuild — ${normalizeText(params.buyerRequest.business_name)}`
+    : null;
+  const typeFromRequest = normalizeText(params.buyerRequest.build_type) || null;
 
   const { error } = await supabase
     .from('orders')
@@ -668,6 +714,9 @@ export async function createOrUpdateOrderFromSelectedApplication(params: {
       selection_method: 'buyer_selected',
       updated_at: new Date().toISOString(),
       order_status: 'assigned',
+      creator_id: params.creatorProfileId,
+      ...(titleFromRequest ? { project_title: titleFromRequest } : {}),
+      ...(typeFromRequest ? { project_type: typeFromRequest } : {}),
     })
     .eq('id', orderId);
 

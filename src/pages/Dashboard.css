@@ -1831,12 +1831,21 @@
   margin-top: 0.65rem;
   padding-top: 0.65rem;
   border-top: 1px dashed var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .mb-next-step-chip {
+  flex: 1 1 100%;
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.mb-open-workspace-btn {
+  margin-left: 0;
 }
 
 .mb-status-pill {
@@ -1873,4 +1882,72 @@
 
 .buyer-muted-hint.subtle {
   opacity: 0.85;
+}
+
+.mb-applicants-summary-btn--rich {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) auto auto auto;
+}
+
+.mb-applicants-mkt {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.mb-request-inline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.1rem;
+  font-size: 0.76rem;
+  padding: 0.25rem 0.85rem 0.4rem;
+  color: var(--text-secondary);
+}
+
+.mb-selected-creator-inline strong {
+  color: var(--accent);
+}
+
+.mb-inline-project-link {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.mb-inline-project-link:hover {
+  text-decoration: underline;
+}
+
+.mb-request-goal-preview {
+  margin: 0.2rem 0.85rem 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.mb-request-messages-block {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  margin: 0.35rem 0 0.65rem;
+  background: var(--surface-2);
+}
+
+.mb-request-messages-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  margin-bottom: 0.35rem;
+}
+
+.mb-applicant-fields {
+  margin: 0.25rem 0;
+}
+
+.mb-applicant-portfolio {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+}
+
+.mb-applicant-workspace-hint {
+  margin-top: 0.45rem;
+  font-size: 0.78rem;
 }

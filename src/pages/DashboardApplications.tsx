@@ -246,6 +246,11 @@ export default function DashboardApplications() {
                 req?.main_goal?.trim()
                 || safeStr((a as { buyer_goal?: unknown }).buyer_goal, '—');
 
+              const fitReason = safeStr(a.fit_reason, '').trim();
+              const questions = safeStr(a.creator_questions, '').trim();
+              const problem = req?.current_problem?.trim() || '—';
+              const orderId = typeof a.order_id === 'string' && a.order_id.trim() ? a.order_id.trim() : null;
+
               const price =
                 a.proposed_price != null && isFinite(Number(a.proposed_price)) ?
                   `$${Number(a.proposed_price)}`
@@ -268,13 +273,33 @@ export default function DashboardApplications() {
                     {buildLabel}
                   </p>
                   <p className="mb-card-goal">
-                    <span className="mb-card-strong">Buyer goal / problem: </span>
+                    <span className="mb-card-strong">Goal: </span>
                     {goal}
+                  </p>
+                  <p className="mb-card-goal">
+                    <span className="mb-card-strong">Challenge: </span>
+                    {problem}
                   </p>
                   <p className="mb-card-goal">
                     <span className="mb-card-strong">Proposal: </span>
                     {safeStr(a.proposal_message, '—').slice(0, 560)}
                   </p>
+                  {fitReason ?
+                    (
+                      <p className="mb-card-goal">
+                        <span className="mb-card-strong">Fit reason: </span>
+                        {fitReason}
+                      </p>
+                    )
+                  : null}
+                  {questions ?
+                    (
+                      <p className="mb-card-goal">
+                        <span className="mb-card-strong">Your questions (to buyer): </span>
+                        {questions}
+                      </p>
+                    )
+                  : null}
 
                   <div className="mb-card-row mb-card-grid-2">
                     <span className="mb-card-row-label">Timeline</span>
@@ -285,6 +310,16 @@ export default function DashboardApplications() {
 
                   <footer className="mb-application-footer">
                     <span className="mb-next-step-chip">{nextStep(st)}</span>
+                    {st === 'buyer_selected' && orderId ?
+                      (
+                        <Link className="btn btn-primary btn-sm mb-open-workspace-btn" to={`/dashboard/projects/${orderId}`}>
+                          Open Project Workspace
+                        </Link>
+                      )
+                    : null}
+                    <button type="button" className="btn btn-ghost btn-sm" disabled title="Unified inbox coming soon">
+                      Message buyer (placeholder)
+                    </button>
                   </footer>
                 </article>
               );

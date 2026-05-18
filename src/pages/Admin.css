@@ -2113,6 +2113,18 @@
   flex-shrink: 0;
   flex-wrap: wrap;
 }
+.order-badge-buyer-selected {
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 0.18rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 212, 120, 0.45);
+  color: #00d478;
+  background: rgba(0, 212, 120, 0.1);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
 .order-status-badge,
 .order-payment-badge {
   font-size: 0.68rem;

@@ -113,7 +113,8 @@ function WorkspaceRequestMessagesStub({
     <section className="dpw-card dpw-card--msgs">
       <h2 className="dpw-card-title">Buyer / creator notes</h2>
       <p className="dpw-muted">
-        Lightweight messages on this buyer request — manual refresh after send (no realtime channel yet).
+        Lightweight messages on this buyer request — manual refresh after send. Realtime inbox and full threading remain on
+        the roadmap (<strong>Messages foundation v1</strong>).
       </p>
       <p className="dpw-msg-preview subtle">{preview}</p>
       {sendErr ? (

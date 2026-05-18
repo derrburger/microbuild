@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Marketplace Application Foundation v1 — **role-aware `/browse`** (creators open buyer requests, buyers workflows + starters, guests platform templates); **creator Applications** dashboard at **`/dashboard/applications`**; **`/dashboard/browse` redirects** to the right surface; applicant review + duplicate-safe apply flow; buyer selection creates/updates `orders`; rules-based summaries in `src/lib/marketplace.ts`; TEMP DEV marketplace RLS flagged in migration; realtime chat + Stripe still deferred. Existing buyer request, onboarding, creator pipeline/admin assignment, and workspace flows preserved. Build passes.
+**Status:** Marketplace **Buyer Applicant Review + Selection v1** — end-to-end apply → review → **Select creator** updates `buyer_requests` (`application_status`, `visibility_status`, selection pointers) and **`orders`** (single row per `request_id`, `selection_method = buyer_selected`); **My Requests & Applicants** loads requests by **email or `user_id`**; creator **Applications** links to workspace when `order_id` exists; admin pipeline shows **Buyer-selected** badge; messaging is refresh-only / placeholders as documented.
 
 
 ### Marketplace Application Foundation v1
@@ -12,8 +12,8 @@ A marketplace for focused, affordable web tools built for local service business
 |---------|--------|
 | SQL | `supabase/migrations/marketplace-application-foundation.sql` adds `request_applications`, `published_workflows`, `project_messages`; extends `buyer_requests` + `orders`. |
 | Role-aware Browse | **`/browse`** — after auth resolves `account_type`, creators browse open marketplace buyer requests (+ Apply), buyers browse **`published_workflows`** plus labelled **Platform starter MicroBuilds**, logged-out sees public templates only. **`/dashboard/browse`** now **redirects** (creators → `/dashboard/applications`, everyone else → `/browse`). Creator dashboard **`Applications`** tab lists their **`request_applications`**. |
-| Buyer selection | Dashboard **Creator Applicants** panel — rules-based scoring, refresh-only thread stub, selects creator → updates selections + assigns pipeline order (`buyer_selected`). |
-| Admin | `/admin` marketplace oversight counters + drill-down sample (`request_applications`). |
+| Buyer selection | **My Requests & Applicants** — full applicant cards (tier, verification, proposal, fit, questions, rules-based fit score), actions (shortlist / select / reject), **Select** finalizes `buyer_requests` + **`orders`** (`creator_id`, `request_application_id`, buyer provenance). One refresh-based message thread per **request** (optional send); per-applicant **Message** buttons are placeholders until inbox ships. |
+| Admin | `/admin` shows **Buyer-selected** badge on pipeline orders with buyer marketplace lineage; marketplace oversight counters + drill-down sample (`request_applications`). Manual assignment remains fallback. |
 | Messaging | Refresh-based inserts only — see docs for realtime phase. |
 | Future | Stripe, production-scoped policies, realtime messaging (`docs/marketplace-application-flow.md`). |
 

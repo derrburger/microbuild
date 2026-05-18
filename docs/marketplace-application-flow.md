@@ -12,11 +12,11 @@ This document summarizes the marketplace foundation introduced with `marketplace
 
 1. Submits `/request` (existing form). Request rows gain marketplace columns (`visibility_status`, `application_status`, `applications_count`, selection pointers).
 2. Open requests accept **creator voluntary applications** via `request_applications`.
-3. Buyer reviews applicants in **Dashboard → My Requests & Applicants** (expand per request).
-4. Buyer taps **Select creator** → application becomes `buyer_selected`, buyer request moves to marketplace `creator_selected`, and pipeline `orders` row is created/updated with buyer provenance (`selection_method = buyer_selected`, `selected_by_buyer = true`, `order_status = assigned`).
-5. **Buyer Browse** (**`/browse`**) lists `published_workflows` that are published + publicly visible plus a clearly labelled block of platform starter listings from `microbuild_templates` / mocks when storefront rows are sparse.
+3. Buyer reviews applicants in **Dashboard → My Requests & Applicants** (expand per request — budget, deadline, marketplace status, selected creator when set, link to workspace when an order exists).
+4. Buyer taps **Select creator** → sibling active applications → `rejected`; winner → `buyer_selected`; `buyer_requests` → `creator_selected` + `visibility_status = creator_selected`; **`orders`** row created or updated (no duplicate per `request_id`) with **`creator_id`**, **`request_application_id`**, **`selection_method = buyer_selected`**, **`order_status = assigned`**.
+5. **Buyer Browse** (**`/browse`**) lists `published_workflows` that are published + publicly visible plus a clearly labelled block of platform starter listings when storefront rows are sparse.
 
-Messaging v1 uses `project_messages` with manual refresh (**no realtime**) from the applicant panel textarea.
+Messaging: one optional **refresh-based** composer per request in this panel (uses `project_messages`); per-applicant **Message creator** buttons are UI placeholders. Project workspace keeps the same foundation notes card with manual refresh.
 
 ---
 
@@ -26,7 +26,7 @@ Messaging v1 uses `project_messages` with manual refresh (**no realtime**) from 
 2. **Dashboard · Applications (`/dashboard/applications`)** summarizes + lists that creator's `request_applications` (distinct from discovering new open scopes).
 3. Creator submits lightweight application (proposal, fit, timeline, optional price/link/questions).
 4. Duplicate **active** applications are blocked (`submitted` / `shortlisted` / `buyer_selected`).
-5. When a buyer selects them, the linked `orders` row appears in the existing Creator Project Pipeline/workspace.
+5. When a buyer selects them, the linked `orders` row appears in the existing Creator Project Pipeline/workspace. **Dashboard · Applications** shows **Open Project Workspace** when `order_id` is linked; **Message buyer** remains a placeholder.
 
 Creators publish reusable storefront templates through `published_workflows` going forward — UI for authoring stays incremental in later milestones.
 

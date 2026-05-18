@@ -1837,6 +1837,13 @@ function OrderCard({
           <span className={`order-bp-badge${order.build_packet_id ? ' order-bp-badge--ok' : ''}`}>
             Packet {order.build_packet_id ? 'linked ✓' : 'not linked'}
           </span>
+          {(order.selection_method === 'buyer_selected' || order.selected_by_buyer) ?
+            (
+              <span className="order-badge-buyer-selected" title="Creator chosen via buyer marketplace selection">
+                Buyer-selected
+              </span>
+            )
+          : null}
         </div>
       </div>
 
