@@ -1833,12 +1833,13 @@
   border-top: 1px dashed var(--border);
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.5rem;
 }
 
 .mb-next-step-chip {
-  flex: 1 1 100%;
+  flex: none;
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--text-secondary);
@@ -1846,6 +1847,7 @@
 
 .mb-open-workspace-btn {
   margin-left: 0;
+  align-self: flex-start;
 }
 
 .mb-status-pill {
@@ -1950,4 +1952,90 @@
 .mb-applicant-workspace-hint {
   margin-top: 0.45rem;
   font-size: 0.78rem;
+}
+
+/* Participant messaging v1 (applications + applicants) */
+
+.mb-applicants-msg-hint {
+  margin: 0.35rem 0.85rem 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.mb-participant-msg {
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--border);
+}
+
+.mb-participant-msg-toggle {
+  width: 100%;
+  justify-content: space-between !important;
+  margin-bottom: 0.25rem;
+}
+
+.mb-msg-thread-preview-inline {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.mb-msg-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0.5rem 0 0.65rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.mb-msg-bubble-line {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  background: var(--surface-1, var(--surface-2));
+}
+
+.mb-msg-meta {
+  font-size: 0.72rem;
+  margin-bottom: 0.25rem;
+}
+
+.mb-msg-from {
+  font-weight: 700;
+  color: var(--text-secondary, var(--text-muted));
+}
+
+.mb-msg-body-text {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mb-msg-compose-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mb-msg-sync-hint {
+  font-size: 0.7rem;
+  margin: 0;
+}
+
+.mb-msg-resolving-participant {
+  margin: 0.25rem 0 0;
+  font-size: 0.76rem;
+}
+
+.mb-application-msg-thread {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.mb-applicant-msg-thread {
+  margin-top: 0.5rem;
 }

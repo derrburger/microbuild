@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { analyzeProfileStrength } from '../lib/profileAI';
-import type { BuyerRequestRow, CreatorProfileRow, ProjectMessageRow, UserProfileRow } from '../types/database';
+import ParticipantMessageThread from './ParticipantMessageThread';
+import type { BuyerRequestRow, CreatorProfileRow, UserProfileRow } from '../types/database';
 import type { OrderPipelineRow } from '../lib/orders';
 import { supabase } from '../lib/supabase';
 import {
   creatorDisplayName,
-  fetchProjectMessagesForRequest,
   generateApplicantFitScore,
   generateBuyerApplicantComparison,
-  generateMessageThreadPreview,
   generateRequestApplicationAISummary,
   getRequestApplicantsForBuyer,
-  insertProjectMessage,
   selectCreatorForRequest,
   updateRequestApplicationStatus,
   verifyBuyerOwnsRequest,
@@ -217,10 +215,10 @@ export default function MarketplaceApplicantsPanel({
 
               {open ?
                 (
-                  <RequestMessagesSection
-                    buyerProfile={buyerProfile}
-                    buyerRequestId={r.id}
-                  />
+                  <p className="subtle mb-applicants-msg-hint">
+                    Message a specific applicant with <strong>Message creator</strong> on each row below (thread is scoped to
+                    that creator).
+                  </p>
                 )
               : null}
 
@@ -263,77 +261,6 @@ export default function MarketplaceApplicantsPanel({
       </div>
       <MessageModerationPlaceholder />
     </section>
-  );
-}
-
-// Lazy import pattern — avoid circular deps; supabase is same module path as Dashboard
-function RequestMessagesSection({
-  buyerProfile,
-  buyerRequestId,
-}: {
-  buyerProfile: UserProfileRow;
-  buyerRequestId: string;
-}) {
-  const [text, setText] = useState('');
-  const [msgs, setMsgs] = useState<ProjectMessageRow[]>([]);
-  const [sending, setSending] = useState(false);
-  const [sendErr, setSendErr] = useState<string | null>(null);
-
-  async function refresh() {
-    const rows = await fetchProjectMessagesForRequest(buyerRequestId);
-    setMsgs(rows);
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, [buyerRequestId]);
-
-  const preview = useMemo(() => generateMessageThreadPreview(msgs), [msgs]);
-
-  async function send() {
-    const body = text.trim();
-    if (!body.length) return;
-    setSending(true);
-    setSendErr(null);
-    const ins = await insertProjectMessage({
-      buyer_request_id: buyerRequestId,
-      sender_user_profile_id: buyerProfile.id ?? null,
-      sender_role: 'buyer',
-      message_body: body,
-      visibility: 'buyer_creator',
-      message_type: 'general',
-    });
-    if (!ins.ok) {
-      setSendErr(ins.error ?? 'Could not save message.');
-    } else setText('');
-    await refresh();
-    setSending(false);
-  }
-
-  return (
-    <div className="mb-request-messages-block">
-      <div className="mb-request-messages-title">
-        Messages <span className="subtle">(refresh-based — realtime inbox coming later)</span>
-      </div>
-      <div className="mb-msg-prev subtle">{preview}</div>
-      {sendErr ?
-        <div className="mb-form-alert mb-form-alert--error" role="alert">
-          {sendErr}
-        </div>
-      : null}
-      <div className="mb-msg-send">
-        <textarea
-          className="mb-form-input mb-form-textarea"
-          rows={2}
-          placeholder="Optional note to the creator (saved on this request thread)"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-        <button type="button" className="btn btn-primary btn-sm" disabled={sending} onClick={() => void send()}>
-          Send &amp; refresh
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -501,10 +428,19 @@ function ApplicantRow({
         >
           Reject
         </button>
-        <button type="button" className="btn btn-ghost btn-sm" disabled title="Unified inbox coming soon">
-          Message creator (placeholder)
-        </button>
       </div>
+
+      <ParticipantMessageThread
+        mode="request_applicant_pair"
+        viewerProfile={buyerProfile}
+        viewerRole="buyer"
+        buyerRequestId={request.id}
+        counterpartUserProfileId={creatorApplicantCounterpartProfileId(app)}
+        counterpartLabel={name}
+        toggleLabel={`Message creator — ${name}`.slice(0, 80)}
+        emptyHint="No messages yet. Ask a clear question about the build scope, timeline, or buyer goal."
+        className="mb-applicant-msg-thread"
+      />
 
       {appSt === 'buyer_selected' && orderId ?
         (
@@ -536,6 +472,14 @@ function portfolioFirstUrl(prof: CreatorProfileRow | null): string | null {
   return prof.portfolio_url?.trim() || null;
 }
 
+function creatorApplicantCounterpartProfileId(app: BuyerApplicantResolved): string | null {
+  const a = normalizeMessageText(typeof app.creator_user_profile_id === 'string' ? app.creator_user_profile_id : null);
+  if (a) return a;
+  const p = oneProfile(app.creator_profiles ?? null);
+  const pid = normalizeMessageText(p?.user_profile_id ?? null);
+  return pid?.trim().length ? pid : null;
+}
+
 function MessageModerationPlaceholder() {
   return (
     <div className="buyer-muted-hint subtle mb-msg-mod">
@@ -555,6 +499,11 @@ function safeStr(v: unknown, fb = '') {
 
 function normalize(s: unknown) {
   return typeof s === 'string' ? s.toLowerCase().trim() : '';
+}
+
+function normalizeMessageText(v: unknown): string | null {
+  const t = typeof v === 'string' ? v.trim() : '';
+  return t.length ? t : null;
 }
 
 function readableStatus(s: string): string {

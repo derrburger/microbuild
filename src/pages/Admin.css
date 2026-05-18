@@ -2633,6 +2633,17 @@
   color: var(--text-secondary);
 }
 
+.order-msg-mod-placeholder {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+  margin: 0.35rem 0 0;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: rgba(0, 0, 0, 0.12);
+}
+
 .order-next-callout {
   margin: 0.35rem 0 0.5rem;
   padding: 0.55rem 0.65rem;

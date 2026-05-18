@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { getCreatorApplicationsWithBuyerRequests, resolveCreatorProfileForMarketplace } from '../lib/marketplace';
+import ParticipantMessageThread from '../components/ParticipantMessageThread';
+import { getBuyerUserProfileIdForBuyerRequest } from '../lib/messages';
 import type {
   BuyerRequestRow,
   RequestApplicationRow,
@@ -81,6 +83,7 @@ export default function DashboardApplications() {
   const [applications, setApplications] = useState<
     ((RequestApplicationRow & { buyer_requests?: BuyerRequestRow | BuyerRequestRow[] | null }) | null)[]
   >([]);
+  const [creatorUserProfile, setCreatorUserProfile] = useState<UserProfileRow | null>(null);
   const [busy, setBusy] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -117,6 +120,7 @@ export default function DashboardApplications() {
         }
 
         const prof = up as UserProfileRow;
+        if (!cancelled) setCreatorUserProfile(prof);
 
         const t = safeStr(prof.account_type).toLowerCase();
         if (t !== 'creator') {
@@ -140,6 +144,7 @@ export default function DashboardApplications() {
         if (!cancelled) {
           setFetchError(e instanceof Error ? e.message : 'Something went wrong loading applications.');
           setApplications([]);
+          setCreatorUserProfile(null);
         }
       } finally {
         if (!cancelled) setBusy(false);
@@ -330,9 +335,26 @@ export default function DashboardApplications() {
                         </Link>
                       )
                     : null}
-                    <button type="button" className="btn btn-ghost btn-sm" disabled title="Unified inbox coming soon">
-                      Message buyer (placeholder)
-                    </button>
+                    {req?.id ?
+                      (
+                        <ParticipantMessageThread
+                          mode="request_applicant_pair"
+                          viewerProfile={creatorUserProfile}
+                          viewerRole="creator"
+                          buyerRequestId={req.id}
+                          orderId={orderId}
+                          loadCounterpartUserProfileId={async () =>
+                            (await getBuyerUserProfileIdForBuyerRequest(req.id)).id
+                          }
+                          counterpartLabel={`${bizLabel.slice(0, 60)}`}
+                          toggleLabel="Message buyer"
+                          emptyHint="No messages yet. Ask a clear question about the build scope, timeline, or buyer goal."
+                          className="mb-application-msg-thread"
+                        />
+                      )
+                    : (
+                      <p className="subtle muted-sm">Messaging unlocks once this row links to the buyer request record.</p>
+                    )}
                   </footer>
                 </article>
               );

@@ -16,7 +16,7 @@ This document summarizes the marketplace foundation introduced with `marketplace
 4. Buyer taps **Select creator** → sibling active applications → `rejected`; winner → `buyer_selected`; `buyer_requests` → `creator_selected` + `visibility_status = creator_selected`; **`orders`** row created or updated (no duplicate per `request_id`) with **`creator_id`**, **`request_application_id`**, **`selection_method = buyer_selected`**, **`order_status = assigned`**.
 5. **Buyer Browse** (**`/browse`**) lists `published_workflows` that are published + publicly visible plus a clearly labelled block of platform starter listings when storefront rows are sparse.
 
-Messaging: one optional **refresh-based** composer per request in this panel (uses `project_messages`); per-applicant **Message creator** buttons are UI placeholders. Project workspace keeps the same foundation notes card with manual refresh.
+**Messaging v1:** per-applicant **Message creator** on each applicant card — expandable threads tied to **`buyer_request_id`** (+ optional `recipient_user_profile_id`). **Dashboard → Project workspace** (`/dashboard/projects/:id`) exposes **Request conversation** (rows without `order_id`) and **Project messages** (`order_id`) for both **creator** (assigned profile) and **buyer** (request owner); **admin-only** `project_messages.visibility` rows never surface in participant UIs. Text-only, **refresh-based** — no realtime, no uploads yet.
 
 ---
 
@@ -26,7 +26,7 @@ Messaging: one optional **refresh-based** composer per request in this panel (us
 2. **Dashboard · Applications (`/dashboard/applications`)** summarizes + lists that creator's `request_applications` (distinct from discovering new open scopes).
 3. Creator submits lightweight application (proposal, fit, timeline, optional price/link/questions).
 4. Duplicate **active** applications are blocked (`submitted` / `shortlisted` / `buyer_selected`).
-5. When a buyer selects them, the linked `orders` row appears in the existing Creator Project Pipeline/workspace. **Dashboard · Applications** shows **Open Project Workspace** when `order_id` is linked; **Message buyer** remains a placeholder.
+5. When a buyer selects them, the linked `orders` row appears in the existing Creator Project Pipeline/workspace. **Dashboard · Applications** shows **Open Project Workspace** when `order_id` is linked; **Message buyer** threads use the same **`project_messages`** foundation (pair-scoped refresh UI).
 
 Creators publish reusable storefront templates through `published_workflows` going forward — UI for authoring stays incremental in later milestones.
 
@@ -39,7 +39,7 @@ Creators publish reusable storefront templates through `published_workflows` goi
 
 Overrides (hide/close buyer requests, reassign creators) reuse existing buyer request + order tooling; broaden `buyer_requests` marketplace columns as needed operationally via SQL/UI next phases.
 
-Moderation dashboards are placeholders — production needs dedicated policies + dashboards.
+Buyer/creator **`project_messages`** are visible in-product; **moderation dashboards** remain a later phase (`/admin` pipeline cards show an explicit moderation placeholder).
 
 ---
 
@@ -95,19 +95,21 @@ Legacy admin assignment retains `selection_method = 'admin_assigned'`.
 
 ---
 
-## Messaging v1 plan
+## Messaging v1 (refresh-based)
 
-Foundation ships **polling/refresh UX** (`fetchProjectMessagesForRequest`, `insertProjectMessage`) with enums for future moderation tiers.
-
-**Surfaces:** buyer applicant panel (composer + refresh), creator project workspace (request-scoped notes card).
-
-Future tightening: tighter visibility filters, realtime channel + read receipts.
+- **Implementation:** `src/lib/messages.ts` — explicit column selects on `project_messages`, participant-safe filtering (**hides `admin_only` visibility** in buyer/creator UIs), `sendRequestMessage` / `sendProjectMessage`, thread preview + visibility labels. `marketplace.ts` re-exports `fetchProjectMessagesForRequest`, `insertProjectMessage`, and `generateMessageThreadPreview` as thin aliases into `messages.ts`.
+- **Surfaces:**
+  - **Buyer → applicants:** **Message creator** on each applicant row — threads scoped by `buyer_request_id` plus participant pairing when IDs exist.
+  - **Creator → applications:** **Message buyer** on each application card — buyer profile resolved from `buyer_requests.email` when needed.
+  - **Workspace (`/dashboard/projects/:id`):** **Request conversation** (messages without `order_id`) and **Project messages** (`order_id`); **assigned creator** and **request-owning buyer** both get access — deliverable submission remains **creator-only**.
+- **Not in v1:** Realtime/WebSockets, file uploads, read receipts (**`getUnreadPlaceholderCount`** is a placeholder), robust admin moderation (**`/admin`** shows “moderation coming later” on pipeline cards).
+- **Production:** RLS must restrict who can read/write `project_messages`; TEMP DEV permissive policies are unsafe.
 
 ## Next build phases
 
 1. Harden Row Level Security (replace TEMP DEV marketplace policies).
 2. Creator authoring UI for published workflows + SEO slugs + admin publish approval workflow.
 3. Stripe quotes/payments tying `proposed_price` → executed agreements.
-4. Realtime inbox + moderation tooling (`admin_only`, `participant` nuances).
+4. Realtime inbox + moderation tooling (`admin_only`, participant nuances).
 
 ---

@@ -1852,6 +1852,10 @@ function OrderCard({
         <span className="order-buyer-val">{buyerBusinessName} · {buyerBuildType}</span>
       </div>
 
+      <p className="order-msg-mod-placeholder">
+        <strong>Message moderation</strong> coming later — buyer/creator threads are not reviewed from this panel in v1.
+      </p>
+
       <div className="order-next-callout">
         <div className="order-next-callout-label">Next best admin action</div>
         <p className="order-next-callout-body">{getNextOrderAction(order.order_status)}</p>

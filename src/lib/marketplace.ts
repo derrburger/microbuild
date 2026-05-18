@@ -13,8 +13,6 @@ import { supabase } from './supabase';
 import type {
   BuyerRequestRow,
   CreatorProfileRow,
-  ProjectMessageInsert,
-  ProjectMessageRow,
   PublishedWorkflowRow,
   RequestApplicationInsert,
   RequestApplicationRow,
@@ -549,18 +547,11 @@ export function generateBuyerApplicantComparison(
   return `Rules-based sorting (tier, verification, proposal depth, overlap):\n${lines}${note}`;
 }
 
-export function generateMessageThreadPreview(messages: ProjectMessageRow[]): string {
-  const last = [...messages].sort((a, b) => {
-    const ta = Date.parse(normalizeText(a.created_at));
-    const tb = Date.parse(normalizeText(b.created_at));
-    return tb - ta;
-  })[0];
-  if (!last) return 'No messages yet — start the thread refresh-based (realtime deferred).';
-
-  const who = normalizeText(last.sender_role, 'Participant');
-  const excerpt = normalizeText(last.message_body).slice(0, 140);
-  return `Latest (${who}): ${excerpt}${excerpt.length >= 140 ? '…' : ''}`;
-}
+export {
+  getMessageThreadPreview as generateMessageThreadPreview,
+  insertProjectMessageRow as insertProjectMessage,
+  getRequestMessages as fetchProjectMessagesForRequest,
+} from './messages';
 
 // ─── Apply flow ─────────────────────────────────────────────────────────────────
 
@@ -868,32 +859,4 @@ export async function createOrUpdateOrderFromSelectedApplication(params: {
     .eq('id', params.requestApplicationId);
 
   return { ok: true, error: null, orderId };
-}
-
-// ─── Messages v1 (refresh-only) ───────────────────────────────────────────────
-
-export async function fetchProjectMessagesForRequest(
-  buyerRequestId: string,
-): Promise<ProjectMessageRow[]> {
-  const { data, error } = await supabase
-    .from('project_messages')
-    .select('*')
-    .eq('buyer_request_id', buyerRequestId)
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    console.error('[marketplace] fetchProjectMessagesForRequest:', error);
-    return [];
-  }
-
-  const rows = (data as ProjectMessageRow[]) ?? [];
-  return [...rows];
-}
-
-export async function insertProjectMessage(
-  payload: ProjectMessageInsert,
-): Promise<{ ok: boolean; error: string | null }> {
-  const { error } = await supabase.from('project_messages').insert(payload);
-  if (error) return { ok: false, error: error.message ?? 'Could not save message.' };
-  return { ok: true, error: null };
 }

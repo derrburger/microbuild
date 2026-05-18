@@ -327,3 +327,20 @@
   color: var(--text-primary, #e5e7eb);
   resize: vertical;
 }
+
+.dpw-card-head-muted {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 0.82rem;
+  max-width: 42rem;
+}
+
+.dpw-card--msgs .mb-participant-msg {
+  margin-top: 0;
+  padding-top: 0.35rem;
+  border-top: none;
+}
+
+.dpw-card--msgs .dpw-msg-preview {
+  margin-bottom: 0.35rem;
+}

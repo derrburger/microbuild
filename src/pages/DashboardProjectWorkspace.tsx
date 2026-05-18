@@ -17,12 +17,13 @@ import {
   type BuildPacketWorkspaceRow,
   type DeliverablePlaceholder,
 } from '../lib/orders';
-import type { ProjectMessageRow, UserProfileRow } from '../types/database';
+import type { UserProfileRow } from '../types/database';
+import { verifyBuyerOwnsRequest } from '../lib/marketplace';
+import ParticipantMessageThread from '../components/ParticipantMessageThread';
 import {
-  fetchProjectMessagesForRequest,
-  generateMessageThreadPreview,
-  insertProjectMessage,
-} from '../lib/marketplace';
+  getBuyerUserProfileIdForBuyerRequest,
+  getCreatorUserProfileIdForCreatorProfile,
+} from '../lib/messages';
 import {
   buildCreatorBriefCopy,
   buildLaunchChecklistCopy,
@@ -60,96 +61,6 @@ type BuyerSnippet = {
   deadline: string | null;
   created_at: string | null;
 };
-
-/** Refresh-only thread keyed to buyer request (marketplace messaging v1). */
-function WorkspaceRequestMessagesStub({
-  buyerRequestId,
-  userProfile,
-}: {
-  buyerRequestId: string;
-  userProfile: UserProfileRow;
-}) {
-  const [msgs, setMsgs] = useState<ProjectMessageRow[]>([]);
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sendErr, setSendErr] = useState<string | null>(null);
-
-  const visible = useMemo(
-    () => msgs.filter((m) => (m.visibility ?? 'participant').toLowerCase() !== 'admin_only'),
-    [msgs],
-  );
-
-  async function refresh() {
-    const rows = await fetchProjectMessagesForRequest(buyerRequestId);
-    setMsgs(rows);
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, [buyerRequestId]);
-
-  const preview = useMemo(() => generateMessageThreadPreview(visible), [visible]);
-
-  async function send() {
-    const body = text.trim();
-    if (!body.length) return;
-    setSending(true);
-    setSendErr(null);
-    const ins = await insertProjectMessage({
-      buyer_request_id: buyerRequestId,
-      sender_user_profile_id: userProfile.id ?? null,
-      sender_role: 'creator',
-      message_body: body,
-      visibility: 'buyer_creator',
-      message_type: 'general',
-    });
-    if (!ins.ok) setSendErr(ins.error ?? 'Could not save.');
-    else setText('');
-    await refresh();
-    setSending(false);
-  }
-
-  return (
-    <section className="dpw-card dpw-card--msgs">
-      <h2 className="dpw-card-title">Buyer / creator notes</h2>
-      <p className="dpw-muted">
-        Lightweight messages on this buyer request — manual refresh after send. Realtime inbox and full threading remain on
-        the roadmap (<strong>Messages foundation v1</strong>).
-      </p>
-      <p className="dpw-msg-preview subtle">{preview}</p>
-      {sendErr ? (
-        <p className="dpw-feedback dpw-feedback--err" role="alert">
-          {sendErr}
-        </p>
-      ) : null}
-      <div className="dpw-msg-list">
-        {visible.length === 0 ?
-          <p className="dpw-muted">No messages visible yet.</p>
-        : visible.slice(-12).map((m) => (
-            <div key={m.id} className="dpw-msg-line">
-              <span className="dpw-msg-role">{safeStr(m.sender_role, 'participant')}</span>
-              <span className="dpw-msg-body">{safeStr(m.message_body, '—')}</span>
-              <span className="dpw-msg-when">{fmtDate(m.created_at)}</span>
-            </div>
-          ))
-        }
-      </div>
-      <div className="dpw-msg-compose">
-        <textarea
-          className="dpw-msg-textarea"
-          rows={3}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Leave a concise update or question — buyer sees participant-safe notes."
-          aria-label="Message to buyer"
-        />
-        <button type="button" className="btn btn-primary btn-sm" disabled={sending} onClick={() => void send()}>
-          {sending ? 'Sending…' : 'Send & refresh'}
-        </button>
-      </div>
-    </section>
-  );
-}
 
 function FormFieldsList({ form_fields }: { form_fields: unknown }) {
   const items = useMemo(() => {
@@ -203,12 +114,17 @@ export default function DashboardProjectWorkspace() {
   const [deliverable, setDeliverable] = useState<DeliverablePlaceholder | null>(null);
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
+  const [workspaceRole, setWorkspaceRole] = useState<'creator' | 'buyer' | null>(null);
 
   const [creatorSelf, setCreatorSelf] = useState<{
     display_name: string | null;
     full_name: string;
     tier: string;
   } | null>(null);
+
+  const [creatorAssignee, setCreatorAssignee] = useState<{ display_name: string | null; full_name: string } | null>(
+    null,
+  );
 
   const [previewUrl, setPreviewUrl] = useState('');
   const [deliveryUrl, setDeliveryUrl] = useState('');
@@ -227,6 +143,7 @@ export default function DashboardProjectWorkspace() {
     if (!orderId || !user) return;
     setLoading(true);
     setAccessDenied(null);
+    setWorkspaceRole(null);
 
     const { data: up } = await supabase.from('user_profiles').select('*').eq('auth_user_id', user.id).maybeSingle();
     if (!up) {
@@ -236,49 +153,79 @@ export default function DashboardProjectWorkspace() {
     const profile = up as UserProfileRow;
     setUserProfile(profile);
 
-    const cpId = profile.creator_profile_id;
-    if (!cpId) {
-      setAccessDenied('No creator profile is linked to your account.');
-      setLoading(false);
-      return;
-    }
-
-    const { data: cpRow } = await supabase
-      .from('creator_profiles')
-      .select('display_name, full_name, tier')
-      .eq('id', cpId)
-      .maybeSingle();
-    if (cpRow && typeof cpRow === 'object') {
-      const r = cpRow as Record<string, unknown>;
-      setCreatorSelf({
-        display_name: typeof r.display_name === 'string' ? r.display_name : null,
-        full_name: typeof r.full_name === 'string' ? r.full_name : 'Creator',
-        tier: typeof r.tier === 'string' ? r.tier : 'free',
-      });
-    } else {
-      setCreatorSelf(null);
-    }
-
     const o = await fetchOrderById(orderId);
     if (!o) {
       setAccessDenied('Project not found.');
+      setOrder(null);
       setLoading(false);
       return;
     }
 
     if (!o.creator_id) {
       setAccessDenied(
-        'This project does not have an assigned creator yet. Check back after MicroBuild assigns you.',
+        'This project does not have an assigned creator yet. Check back after MicroBuild assigns someone.',
       );
       setOrder(null);
       setLoading(false);
       return;
     }
 
-    if (o.creator_id !== cpId) {
+    const cpId = profile.creator_profile_id ?? null;
+    let role: 'creator' | 'buyer' | null = null;
+
+    if (cpId && o.creator_id === cpId) {
+      role = 'creator';
+    } else if (o.request_id) {
+      const owns = await verifyBuyerOwnsRequest(o.request_id, profile.email ?? '', {
+        authUserId: profile.auth_user_id ?? null,
+      });
+      if (owns) role = 'buyer';
+    }
+
+    if (!role) {
       setAccessDenied('You do not have access to this project.');
+      setOrder(null);
+      setCreatorSelf(null);
+      setCreatorAssignee(null);
       setLoading(false);
       return;
+    }
+
+    setWorkspaceRole(role);
+
+    if (role === 'creator') {
+      setCreatorAssignee(null);
+      const { data: cpRow } = await supabase
+        .from('creator_profiles')
+        .select('display_name, full_name, tier')
+        .eq('id', cpId!)
+        .maybeSingle();
+      if (cpRow && typeof cpRow === 'object') {
+        const r = cpRow as Record<string, unknown>;
+        setCreatorSelf({
+          display_name: typeof r.display_name === 'string' ? r.display_name : null,
+          full_name: typeof r.full_name === 'string' ? r.full_name : 'Creator',
+          tier: typeof r.tier === 'string' ? r.tier : 'free',
+        });
+      } else {
+        setCreatorSelf(null);
+      }
+    } else {
+      setCreatorSelf(null);
+      if (o.creator_id) {
+        const { data: assignee } = await supabase
+          .from('creator_profiles')
+          .select('display_name, full_name')
+          .eq('id', o.creator_id)
+          .maybeSingle();
+        if (assignee && typeof assignee === 'object') {
+          const r = assignee as Record<string, unknown>;
+          setCreatorAssignee({
+            display_name: typeof r.display_name === 'string' ? r.display_name : null,
+            full_name: typeof r.full_name === 'string' ? r.full_name : 'Creator',
+          });
+        } else setCreatorAssignee(null);
+      } else setCreatorAssignee(null);
     }
 
     setOrder(o);
@@ -323,7 +270,7 @@ export default function DashboardProjectWorkspace() {
   }, [reload]);
 
   async function handleSubmit() {
-    if (!order || !userProfile?.creator_profile_id) return;
+    if (!order || workspaceRole !== 'creator' || !userProfile?.creator_profile_id) return;
     setSubmitting(true);
     setSubmitMsg('idle');
     const ok = await submitCreatorDeliverable({
@@ -374,24 +321,41 @@ export default function DashboardProjectWorkspace() {
     ? buildDeliverySummaryCopy(order, deliverable, buyer?.business_name ?? '')
     : '';
 
-  const guidance =
-    deliverable?.delivery_status === 'revision_needed'
-      ? 'Update deliverable based on admin feedback.'
-      : !order
-        ? ''
-        : order.order_status === 'completed'
+  const isCreatorWorkspace = workspaceRole === 'creator';
+
+  const guidance = useMemo(() => {
+    if (!order) return '';
+    if (!isCreatorWorkspace) {
+      return deliverable?.delivery_status === 'revision_needed'
+        ? 'The creator is revising delivery based on admin feedback.'
+        : order.order_status === 'completed' || deliverable?.delivery_status === 'approved'
+          ? 'Your delivery path is approved or complete — use the dashboard if you still need artifact links.'
+          : order.order_status === 'delivered'
+            ? 'Delivery is progressing — preview and live URLs appear once approved for buyer handoff.'
+            : ['assigned', 'in_progress', 'in_review'].includes(order.order_status)
+              ? 'Stay in touch via messages below — your creator is progressing on scope.'
+              : 'Track status here and message your creator whenever you need clarity.';
+    }
+    if (deliverable?.delivery_status === 'revision_needed') {
+      return 'Update deliverable based on admin feedback.';
+    }
+    switch (order.order_status) {
+      case 'completed':
+        return 'Project delivery is approved.';
+      case 'delivered':
+        return deliverable?.delivery_status === 'approved'
           ? 'Project delivery is approved.'
-          : order.order_status === 'delivered' && deliverable?.delivery_status === 'approved'
-            ? 'Project delivery is approved.'
-            : order.order_status === 'delivered'
-              ? 'Deliverable released — buyer handoff in progress.'
-              : order.order_status === 'in_review'
-                ? 'Admin is reviewing your delivery.'
-                : order.order_status === 'in_progress'
-                  ? 'Submit preview when ready.'
-                  : order.order_status === 'assigned'
-                    ? 'Review the brief and begin work.'
-                    : 'Follow your brief and checklist — contact MicroBuild if anything is unclear.';
+          : 'Deliverable released — buyer handoff in progress.';
+      case 'in_review':
+        return 'Admin is reviewing your delivery.';
+      case 'in_progress':
+        return 'Submit preview when ready.';
+      case 'assigned':
+        return 'Review the brief and begin work.';
+      default:
+        return 'Follow your brief and checklist — contact MicroBuild if anything is unclear.';
+    }
+  }, [deliverable?.delivery_status, isCreatorWorkspace, order]);
 
   const activityItems = order
     ? buildWorkspaceActivityItems({
@@ -473,11 +437,13 @@ export default function DashboardProjectWorkspace() {
               <dd>{buyer?.main_goal?.trim() ? buyer.main_goal : '—'}</dd>
               <dt>Industry</dt>
               <dd>{buyer?.industry?.trim() ? buyer.industry : '—'}</dd>
-              <dt>Your assignment</dt>
+              <dt>{isCreatorWorkspace ? 'Your assignment' : 'Assigned creator'}</dt>
               <dd>
-                {creatorSelf
-                  ? `${creatorSelf.display_name ?? creatorSelf.full_name} · Tier ${creatorSelf.tier}`
-                  : '—'}
+                {isCreatorWorkspace ?
+                  creatorSelf ? `${creatorSelf.display_name ?? creatorSelf.full_name} · Tier ${creatorSelf.tier}` : '—'
+                : creatorAssignee ?
+                  `${creatorAssignee.display_name ?? creatorAssignee.full_name}`
+                : '—'}
               </dd>
               <dt>Payment</dt>
               <dd className="dpw-muted">Stripe / escrow — coming later (no charge in workspace v2).</dd>
@@ -509,43 +475,60 @@ export default function DashboardProjectWorkspace() {
 
           <WorkspaceTimeline status={order.order_status} />
 
-          {revisionHint ? (
-            <section className="dpw-card dpw-card--warn">
-              <h2 className="dpw-card-title">Revision requested — action required</h2>
-              <p className="dpw-revision-note">{revisionHint}</p>
-            </section>
-          ) : null}
+          {revisionHint ?
+            (
+              <section className="dpw-card dpw-card--warn">
+                <h2 className="dpw-card-title">
+                  {isCreatorWorkspace ? 'Revision requested — action required' : 'Revision in progress'}
+                </h2>
+                <p className="dpw-revision-note">{revisionHint}</p>
+                {!isCreatorWorkspace ?
+                  <p className="dpw-muted">
+                    Your creator applies admin feedback — you will see refreshed links once approved.
+                  </p>
+                : null}
+              </section>
+            )
+          : null}
 
           {/* Build packet */}
           <section className="dpw-card">
             <div className="dpw-card-head">
-              <h2 className="dpw-card-title">Creator brief</h2>
-              <div className="dpw-copy-row">
-                <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(briefCopy)}>
-                  Copy Creator Brief
-                </button>
-                <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(checklistCopy)}>
-                  Copy Build Checklist
-                </button>
-                <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(packetLaunchCopy)}>
-                  Copy Packet Launch List
-                </button>
-                <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(buyerUpdateCopy)}>
-                  Copy Buyer Update
-                </button>
-                <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(revisionTemplate)}>
-                  Copy Revision Request
-                </button>
-                <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(completionCopy)}>
-                  Copy Completion Message
-                </button>
-                <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(feedbackCopy)}>
-                  Copy Creator Feedback
-                </button>
-                <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(deliverySummaryCopy)}>
-                  Copy Delivery Summary
-                </button>
-              </div>
+              <h2 className="dpw-card-title">{isCreatorWorkspace ? 'Creator brief' : 'Build brief / scope context'}</h2>
+              {isCreatorWorkspace ?
+                (
+                  <div className="dpw-copy-row">
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(briefCopy)}>
+                      Copy Creator Brief
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(checklistCopy)}>
+                      Copy Build Checklist
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(packetLaunchCopy)}>
+                      Copy Packet Launch List
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(buyerUpdateCopy)}>
+                      Copy Buyer Update
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(revisionTemplate)}>
+                      Copy Revision Request
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(completionCopy)}>
+                      Copy Completion Message
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(feedbackCopy)}>
+                      Copy Creator Feedback
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(deliverySummaryCopy)}>
+                      Copy Delivery Summary
+                    </button>
+                  </div>
+                )
+              : (
+                <p className="dpw-muted dpw-card-head-muted">
+                  Read-only overview — clipboard shortcuts appear when you open this project as the assigned creator.
+                </p>
+              )}
             </div>
 
             {!packet ? (
@@ -602,24 +585,110 @@ export default function DashboardProjectWorkspace() {
             )}
           </section>
 
-          <section className="dpw-card dpw-card--checklist">
-            <h2 className="dpw-card-title">Build checklist</h2>
-            <p className="dpw-muted">
-              Operational steps — rules-based checklist for every MicroBuild (no AI). Tick mentally as you go.
-            </p>
-            <ul className="dpw-checklist">
-              {OPERATIONAL_BUILD_CHECKLIST_ITEMS.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </section>
-
-          {order.request_id && userProfile?.id ?
-            <WorkspaceRequestMessagesStub buyerRequestId={order.request_id} userProfile={userProfile} />
+          {isCreatorWorkspace ?
+            (
+              <section className="dpw-card dpw-card--checklist">
+                <h2 className="dpw-card-title">Build checklist</h2>
+                <p className="dpw-muted">
+                  Operational steps — rules-based checklist for every MicroBuild (no AI). Tick mentally as you go.
+                </p>
+                <ul className="dpw-checklist">
+                  {OPERATIONAL_BUILD_CHECKLIST_ITEMS.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </section>
+            )
           : null}
 
-          {/* Submission */}
-          <section className="dpw-card dpw-card--submit">
+          {userProfile?.id ?
+            (
+              <>
+                {order.request_id ?
+                  (
+                    <section className="dpw-card dpw-card--msgs">
+                      <h2 className="dpw-card-title">Request conversation</h2>
+                      <p className="dpw-muted">
+                        Earlier marketplace notes on this buyer request (not tied to the project order record). Participant-safe —
+                        refresh after send — no realtime.
+                      </p>
+                      <ParticipantMessageThread
+                        mode="request_applicant_pair"
+                        omitOrderScoped={true}
+                        viewerProfile={userProfile}
+                        viewerRole={isCreatorWorkspace ? 'creator' : 'buyer'}
+                        buyerRequestId={order.request_id}
+                        orderId={order.id}
+                        loadCounterpartUserProfileId={async () => {
+                          const brid = order.request_id;
+                          if (!brid) return null;
+                          if (isCreatorWorkspace) {
+                            return (await getBuyerUserProfileIdForBuyerRequest(brid)).id;
+                          }
+                          return order.creator_id ?
+                              (await getCreatorUserProfileIdForCreatorProfile(order.creator_id)).id
+                            : null;
+                        }}
+                        counterpartLabel={
+                          isCreatorWorkspace ? buyer?.business_name ?? 'Buyer' : (
+                            creatorAssignee?.display_name ?? creatorAssignee?.full_name ?? 'Creator'
+                          )
+                        }
+                        toggleLabel="Request messages"
+                        emptyHint="No messages yet. Ask a clear question about the build scope, timeline, or buyer goal."
+                        previewClassName="dpw-msg-preview"
+                      />
+                    </section>
+                  )
+                : (
+                  <section className="dpw-card dpw-card--msgs">
+                    <h2 className="dpw-card-title">Request conversation</h2>
+                    <p className="dpw-muted">This order is not linked to a buyer request row — messaging uses Project messages below.</p>
+                  </section>
+                )}
+
+                <section className="dpw-card dpw-card--msgs">
+                  <h2 className="dpw-card-title">Project messages</h2>
+                  <p className="dpw-muted">
+                    Order-scoped thread after selection — text-only, refresh-based (no file uploads yet).{' '}
+                    <strong>Admin-only</strong> notes never appear here.
+                  </p>
+                  <ParticipantMessageThread
+                    mode="project_order"
+                    viewerProfile={userProfile}
+                    viewerRole={isCreatorWorkspace ? 'creator' : 'buyer'}
+                    buyerRequestId={order.request_id}
+                    orderId={order.id}
+                    loadCounterpartUserProfileId={async () => {
+                      if (!order.request_id) {
+                        return order.creator_id ?
+                            (await getCreatorUserProfileIdForCreatorProfile(order.creator_id)).id
+                          : null;
+                      }
+                      if (isCreatorWorkspace) {
+                        return (await getBuyerUserProfileIdForBuyerRequest(order.request_id)).id;
+                      }
+                      return order.creator_id ?
+                          (await getCreatorUserProfileIdForCreatorProfile(order.creator_id)).id
+                        : null;
+                    }}
+                    counterpartLabel={
+                      isCreatorWorkspace ? buyer?.business_name ?? 'Buyer' : (
+                        creatorAssignee?.display_name ?? creatorAssignee?.full_name ?? 'Creator'
+                      )
+                    }
+                    toggleLabel="Project messages"
+                    emptyHint="No messages yet. Ask a clear question about the build scope, timeline, or buyer goal."
+                    previewClassName="dpw-msg-preview"
+                  />
+                </section>
+              </>
+            )
+          : null}
+
+          {isCreatorWorkspace ?
+            (
+              <section className="dpw-card dpw-card--submit">
             <h2 className="dpw-card-title">Deliverable submission</h2>
             <div className="dpw-submit-status">
               <span>
@@ -683,7 +752,9 @@ export default function DashboardProjectWorkspace() {
                 <span className="dpw-feedback dpw-feedback--err">Save failed — check the browser console.</span>
               )}
             </div>
-          </section>
+              </section>
+            )
+          : null}
         </>
       ) : (
         <div className="dpw-access-denied">

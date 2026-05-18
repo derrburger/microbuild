@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Marketplace **Buyer Applicant Review + Selection v1** — end-to-end apply → review → **Select creator** updates `buyer_requests` (`application_status`, `visibility_status`, selection pointers) and **`orders`** (single row per `request_id`, `selection_method = buyer_selected`); **My Requests & Applicants** loads requests by **email or `user_id`**; creator **Applications** links to workspace when `order_id` exists; admin pipeline shows **Buyer-selected** badge; messaging is refresh-only / placeholders as documented.
+**Status:** Marketplace **Buyer Applicant Review + Selection + Messaging v1** — apply → review → **Select creator** synchronizes **`buyer_requests`** and **`orders`**; **`src/lib/messages.ts`** backs **refresh-based, text-only** threads on **applications**, **buyer applicant rows**, and **project workspace** (request-phase + `order_id` project messages); **admin-only** message visibility never renders to buyers/creators; **`/dashboard/projects`** is available to assigned **creator** or **buyer owner** — deliverables stay creator-only.
 
 
 ### Marketplace Application Foundation v1
@@ -12,16 +12,16 @@ A marketplace for focused, affordable web tools built for local service business
 |---------|--------|
 | SQL | `supabase/migrations/marketplace-application-foundation.sql` adds `request_applications`, `published_workflows`, `project_messages`; extends `buyer_requests` + `orders`. |
 | Role-aware Browse | **`/browse`** — after auth resolves `account_type`, creators browse open marketplace buyer requests (+ Apply), buyers browse **`published_workflows`** plus labelled **Platform starter MicroBuilds**, logged-out sees public templates only. **`/dashboard/browse`** now **redirects** (creators → `/dashboard/applications`, everyone else → `/browse`). Creator dashboard **`Applications`** tab lists their **`request_applications`**. |
-| Buyer selection | **My Requests & Applicants** — full applicant cards (tier, verification, proposal, fit, questions, rules-based fit score), actions (shortlist / select / reject), **Select** finalizes `buyer_requests` + **`orders`** (`creator_id`, `request_application_id`, buyer provenance). One refresh-based message thread per **request** (optional send); per-applicant **Message** buttons are placeholders until inbox ships. |
-| Admin | `/admin` shows **Buyer-selected** badge on pipeline orders with buyer marketplace lineage; marketplace oversight counters + drill-down sample (`request_applications`). Manual assignment remains fallback. |
-| Messaging | Refresh-based inserts only — see docs for realtime phase. |
-| Future | Stripe, production-scoped policies, realtime messaging (`docs/marketplace-application-flow.md`). |
+| Buyer selection | **My Requests & Applicants** — full applicant cards + **Message creator** (expand each thread); **Select** finalizes lineage on **`buyer_requests`** + **`orders`**. |
+| Admin | **`/admin`** pipeline cards show moderation placeholder text; Buyer-selected badge + oversight panels unchanged. Manual assignment remains fallback. |
+| Messaging | **`messages.ts`** + UI threads — refresh-only, explicit columns, **`admin_only` filtered client-side**. Production **must** add strict RLS. See **`docs/marketplace-application-flow.md`**. |
+| Future | Stripe, production-scoped policies, realtime messaging. |
 
 ### Project Workspace Polish v2
 
 | Area | Behavior |
 |------|----------|
-| Creator workspace | Route `/dashboard/projects/:orderId` — project overview, creator brief (incl. design direction), operational build checklist, deliverable submission (preview/delivery/GitHub metadata/notes), revision note callout when present, activity list from **real** timestamps only, status guidance by order + deliverable state, copy helpers (brief, checklist, buyer update, revision request, completion, creator feedback, delivery summary). |
+| Creator workspace | Route `/dashboard/projects/:orderId` — **creator** assigned on the order (full tooling) **or buyer** who owns the linked request (overview, brief read-only without copy shortcuts, **Request conversation** + **Project messages**, no deliverable form). Assigned creator retains project overview, brief with copy helpers when applicable, operational checklist, messaging panels, deliverable URLs + revision surfaces, activity list, timeline. |
 | Admin deliverable review | Pipeline order cards: buyer/build context, assignment (**Unassigned** when empty), payment + packet placeholders, deliverable status + links + revision blockquote; revision / approve / delivered / completed actions with loading and success/error feedback; copy row includes **creator brief** (loaded from linked/latest packet), checklist, buyer update (packet-aware), completion message, delivery summary, revision request. |
 | Buyer project tracking | Eight-stage timeline (request → completed); proposal/payment placeholders; preview/delivery URLs only when policy-safe (delivered/completed + approved deliverable); no internal admin-only notes. |
 | Revision workflow | **Request Revision** sets deliverable `revision_needed`, saves `revision_note`, moves order back toward active build (**in_progress** via `adminReviewDeliverable`); creator workspace surfaces feedback; buyers see sanitized messaging. |
