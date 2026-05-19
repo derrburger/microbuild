@@ -14,9 +14,7 @@ import AppPageHeader from '../components/AppPageHeader';
 import StatusBadge from '../components/StatusBadge';
 import {
   formatCreatorSelectionOutcome,
-  formatRequestApplicationStatus,
   requestSourceLabel,
-  statusPillClassName,
 } from '../lib/statusLabels';
 import './Dashboard.css';
 
@@ -289,7 +287,7 @@ export default function DashboardApplications() {
         <div className="mb-application-summary-grid">
           {(
             [
-              ['submitted', 'Submitted', summary.submitted],
+              ['submitted', 'Waiting for buyer', summary.submitted],
               ['shortlisted', 'Shortlisted', summary.shortlisted],
               ['selected', 'Selected', summary.selected],
               ['rejected', 'Rejected', summary.rejected],
@@ -329,8 +327,7 @@ export default function DashboardApplications() {
               if (!a) return null;
               const st = normalizeStatus(a.application_status);
               const req = pickRow(a);
-              const statusDisplay = formatRequestApplicationStatus(st);
-              const selectionDisplay = formatCreatorSelectionOutcome(st);
+              const statusDisplay = formatCreatorSelectionOutcome(st);
               const sourceLabel = requestSourceLabel(
                 req?.source_type,
                 req?.requested_from_workflow ?? null,
@@ -378,11 +375,6 @@ export default function DashboardApplications() {
                   <p className="mb-card-goal">
                     <span className="mb-card-strong">Requested MicroBuild: </span>
                     {buildLabel}
-                  </p>
-                  <p className="mb-card-goal">
-                    <span className={statusPillClassName(selectionDisplay.tone)} style={{ display: 'inline-block' }}>
-                      {selectionDisplay.label}
-                    </span>
                   </p>
                   <details className="mb-applicant-expand">
                     <summary>Proposal & context</summary>

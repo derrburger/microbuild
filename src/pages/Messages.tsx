@@ -53,13 +53,10 @@ export function pickConversationFromQueryParams(
   const brid = normalizeMessageText(params.get('buyerRequestId'), '').trim();
   const cpid = normalizeMessageText(params.get('creatorProfileId'), '').trim();
   if (brid && cpid) {
-    const appOnly = list.find(
-      (c) =>
-        !c.orderId?.trim()
-        && c.buyerRequestId.trim() === brid
-        && c.creatorProfileId.trim() === cpid,
+    const byPair = list.find(
+      (c) => c.buyerRequestId.trim() === brid && c.creatorProfileId.trim() === cpid,
     );
-    if (appOnly) return appOnly;
+    if (byPair) return byPair;
   }
 
   if (brid) return list.find((c) => c.buyerRequestId.trim() === brid) ?? null;
@@ -215,16 +212,34 @@ export default function MessagesPage() {
       (
         <div className="mb-msg-empty">
           <h2 className="mb-msg-empty-title">No messages yet</h2>
-          <p className="subtle">Start a conversation from a request, application, or project workspace.</p>
-          {side === 'creator'
-            ?
-              (<p>Apply to buyer requests to start conversations.</p>)
-            :
+          <p className="subtle">
+            {side === 'creator'
+              ? 'Message buyers from an application card or project workspace — conversations appear here.'
+              : 'Message applicants from My Requests or your project workspace — conversations appear here.'}
+          </p>
+          <p className="mb-msg-empty-actions">
+            {side === 'creator' ?
               (
-                <p>
-                  Creator conversations appear after someone applies to your request or after you select a creator.
-                </p>
+                <>
+                  <Link className="btn btn-primary btn-sm" to="/browse">
+                    Browse buyer requests
+                  </Link>
+                  <Link className="btn btn-ghost btn-sm" to="/dashboard/applications">
+                    My applications
+                  </Link>
+                </>
+              )
+            : (
+                <>
+                  <Link className="btn btn-primary btn-sm" to="/request">
+                    Request a MicroBuild
+                  </Link>
+                  <Link className="btn btn-ghost btn-sm" to="/dashboard/requests">
+                    My requests
+                  </Link>
+                </>
               )}
+          </p>
         </div>
       )
     : null;

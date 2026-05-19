@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { createOrUpdateOrderFromSelectedApplication } from '../../lib/marketplace';
 import type { BuyerRequestRow } from '../../types/database';
+import {
+  formatBuyerMarketplaceStatus,
+  formatRequestApplicationStatus,
+} from '../../lib/statusLabels';
 
 export type MarketplaceAppAdminRow = {
   id: string;
@@ -229,7 +233,7 @@ function MarketplaceAppCard({
             {isOrig ? <span className="mp-app-badge-orig">Original workflow creator</span> : null}
           </p>
         </div>
-        <span className="mp-app-status">{safeText(app.application_status).replace(/_/g, ' ')}</span>
+        <span className="mp-app-status">{formatRequestApplicationStatus(app.application_status).label}</span>
       </div>
       <dl className="mp-app-dl">
         <div>
@@ -246,7 +250,7 @@ function MarketplaceAppCard({
         </div>
         <div>
           <dt>Buyer marketplace</dt>
-          <dd>{safeText(req?.application_status).replace(/_/g, ' ') || '—'}</dd>
+          <dd>{formatBuyerMarketplaceStatus(req?.application_status).label}</dd>
         </div>
         <div>
           <dt>Applied</dt>

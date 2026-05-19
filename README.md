@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Marketplace **UX Flow Simplification v1** — role-aware navigation, plain-English status labels (`src/lib/statusLabels.ts`), buyer/creator dashboard next-step summaries, polished applicant/application cards, and consistent empty states. Proposal/payment/agreement UI remains **deferred** (no Stripe). Prior: **Buyer Applicant Review Polish v2 + Selection + Central Messaging** — buyer dashboard **My Requests & Applicants** surfaces source type, workflow title, budgets, marketplace + project status, **next-step** hints, expandable applicant comparison with **rules-based fit insights** (`src/lib/buyerApplicantReviewAI.ts`), **Shortlist / Reject applicant / Select creator** (confirm modal), secure buyer-scoped status updates, and **Message creator** → **`/messages?buyerRequestId&creatorProfileId[&orderId]`** (prefers `orderId` after assignment). **`selectCreatorForRequest`** still syncs **`buyer_requests`** + **`orders`** without duplicate rows per request. Admin buyer queue shows a **marketplace strip** (applicants count, buyer-selected badge). **TEMP DEV RLS remains unsafe** until production policies ship.
+**Status:** Marketplace **Core Flow QA + Polish v1** — end-to-end buyer request → creator apply → buyer select → project workspace → deliverables → central messages, with role-based app shell (`src/lib/appNav.ts`), plain-English statuses (`src/lib/statusLabels.ts`), inbox deep-link fixes, and empty-state CTAs. Proposal/payment/agreement UI remains **deferred** (no Stripe). Prior: **UX Flow Simplification v1** + **Buyer Applicant Review / Central Messaging** — buyer dashboard **My Requests & Applicants** surfaces source type, workflow title, budgets, marketplace + project status, **next-step** hints, expandable applicant comparison with **rules-based fit insights** (`src/lib/buyerApplicantReviewAI.ts`), **Shortlist / Reject applicant / Select creator** (confirm modal), secure buyer-scoped status updates, and **Message creator** → **`/messages?buyerRequestId&creatorProfileId[&orderId]`** (prefers `orderId` after assignment). **`selectCreatorForRequest`** still syncs **`buyer_requests`** + **`orders`** without duplicate rows per request. Admin buyer queue shows a **marketplace strip** (applicants count, buyer-selected badge). **TEMP DEV RLS remains unsafe** until production policies ship.
 
 
 ### Proposal / pricing workflow (v1 — scope approval, no payments)
@@ -15,6 +15,10 @@ A marketplace for focused, affordable web tools built for local service business
 - **Creator:** `/dashboard/projects/:orderId` — read-only proposal + workflow banner + **guidance** by proposal status; copy buttons; cannot edit proposal rows.
 - **Order integration:** Buyer **approve** sets **`proposal_status = buyer_approved`**, **`buyer_approval_status = approved`**, syncs **`orders`**, keeps **`payment_status` unpaid**, may advance **`assigned` → `in_progress`** — **no Stripe charge**.
 - **Future:** Stripe checkout, escrow / handoff security, production RLS, creator payout protection policies.
+
+### Core marketplace loop (QA v1)
+
+End-to-end path: **buyer request** → **creator apply** → **buyer review/select** → **`orders` project** → **workspace deliverable** → **central `/messages`**. Role nav: buyer **Overview / Browse Workflows / My Requests / Messages**; creator **Buyer Requests / Applications / Projects / Workflows / Messages**; admin **AI Command Center** sections via `/admin#…`. Full manual checklist: **`docs/marketplace-application-flow.md`** (Core marketplace QA checklist). **Deferred:** Stripe, proposal enforcement UI, GitHub OAuth, external AI APIs.
 
 ### Marketplace Application Foundation v1
 

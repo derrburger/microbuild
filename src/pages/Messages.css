@@ -59,6 +59,14 @@
   margin: 0 0 0.5rem;
 }
 
+.mb-msg-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
 .mb-msg-layout {
   display: grid;
   grid-template-columns: minmax(240px, 320px) 1fr;

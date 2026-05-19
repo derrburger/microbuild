@@ -19,7 +19,7 @@ import {
   formatBuyerMarketplaceStatus,
   formatBuyerRequestStatus,
   formatOrderStatus,
-  formatRequestApplicationStatus,
+  formatRequestApplicationStatusForBuyer,
 } from '../lib/statusLabels';
 
 function oneProfile(edge: CreatorProfileRow | CreatorProfileRow[] | null | undefined): CreatorProfileRow | null {
@@ -572,7 +572,7 @@ function ApplicantRow({
         </div>
         <div className="mb-applicant-status-row subtle">
           <span>
-            <strong>Application status:</strong> {formatRequestApplicationStatus(appSt).label}
+            <strong>Application status:</strong> {formatRequestApplicationStatusForBuyer(appSt).label}
           </span>
           <span>
             <strong>Submitted:</strong> {fmtSubmittedAt(app.created_at)}

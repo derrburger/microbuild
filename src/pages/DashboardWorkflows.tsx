@@ -381,6 +381,23 @@ export default function DashboardWorkflows() {
               <p>{gateMsg}</p>
             </section>
           )
+        : rows.length === 0 ?
+          (
+            <section className="dash-empty">
+              <p>You have not published a workflow yet.</p>
+              <p className="subtle">
+                Create your first workflow, run rules-based AI review, then publish to the buyer storefront.
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={createBusy || !creatorProfile?.id}
+                onClick={() => void handleNewWorkflow()}
+              >
+                {createBusy ? 'Creating…' : 'Create your first workflow'}
+              </button>
+            </section>
+          )
         :
           (
             <>

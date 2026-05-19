@@ -26,7 +26,7 @@ export function normalizeStatusKey(raw: unknown): string {
 }
 
 const REQUEST_APPLICATION_LABELS: Record<string, Omit<StatusDisplay, 'color'>> = {
-  submitted: { label: 'Applied', tone: 'info' },
+  submitted: { label: 'Waiting for buyer', tone: 'warning' },
   shortlisted: { label: 'Shortlisted', tone: 'info' },
   buyer_selected: { label: 'Selected', tone: 'success' },
   rejected: { label: 'Not selected', tone: 'danger' },
@@ -119,6 +119,13 @@ function lookup(
 
 export function formatRequestApplicationStatus(raw: unknown): StatusDisplay {
   return lookup(normalizeStatusKey(raw), REQUEST_APPLICATION_LABELS);
+}
+
+/** Buyer reviewing applicants — "submitted" reads as a new application */
+export function formatRequestApplicationStatusForBuyer(raw: unknown): StatusDisplay {
+  const st = normalizeStatusKey(raw);
+  if (st === 'submitted') return withColor({ label: 'Applied', tone: 'info' });
+  return formatRequestApplicationStatus(raw);
 }
 
 export function formatBuyerMarketplaceStatus(raw: unknown): StatusDisplay {

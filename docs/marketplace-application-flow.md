@@ -210,3 +210,33 @@ Legacy admin assignment retains `selection_method = 'admin_assigned'`.
 4. Realtime inbox + moderation tooling (`admin_only`, participant nuances).
 
 ---
+
+## Core marketplace QA checklist (v1)
+
+Manual pass with three test accounts (buyer, creator, admin). No Stripe, GitHub OAuth, or external AI APIs in scope.
+
+| Step | Buyer | Creator | Admin |
+|------|-------|---------|-------|
+| 1 | Submit **New Request** (`/request`) or **Workflow Request/Customize** (`/request?workflowId=`) | — | — |
+| 2 | — | **Buyer Requests** (`/browse`) lists open requests; **Apply to Build** works; duplicate apply blocked; card shows **Applied** | Buyer Requests queue shows new row |
+| 3 | — | **My Applications** lists row; summary **Waiting for buyer** increments | Marketplace Applications tab |
+| 4 | **My Requests** shows request; applicant count matches | — | — |
+| 5 | Expand applicants; cards show creator info; **Message creator** opens `/messages?buyerRequestId&creatorProfileId` | — | — |
+| 6 | **Select creator** (confirm); selected creator shown on request | **Selected** badge; project in **Projects** | Pipeline shows buyer-selected project |
+| 7 | Project status on dashboard; **Message creator** prefers `orderId` when assigned | **Project workspace** opens; **Message buyer** → Messages | Deliverables tab when submitted |
+| 8 | Track journey / delivery status | Submit deliverable (preview + delivery URLs) | Review / approve / revision |
+| 9 | Approve delivery when offered | Revision note surfaces if migration applied | — |
+| 10 | Central **Messages** — one thread per buyer×creator pair (order anchor after selection) | Same | Inbox empty by design |
+
+**Status labels:** `src/lib/statusLabels.ts` — buyers see **Applied** on new applicants; creators see **Waiting for buyer** on `submitted`; admins see plain English on marketplace application cards.
+
+**Deferred:** proposal generate/send, Stripe checkout, agreement signing — read-only or collapsed **Later: Proposal & Payment** in admin only.
+
+**Known launch-hardening (not fixed in UI-only QA):**
+
+- Replace TEMP DEV RLS on `request_applications`, `project_messages`, `buyer_requests`.
+- Server-side workflow AI scoring; unread badges; message attachments.
+- Optional: `deliverables.revision_note` — apply `supabase/migrations/deliverables-revision-note.sql` if revision UI shows missing column errors.
+- Production admin inbox / moderation (currently empty for `account_type === 'admin'`).
+
+---

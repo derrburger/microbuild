@@ -18,6 +18,7 @@ import {
   sendProjectMessage,
   sendRequestMessage,
 } from './messages';
+import { formatOrderStatus, formatRequestApplicationStatus } from './statusLabels';
 
 const LOG_TAG = '[messageInbox]';
 
@@ -227,11 +228,12 @@ export function getOtherParticipantLabel(conv: ParticipantConversation, side: Me
 
 export function getConversationStatusLabel(conv: ParticipantConversation): string {
   if (conv.orderId && conv.orderPipelineStatus) {
-    const o = normalizeMessageText(conv.orderPipelineStatus).replace(/_/g, ' ');
-    return o ? o.charAt(0).toUpperCase() + o.slice(1) : 'Project';
+    return formatOrderStatus(conv.orderPipelineStatus).label;
   }
-  const a = normalizeMessageText(conv.applicationStatus).replace(/_/g, ' ');
-  return a ? a.charAt(0).toUpperCase() + a.slice(1) : 'Application';
+  if (conv.applicationStatus) {
+    return formatRequestApplicationStatus(conv.applicationStatus).label;
+  }
+  return conv.anchor === 'order' ? 'Project' : 'Application';
 }
 
 export function getConversationContext(conv: ParticipantConversation, side: MessagingAccountSide): string {

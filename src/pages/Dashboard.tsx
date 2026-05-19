@@ -17,8 +17,6 @@ import {
 import {
   fetchOrdersByRequestIds,
   fetchDeliverablesByOrderIds,
-  ORDER_STATUS_LABELS,
-  ORDER_STATUS_COLORS,
   getNextOrderAction,
 } from '../lib/orders';
 import type { OrderPipelineRow, DeliverablePlaceholder } from '../lib/orders';
@@ -37,6 +35,7 @@ import StatusBadge from '../components/StatusBadge';
 import {
   formatBuyerRequestHeadline,
   formatCreatorApprovalStatus,
+  formatOrderStatus,
   normalizeStatusKey,
 } from '../lib/statusLabels';
 import { getCreatorApplicationsWithBuyerRequests } from '../lib/marketplace';
@@ -756,14 +755,15 @@ function ActiveRequestCard({
             <span className="buyer-project-title">
               {linkedOrder.project_title ?? `Project ${linkedOrder.id.slice(0, 8)}…`}
             </span>
-            <span className="buyer-project-status-badge"
+            <span
+              className="buyer-project-status-badge"
               style={{
-                color:       ORDER_STATUS_COLORS[linkedOrder.order_status] ?? '#8a94a6',
-                borderColor: (ORDER_STATUS_COLORS[linkedOrder.order_status] ?? '#8a94a6') + '44',
-                background:  (ORDER_STATUS_COLORS[linkedOrder.order_status] ?? '#8a94a6') + '11',
+                color: formatOrderStatus(linkedOrder.order_status).color,
+                borderColor: `${formatOrderStatus(linkedOrder.order_status).color}44`,
+                background: `${formatOrderStatus(linkedOrder.order_status).color}11`,
               }}
             >
-              {ORDER_STATUS_LABELS[linkedOrder.order_status] ?? linkedOrder.order_status}
+              {formatOrderStatus(linkedOrder.order_status).label}
             </span>
           </div>
           <div className="buyer-project-meta-row">
@@ -1307,9 +1307,15 @@ function CreatorApplicationStatus({
       case 'suspended':
         return { icon: '⊘', title: 'Account suspended', color: '#a78bfa',
           message: 'Your creator account has been suspended. Contact MicroBuild support for more information.' };
-      default:
-        return { icon: '📋', title: `Application status: ${appStatus.status.replace(/_/g, ' ')}`, color: '#8a94a6',
-          message: 'Check back soon for updates on your application.' };
+      default: {
+        const approvalLabel = formatCreatorApprovalStatus(appStatus.status).label;
+        return {
+          icon: '📋',
+          title: `Application status: ${approvalLabel}`,
+          color: '#8a94a6',
+          message: 'Check back soon for updates on your application.',
+        };
+      }
     }
   }
 

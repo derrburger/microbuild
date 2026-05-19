@@ -278,8 +278,8 @@ export default function AdminCommandCenter({
       list.push({
         id: 'clear',
         count: 0,
-        title: 'All clear',
-        explanation: 'No urgent rules-based signals. Spot-check Platform Health or open queues as needed.',
+        title: 'Nothing needs action right now',
+        explanation: 'No urgent rules-based signals. Spot-check Platform Health or open queues when you want a manual pass.',
         action: 'View Platform Health',
         section: 'health',
         tone: 'ok',
