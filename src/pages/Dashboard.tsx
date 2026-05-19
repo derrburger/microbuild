@@ -653,6 +653,7 @@ interface BuyerRequest {
   business_name: string;
   build_type: string;
   status: string;
+  visibility_status?: string | null;
   created_at: string;
   budget: string | null;
   deadline: string | null;
@@ -1070,7 +1071,7 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
     let q = supabase
       .from('buyer_requests')
       .select(
-        'id, business_name, build_type, status, created_at, budget, deadline, main_goal, current_problem, industry, website_social, applications_count, application_status, selected_creator_profile_id, selected_request_application_id, user_id, source_type, source_workflow_id, source_workflow_title, source_creator_profile_id, customization_notes, requested_from_workflow',
+        'id, business_name, build_type, status, visibility_status, created_at, budget, deadline, main_goal, current_problem, industry, website_social, applications_count, application_status, selected_creator_profile_id, selected_request_application_id, user_id, source_type, source_workflow_id, source_workflow_title, source_creator_profile_id, customization_notes, requested_from_workflow',
       )
       .order('created_at', { ascending: false })
       .limit(20);
@@ -1187,6 +1188,7 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
             buyerProfile={userProfile}
             requests={requests}
             ordersByRequestId={orderByRequestId}
+            deliverablesByOrderId={deliverables}
             onMarketplaceEvent={loadBuyerRequests}
           />
         )

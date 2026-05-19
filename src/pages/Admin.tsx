@@ -2443,6 +2443,34 @@ function RequestCard({
         </div>
       </div>
 
+      <div className="req-marketplace-strip" role="status" aria-label="Marketplace selection overview">
+        <span className="req-mp-pill">
+          Applicants: {typeof row.applications_count === 'number' ? row.applications_count : '—'}
+        </span>
+        <span className="req-mp-pill">
+          Marketplace:{' '}
+          {safeText(row.application_status).trim() ?
+            safeText(row.application_status).replace(/_/g, ' ')
+          : '—'}
+        </span>
+        {safeText(row.application_status).toLowerCase() === 'creator_selected' ?
+          <span className="req-mp-pill req-mp-pill--buyer">Buyer-selected creator</span>
+        : null}
+        {row.selected_request_application_id ?
+          (
+            <span className="req-mp-pill req-mp-pill--muted" title={safeText(row.selected_request_application_id)}>
+              Selected application: {safeText(row.selected_request_application_id).slice(0, 8)}…
+            </span>
+          )
+        : null}
+        {row.selected_creator_profile_id ?
+          <span className="req-mp-pill req-mp-pill--muted">Selected creator linked</span>
+        : null}
+        <span className="req-mp-note subtle">
+          Buyers normally pick applicants — manual assignment in the pipeline block is fallback only.
+        </span>
+      </div>
+
       {/* Body */}
       <div className="req-card-body">
         <div className="req-card-contact">

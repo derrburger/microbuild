@@ -1090,7 +1090,29 @@ export async function updateRequestApplicationStatus(
     | 'rejected'
     | 'withdrawn'
     | 'admin_blocked',
+  buyerVerification?: { email: string; authUserId?: string | null },
 ): Promise<boolean> {
+  if (buyerVerification?.email) {
+    const { data: row, error: loadErr } = await supabase
+      .from('request_applications')
+      .select('buyer_request_id')
+      .eq('id', applicationId)
+      .maybeSingle();
+
+    if (loadErr || !row) {
+      console.error('[marketplace] updateRequestApplicationStatus load:', loadErr);
+      return false;
+    }
+
+    const brid = normalizeText((row as { buyer_request_id?: string }).buyer_request_id ?? '');
+    if (!brid) return false;
+
+    const own = await verifyBuyerOwnsRequest(brid, buyerVerification.email, {
+      authUserId: buyerVerification.authUserId ?? null,
+    });
+    if (!own) return false;
+  }
+
   const { error } = await supabase
     .from('request_applications')
     .update({ application_status: next, updated_at: new Date().toISOString() })
@@ -1119,6 +1141,9 @@ export async function selectCreatorForRequest(params: {
   buyerEmail: string;
   buyerProfile: UserProfileRow;
 }): Promise<{ ok: boolean; error: string | null }> {
+  if (!normalizeText(params.requestApplicationId)) {
+    return { ok: false, error: 'No application selected.' };
+  }
   const own = await verifyBuyerOwnsRequest(params.buyerRequestId, params.buyerEmail, {
     authUserId: params.buyerProfile.auth_user_id ?? null,
   });

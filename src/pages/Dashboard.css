@@ -1992,7 +1992,225 @@
 }
 
 .mb-applicants-summary-btn--rich {
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) auto auto auto;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.8fr) auto auto minmax(0, 1.05fr) auto;
+  align-items: start;
+}
+
+.mb-next-action-pill {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 212, 120, 0.35);
+  background: rgba(0, 212, 120, 0.08);
+  color: var(--accent);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mb-request-card-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.35rem 0.85rem;
+  padding: 0.35rem 0.85rem 0.55rem;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.35rem;
+}
+
+.mb-meta-k {
+  display: inline-block;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-right: 0.2rem;
+}
+
+.mb-meta-full-row {
+  grid-column: 1 / -1;
+}
+
+.mb-next-action-block {
+  grid-column: 1 / -1;
+}
+
+.mb-next-action-label {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mb-next-action-hint {
+  color: var(--text-muted);
+}
+
+.mb-selection-success-banner {
+  margin: 0.35rem 0.85rem 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 212, 120, 0.35);
+  background: rgba(0, 212, 120, 0.07);
+  font-size: 0.82rem;
+}
+
+.mb-comparison-summary {
+  margin: 0.65rem 0.85rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mb-comparison-summary-title {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+
+.mb-comparison-summary-body {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.mb-applicant-row--winner {
+  border-color: rgba(0, 212, 120, 0.45);
+  box-shadow: 0 0 0 1px rgba(0, 212, 120, 0.12);
+}
+
+.mb-applicant-row--shortlisted {
+  border-color: rgba(99, 179, 237, 0.45);
+}
+
+.mb-applicant-row--rejected {
+  opacity: 0.72;
+}
+
+.mb-badge-verified-buyer {
+  border-color: rgba(0, 212, 120, 0.45);
+  color: #63ffb0;
+}
+
+.mb-badge-muted {
+  opacity: 0.75;
+}
+
+.mb-applicant-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.35rem;
+  font-size: 0.74rem;
+}
+
+.mb-applicant-ai-panel {
+  margin-top: 0.45rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.mb-applicant-ai-title {
+  font-weight: 800;
+  font-size: 0.74rem;
+  margin-bottom: 0.25rem;
+  color: var(--text-primary);
+}
+
+.mb-applicant-ai-rec {
+  margin: 0 0 0.4rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.mb-applicant-ai-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.mb-applicant-ai-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.mb-ai-k {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.mb-ai-v {
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.mb-applicant-ai-advantage {
+  margin: 0.35rem 0;
+  font-size: 0.74rem;
+}
+
+.mb-ai-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.mb-ai-list--ok li {
+  color: #9ae6b4;
+}
+
+.mb-ai-list--risk li {
+  color: #fbd38d;
+}
+
+.mb-applicant-view-profile {
+  margin: 0.15rem 0 0;
+}
+
+.mb-select-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.mb-select-confirm-card {
+  max-width: 420px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 1.1rem 1.15rem;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
+}
+
+.mb-select-confirm-title {
+  margin: 0 0 0.45rem;
+  font-size: 1rem;
+}
+
+.mb-select-confirm-copy {
+  margin: 0 0 0.85rem;
+  line-height: 1.45;
+}
+
+.mb-select-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-wrap: wrap;
 }
 
 .mb-applicants-mkt {

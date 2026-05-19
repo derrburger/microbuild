@@ -12,9 +12,15 @@ This document summarizes the marketplace foundation introduced with `marketplace
 
 1. Submits `/request` (existing form). Request rows gain marketplace columns (`visibility_status`, `application_status`, `applications_count`, selection pointers).
 2. Open requests accept **creator voluntary applications** via `request_applications`.
-3. Buyer reviews applicants in **Dashboard → My Requests & Applicants** (expand per request — budget, deadline, marketplace status, selected creator when set, link to workspace when an order exists).
-4. Buyer taps **Select creator** → sibling active applications → `rejected`; winner → `buyer_selected`; `buyer_requests` → `creator_selected` + `visibility_status = creator_selected`; **`orders`** row created or updated (no duplicate per `request_id`) with **`creator_id`**, **`request_application_id`**, **`selection_method = buyer_selected`**, **`order_status = assigned`** (application row also mirrors **`order_id`** when synced).
-5. **Buyer Browse** (**`/browse`**) lists **`published_workflows`** that meet **all** of:
+3. Buyer reviews applicants in **Dashboard → My Requests & Applicants** (`#buyer-my-requests-applicants`): each request card summarizes **source type** (custom vs workflow customization), workflow title when relevant, budget/deadline, legacy request status, marketplace status, visibility, applicant counts, selected creator, linked **project / order** status, and a **suggested next step** (waiting → review → select → message assigned creator → track delivery → approve delivery).
+4. Expanding a request loads applicants (ownership verified server-side). Applicant cards include creator identity, **tier + verified** styling, optional **Original Workflow Creator** badge, profile strength, proposal/fit/questions/timeline/price, application status + submitted timestamp, and **`buyerApplicantReviewAI` rules-only insights** (fit score, strengths, concerns, proposal clarity, timeline confidence, recommended decision, workflow-publisher advantage text when applicable).
+5. Buyer actions per applicant:
+   - **Shortlist** → `request_applications.application_status = shortlisted` (buyer ownership re-checked before update).
+   - **Reject applicant** → `rejected` for that cycle.
+   - **Select creator** → confirmation modal explaining project assignment → **`selectCreatorForRequest`** rejects sibling `submitted|shortlisted` rows, sets winner `buyer_selected`, updates **`buyer_requests`** (`creator_selected`, pointers, `visibility_status = creator_selected`), **creates or updates** the **`orders`** row (`selection_method = buyer_selected`, `selected_by_buyer`, `order_status = assigned`, `request_application_id`, deduped by `request_id`).
+   - **Message creator** → central **`/messages`** deep link; prefers `orderId` once mirrored on the application/order.
+   - **View public profile** → `/creator/:id` when `public_profile_status = public`.
+6. **Buyer Browse** (**`/browse`**) lists **`published_workflows`** that meet **all** of:
    - `workflow_status = published`
    - `visibility_status = public`
    - `ai_review_status` in **`published`** or **`ai_approved`**
@@ -83,6 +89,7 @@ This document summarizes the marketplace foundation introduced with `marketplace
 ## Admin flow
 
 - `/admin` includes a **Marketplace foundation oversight** panel with counts pulled from Supabase (open requests accepting bids, applications awaiting buyer/admin attention, **workflows live on Browse**, **risk-flagged workflows**, buyer-selected pipeline rows).
+- **Buyer Request Queue cards** also surface a compact **marketplace strip**: applicant totals, marketplace lifecycle label, **Buyer-selected creator** badge when `application_status = creator_selected`, plus excerpts of the winning `request_application` / creator linkage — clarifying that buyers drove selection while manual pipeline assignment stays **escalation-only**.
 - **Workflow AI overview** section — AI-first posture; admin is **oversight / override**, not the default publisher.
 - **Manual assignment fallback** persists through existing admin pipeline actions and should be positioned as escalation rather than implying it is the only fulfillment path.
 

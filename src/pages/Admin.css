@@ -317,6 +317,43 @@
   color: var(--text-muted);
 }
 
+.req-marketplace-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  padding: 0.45rem 1.5rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(99, 179, 237, 0.04);
+}
+
+.req-mp-pill {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.req-mp-pill--buyer {
+  border-color: rgba(0, 212, 120, 0.45);
+  color: #63ffb0;
+  background: rgba(0, 212, 120, 0.08);
+}
+
+.req-mp-pill--muted {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.req-mp-note {
+  font-size: 0.68rem;
+  flex: 1 1 220px;
+  min-width: min(100%, 220px);
+}
+
 /* Card body — 3 columns */
 .req-card-body {
   display: grid;
