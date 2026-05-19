@@ -214,7 +214,8 @@ export default function MessagesPage() {
     !loadingInbox && conversations.length === 0 ?
       (
         <div className="mb-msg-empty">
-          <h2 className="mb-msg-empty-title">No conversations yet.</h2>
+          <h2 className="mb-msg-empty-title">No messages yet</h2>
+          <p className="subtle">Start a conversation from a request, application, or project workspace.</p>
           {side === 'creator'
             ?
               (<p>Apply to buyer requests to start conversations.</p>)

@@ -1,5 +1,19 @@
 # MicroBuild Marketplace Application Flow (Foundation v1)
 
+## UX Flow Simplification v1 (navigation + language)
+
+| Role | Nav priority | Dashboard focus |
+|------|----------------|-----------------|
+| **Buyer** | Browse Workflows, My Requests, Messages, Dashboard, Settings | My Requests overview counts (waiting → review → selected → in progress → completed), **My Requests & Applicants** panel, message/select CTAs |
+| **Creator** | Buyer Requests, Applications, Projects, Workflows, Messages, Profile | Marketplace summary cards, **My Applications** with source type + selection label, project workspace when selected |
+| **Admin** | AI Command Center, Messages (oversight tabs inside `/admin`) | Tabbed command center — not the default buyer selector |
+
+**Status labels:** `src/lib/statusLabels.ts` + `StatusBadge` map DB values (e.g. `buyer_selected`, `submitted_for_review`, `approved_pending_payment`) to plain English with consistent pill colors (green = active/selected, amber = pending/review, red = rejected, blue/neutral = info).
+
+**Deferred (unchanged):** Stripe, GitHub OAuth, external AI APIs, full proposal/payment/agreement UI on main admin paths.
+
+---
+
 ## Primary product direction (v1 foundation)
 
 MicroBuild is shifting from admin-only assignment to an **optional marketplace**: buyers post **open requests**, creators **apply**, buyers **pick** a creator, and the system **instantiates / updates** the pipeline `orders` row. Admin still **observes**, can **fallback-assign**, **override**, and provides **AI oversight** on published workflows — but **workflow publishing is AI-first**, not an admin approval queue.

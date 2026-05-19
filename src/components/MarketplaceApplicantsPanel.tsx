@@ -14,6 +14,13 @@ import {
   type BuyerApplicantResolved,
 } from '../lib/marketplace';
 import { analyzeApplicantForBuyerReview, summarizeApplicantRankingForBuyer } from '../lib/buyerApplicantReviewAI';
+import StatusBadge from './StatusBadge';
+import {
+  formatBuyerMarketplaceStatus,
+  formatBuyerRequestStatus,
+  formatOrderStatus,
+  formatRequestApplicationStatus,
+} from '../lib/statusLabels';
 
 function oneProfile(edge: CreatorProfileRow | CreatorProfileRow[] | null | undefined): CreatorProfileRow | null {
   if (!edge) return null;
@@ -220,6 +227,20 @@ export default function MarketplaceApplicantsPanel({
     if (!applicantMap[requestId]) await loadApplicants(requestId);
   }
 
+  if (requests.length === 0) {
+    return (
+      <section className="buyer-section mb-applicants-root" id="buyer-my-requests-applicants">
+        <div className="buyer-empty-state">
+          <span className="buyer-empty-icon">📋</span>
+          <p>Request your first MicroBuild — creators will apply from Buyer Requests browse.</p>
+          <Link to="/request" className="btn btn-primary btn-sm">
+            Request a MicroBuild
+          </Link>
+        </div>
+      </section>
+    );
+  }
+
   if (actionable.length === 0) return null;
 
   return (
@@ -247,10 +268,10 @@ export default function MarketplaceApplicantsPanel({
           const deliv = ord?.id ? deliverablesByOrderId[ord.id] ?? null : null;
           const nextAction = computeBuyerApplicantNextAction(r, ord, deliv ?? null);
           const wfBacked = marketplaceRequestIsWorkflow(r);
-          const legacyStatus = readableStatus(normalize(r.status));
-          const visLabel = readableStatus(normalize(r.visibility_status));
-          const orderStatusLabel =
-            ord?.order_status ? readableStatus(normalize(ord.order_status)) : 'No project yet';
+          const legacyStatus = formatBuyerRequestStatus(r.status).label;
+          const visLabel = formatBuyerRequestStatus(r.visibility_status).label;
+          const mktDisplay = formatBuyerMarketplaceStatus(mkt);
+          const orderStatusLabel = ord?.order_status ? formatOrderStatus(ord.order_status).label : 'No project yet';
 
           return (
             <div key={r.id} className="mb-applicants-details" id={`mb-buyer-applicants-${r.id}`}>
@@ -263,7 +284,7 @@ export default function MarketplaceApplicantsPanel({
                 <span className="mb-applicants-biz">{safe(r.business_name, 'Request')}</span>
                 <span className="subtle">{safe(r.build_type, 'MicroBuild')}</span>
                 <span className="mb-applicants-count">{cnt} applicant{cnt !== 1 ? 's' : ''}</span>
-                <span className="mb-applicants-mkt">{mkt ? readableStatus(mkt) : '—'}</span>
+                <StatusBadge display={mktDisplay} className="mb-applicants-mkt" />
                 <span className="mb-next-action-pill" title={nextAction.hint}>
                   Next: {nextAction.label}
                 </span>
@@ -291,7 +312,7 @@ export default function MarketplaceApplicantsPanel({
                   <strong className="mb-meta-k">Request status</strong> {legacyStatus}
                 </span>
                 <span>
-                  <strong className="mb-meta-k">Marketplace status</strong> {mkt ? readableStatus(mkt) : '—'}
+                  <strong className="mb-meta-k">Marketplace status</strong> {mktDisplay.label}
                 </span>
                 <span>
                   <strong className="mb-meta-k">Visibility</strong> {visLabel || '—'}
@@ -373,25 +394,31 @@ export default function MarketplaceApplicantsPanel({
 
               {open && loadingReq === r.id ? <div className="dash-loading">Loading applicants…</div> : null}
               {open && applicantMap[r.id]?.length === 0 && loadingReq !== r.id && (
-                <div className="mb-applicants-empty subtle">No applications yet.</div>
+                <div className="mb-applicants-empty subtle">
+                  Creators will appear here after they apply.
+                </div>
               )}
               {open ?
-                (applicantMap[r.id] ?? []).map((a) => (
-                  <ApplicantRow
-                    key={a.id}
-                    app={a}
-                    buyerProfile={buyerProfile}
-                    request={r}
-                    orderId={ord?.id ?? null}
-                    busy={busyId === a.id}
-                    onBusy={(v) => setBusyId(v ? a.id : null)}
-                    onToast={(t) => setToast(t)}
-                    onReload={async () => {
-                      await loadApplicants(r.id);
-                      await refreshParent();
-                    }}
-                  />
-                ))
+                (
+                  <div className="mb-applicant-scan-grid">
+                    {(applicantMap[r.id] ?? []).map((a) => (
+                      <ApplicantRow
+                        key={a.id}
+                        app={a}
+                        buyerProfile={buyerProfile}
+                        request={r}
+                        orderId={ord?.id ?? null}
+                        busy={busyId === a.id}
+                        onBusy={(v) => setBusyId(v ? a.id : null)}
+                        onToast={(t) => setToast(t)}
+                        onReload={async () => {
+                          await loadApplicants(r.id);
+                          await refreshParent();
+                        }}
+                      />
+                    ))}
+                  </div>
+                )
               : null}
               {open && (applicantMap[r.id]?.length ?? 0) > 0 ?
                 (
@@ -522,7 +549,7 @@ function ApplicantRow({
     : '';
 
   return (
-    <div className={`mb-applicant-row${rowHighlight}`}>
+    <article className={`mb-applicant-row mb-applicant-card--scan${rowHighlight}`}>
       <div className="mb-applicant-meta">
         <div className="mb-applicant-name-row">
           <div className="mb-applicant-name">{name}</div>
@@ -545,7 +572,7 @@ function ApplicantRow({
         </div>
         <div className="mb-applicant-status-row subtle">
           <span>
-            <strong>Application status:</strong> {readableStatus(appSt) || '—'}
+            <strong>Application status:</strong> {formatRequestApplicationStatus(appSt).label}
           </span>
           <span>
             <strong>Submitted:</strong> {fmtSubmittedAt(app.created_at)}
@@ -644,6 +671,26 @@ function ApplicantRow({
         <p className="mb-applicant-view-profile subtle">Public profile hidden — use Messages or portfolio link.</p>
       )}
 
+      <div className="mb-applicant-actions mb-applicant-actions--primary">
+        <CentralMessageLauncher
+          buyerRequestId={request.id}
+          creatorProfileId={prof?.id ?? null}
+          orderId={effectiveOrderId}
+          label="Message creator"
+          className="mb-applicant-msg-thread"
+        />
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          disabled={busy || !canActOnApp}
+          aria-busy={busy}
+          onClick={() => setConfirmSelect(true)}
+          title={!canActOnApp ? 'Selection is locked for this request or application.' : undefined}
+        >
+          Select creator
+        </button>
+      </div>
+
       <div className="mb-applicant-actions">
         <button
           type="button"
@@ -656,16 +703,6 @@ function ApplicantRow({
         </button>
         <button
           type="button"
-          className="btn btn-primary btn-sm"
-          disabled={busy || !canActOnApp}
-          aria-busy={busy}
-          onClick={() => setConfirmSelect(true)}
-          title={!canActOnApp ? 'Selection is locked for this request or application.' : undefined}
-        >
-          Select creator
-        </button>
-        <button
-          type="button"
           className="btn btn-ghost btn-sm"
           disabled={busy || !canActOnApp}
           aria-busy={busy}
@@ -674,14 +711,6 @@ function ApplicantRow({
           {busy ? 'Working…' : 'Reject applicant'}
         </button>
       </div>
-
-      <CentralMessageLauncher
-        buyerRequestId={request.id}
-        creatorProfileId={prof?.id ?? null}
-        orderId={effectiveOrderId}
-        label="Message creator"
-        className="mb-applicant-msg-thread"
-      />
 
       {appSt === 'buyer_selected' && effectiveOrderId ?
         (
@@ -730,7 +759,7 @@ function ApplicantRow({
           </div>
         )
       : null}
-    </div>
+    </article>
   );
 }
 
@@ -771,7 +800,3 @@ function normalize(s: unknown) {
   return typeof s === 'string' ? s.toLowerCase().trim() : '';
 }
 
-function readableStatus(s: string): string {
-  if (!s) return '—';
-  return s.replace(/_/g, ' ');
-}

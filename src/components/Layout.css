@@ -7,3 +7,15 @@
 .layout-main {
   flex: 1;
 }
+
+.layout--app .layout-main {
+  background: var(--bg-primary, #0a0e1a);
+}
+
+.layout--app {
+  min-height: 100vh;
+}
+
+.app-workspace {
+  min-height: calc(100vh - 56px);
+}

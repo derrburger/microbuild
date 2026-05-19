@@ -15,13 +15,10 @@ import {
   analyzeBuyerDashboard,
 } from '../lib/buyerAI';
 import {
-  fetchOrdersByCreatorProfile,
   fetchOrdersByRequestIds,
   fetchDeliverablesByOrderIds,
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
-  ORDER_PIPELINE_STAGES,
-  orderTimelineIndex,
   getNextOrderAction,
 } from '../lib/orders';
 import type { OrderPipelineRow, DeliverablePlaceholder } from '../lib/orders';
@@ -31,10 +28,18 @@ import {
   buyerDeliveryStatusLabel,
 } from '../lib/buyerProjectTimeline';
 import type { UserProfileRow, CreatorProfileRow } from '../types/database';
-import DashboardNav from '../components/DashboardNav';
+import CreatorProjectsPanel from '../components/creator/CreatorProjectsPanel';
+import AppPageHeader from '../components/AppPageHeader';
 import MarketplaceApplicantsPanel from '../components/MarketplaceApplicantsPanel';
 import BuyerProposalSection from '../components/BuyerProposalSection';
 import CentralMessageLauncher from '../components/CentralMessageLauncher';
+import StatusBadge from '../components/StatusBadge';
+import {
+  formatBuyerRequestHeadline,
+  formatCreatorApprovalStatus,
+  normalizeStatusKey,
+} from '../lib/statusLabels';
+import { getCreatorApplicationsWithBuyerRequests } from '../lib/marketplace';
 import './Dashboard.css';
 
 // ─── Safe helpers ──────────────────────────────────────────────────────────────
@@ -54,11 +59,6 @@ const TIER_LABELS: Record<string, string> = {
 };
 const TIER_COLORS: Record<string, string> = {
   free: '#8a94a6', professional: '#63b3ed', verified: '#f9b032',
-};
-const APPROVAL_COLORS: Record<string, string> = {
-  active: '#00d478', approved_pending_payment: '#63b3ed',
-  draft: '#8a94a6', hidden: '#8a94a6', suspended: '#ef4444',
-  rejected: '#ef4444', needs_more_info: '#f9b032', reviewing: '#63b3ed', new: '#63b3ed',
 };
 const STATUS_COLORS: Record<string, string> = {
   new: '#63b3ed', in_review: '#f9b032', 'in-review': '#f9b032',
@@ -289,133 +289,6 @@ function ProfileReadinessCard({ profile }: { profile: CreatorProfileRow }) {
   );
 }
 
-// ─── Creator Project Pipeline (live data) ─────────────────────────────────────
-
-function CreatorProjectPipeline({ creatorProfileId }: { creatorProfileId: string }) {
-  const [orders, setOrders]   = useState<OrderPipelineRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchOrdersByCreatorProfile(creatorProfileId).then((data) => {
-      setOrders(data);
-      setLoading(false);
-    });
-  }, [creatorProfileId]);
-
-  const STAGES = [
-    { id: 'assigned',    label: 'Assigned',    color: '#63b3ed' },
-    { id: 'in_progress', label: 'In Progress', color: '#f9b032' },
-    { id: 'in_review',   label: 'In Review',   color: '#f97316' },
-    { id: 'delivered',   label: 'Delivered',   color: '#00d478' },
-    { id: 'completed',   label: 'Completed',   color: '#00d478' },
-  ];
-
-  const activeOrders = orders.filter(
-    (o) => !['completed', 'rejected', 'canceled'].includes(o.order_status),
-  );
-
-  return (
-    <div className="cd-pipeline-card">
-      <div className="cd-pipeline-header">
-        <h3 className="cd-card-title">Project Pipeline</h3>
-        {!loading && (
-          <span className="cd-pipeline-live-badge">
-            {orders.length > 0 ? `${orders.length} project${orders.length > 1 ? 's' : ''}` : 'No projects yet'}
-          </span>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="cd-pipeline-loading">Loading projects…</div>
-      ) : orders.length === 0 ? (
-        <div className="cd-pipeline-empty">
-          <p>Assigned MicroBuild projects appear here.</p>
-          <p className="cd-pipeline-empty-sub">
-            Browse open buyer requests under{' '}
-            <Link to="/browse">Buyer Requests</Link> — buyers can also hire you directly; admin assignment remains a fallback.
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* Stage counts */}
-          <div className="cd-pipeline-stages">
-            {STAGES.map((s) => {
-              const count = orders.filter((o) => o.order_status === s.id).length;
-              return (
-                <div key={s.id} className={`cd-pipeline-stage${count > 0 ? ' cd-pipeline-stage--active' : ''}`}>
-                  <div className="cd-pipeline-count" style={{ color: count > 0 ? s.color : undefined }}>
-                    {count > 0 ? count : '—'}
-                  </div>
-                  <div className="cd-pipeline-label">{s.label}</div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Active project cards */}
-          {activeOrders.length > 0 && (
-            <div className="cd-project-list">
-              {activeOrders.slice(0, 4).map((order) => {
-                const sColor = ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6';
-                const tIdx = orderTimelineIndex(order.order_status);
-                return (
-                  <div key={order.id} className="cd-project-card">
-                    <div className="cd-project-title">
-                      {order.project_title ?? `Project ${order.id.slice(0, 8)}…`}
-                    </div>
-                    <div className="cd-project-type">{order.project_type ?? '—'}</div>
-                    <div className="cd-project-mini-tl" aria-hidden>
-                      {ORDER_PIPELINE_STAGES.map((s, i) => {
-                        const done = i < tIdx;
-                        const active = i === tIdx;
-                        const c = ORDER_STATUS_COLORS[s.id] ?? '#8a94a6';
-                        return (
-                          <div
-                            key={s.id}
-                            className={`cd-mini-tick${done || active ? ' on' : ''}`}
-                            style={{ background: done || active ? c : 'var(--border)' }}
-                            title={s.label}
-                          />
-                        );
-                      })}
-                    </div>
-                    <div className="cd-project-footer">
-                      <span className="cd-project-status-badge"
-                        style={{ color: sColor, borderColor: sColor + '44', background: sColor + '11' }}>
-                        {ORDER_STATUS_LABELS[order.order_status] ?? order.order_status}
-                      </span>
-                      <span className="cd-project-date">{fmtDate(order.created_at)}</span>
-                    </div>
-                    <div className="cd-project-next">→ {getNextOrderAction(order.order_status)}</div>
-                    {order.request_id?.trim() && order.creator_id?.trim() ?
-                      (
-                        <CentralMessageLauncher
-                          buyerRequestId={order.request_id.trim()}
-                          creatorProfileId={order.creator_id.trim()}
-                          orderId={order.id}
-                          variant="inline"
-                          label="Message buyer"
-                          className="cd-project-msg"
-                        />
-                      )
-                    : null}
-                    <Link className="cd-project-open" to={`/dashboard/projects/${order.id}`}>
-                      Open workspace →
-                    </Link>
-                  </div>
-                );
-              })}
-              {activeOrders.length > 4 && (
-                <div className="cd-project-more">+{activeOrders.length - 4} more projects</div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
 // ─── Earnings preview ─────────────────────────────────────────────────────────
 
 function EarningsPreview({
@@ -505,6 +378,67 @@ function WarningBanner({ warnings }: { warnings: string[] }) {
 
 // ─── Creator Dashboard ─────────────────────────────────────────────────────────
 
+function CreatorMarketplaceOverview({ creatorProfileId }: { creatorProfileId: string }) {
+  const [appCount, setAppCount] = useState(0);
+  const [selectedCount, setSelectedCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      const { data: apps } = await getCreatorApplicationsWithBuyerRequests(creatorProfileId);
+      if (cancelled) return;
+      const rows = (apps ?? []).filter(Boolean);
+      setAppCount(rows.length);
+      let sel = 0;
+      let pend = 0;
+      for (const a of rows) {
+        const st = normalizeStatusKey(a?.application_status);
+        if (st === 'buyer_selected') sel++;
+        if (st === 'submitted' || st === 'shortlisted') pend++;
+      }
+      setSelectedCount(sel);
+      setPendingCount(pend);
+      setLoading(false);
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [creatorProfileId]);
+
+  return (
+    <div className="cd-marketplace-overview" aria-label="Marketplace summary">
+      <Link to="/browse" className="cd-marketplace-overview-card">
+        <div className="cd-marketplace-overview-val">{loading ? '…' : '→'}</div>
+        <div className="cd-marketplace-overview-label">Available buyer requests</div>
+      </Link>
+      <Link to="/dashboard/applications" className="cd-marketplace-overview-card">
+        <div className="cd-marketplace-overview-val">{loading ? '…' : appCount}</div>
+        <div className="cd-marketplace-overview-label">My applications</div>
+      </Link>
+      <Link to="/dashboard/applications#my-applications-list" className="cd-marketplace-overview-card">
+        <div className="cd-marketplace-overview-val">{loading ? '…' : pendingCount}</div>
+        <div className="cd-marketplace-overview-label">Waiting for buyer</div>
+      </Link>
+      <Link to="/dashboard" className="cd-marketplace-overview-card">
+        <div className="cd-marketplace-overview-val">{loading ? '…' : selectedCount}</div>
+        <div className="cd-marketplace-overview-label">Selected projects</div>
+      </Link>
+      <Link to="/dashboard/workflows" className="cd-marketplace-overview-card">
+        <div className="cd-marketplace-overview-val">+</div>
+        <div className="cd-marketplace-overview-label">Publish a workflow</div>
+      </Link>
+      <Link to="/messages" className="cd-marketplace-overview-card">
+        <div className="cd-marketplace-overview-val">✉</div>
+        <div className="cd-marketplace-overview-label">Message buyers</div>
+      </Link>
+    </div>
+  );
+}
+
 function CreatorDashboard({
   profile,
   appStatus,
@@ -552,9 +486,7 @@ function CreatorDashboard({
             <span className="cd-tier-badge" style={{ color: tierColor, borderColor: tierColor + '44', background: tierColor + '10' }}>
               {TIER_LABELS[tier] ?? tier}
             </span>
-            <span className="cd-approval-badge" style={{ color: APPROVAL_COLORS[approval] ?? '#8a94a6' }}>
-              {approval.replace(/_/g, ' ')}
-            </span>
+            <StatusBadge display={formatCreatorApprovalStatus(approval)} className="cd-approval-badge" />
             {visibility === 'public' && (
               <span className="cd-visibility-badge cd-visibility-badge--public">🟢 Public</span>
             )}
@@ -573,13 +505,15 @@ function CreatorDashboard({
       {/* ── Warning banners ──────────────────────────────────────── */}
       <WarningBanner warnings={warnings} />
 
+      <CreatorMarketplaceOverview creatorProfileId={profile.id} />
+
       <div className="cd-market-banner">
         <div>
-          <strong>Marketplace foundation</strong> — open buyer requests now accept voluntary applications before admin
-          assignment.
+          <strong>Your marketplace hub</strong> — apply to open buyer requests, track applications, and open workspaces when
+          selected.
         </div>
         <Link to="/browse" className="btn btn-primary btn-sm">
-          Browse Buyer Requests →
+          Browse buyer requests →
         </Link>
       </div>
 
@@ -593,9 +527,9 @@ function CreatorDashboard({
         />
         <SummaryStatusCard
           label="Approval Status"
-          value={approval.replace(/_/g, ' ')}
+          value={formatCreatorApprovalStatus(approval).label}
           sub="Admin review state"
-          color={APPROVAL_COLORS[approval] ?? '#8a94a6'}
+          color={formatCreatorApprovalStatus(approval).color}
         />
         <SummaryStatusCard
           label="Profile Visibility"
@@ -633,8 +567,8 @@ function CreatorDashboard({
         </div>
 
         {/* Right column */}
-        <div className="cd-main-right">
-          <CreatorProjectPipeline creatorProfileId={profile.id} />
+        <div className="cd-main-right" id="creator-projects">
+          <CreatorProjectsPanel creatorProfileId={profile.id} compact />
           <EarningsPreview completedCount={completedBuilds} avgRating={avgRating} />
         </div>
 
@@ -805,9 +739,13 @@ function ActiveRequestCard({
           <span className="buyer-req-biz">{request.business_name}</span>
           <span className="buyer-req-build">{request.build_type}</span>
         </div>
-        <span className="buyer-req-status" style={{ color: STATUS_COLORS[request.status] ?? '#8a94a6' }}>
-          {request.status.replace(/[-_]/g, ' ')}
-        </span>
+        <StatusBadge
+          display={formatBuyerRequestHeadline(
+            request,
+            linkedOrder ?? null,
+            deliverable ?? null,
+          )}
+        />
       </div>
 
       {/* Linked project block */}
@@ -967,50 +905,70 @@ function ActiveRequestCard({
 
 // ─── Buyer status overview cards ───────────────────────────────────────────────
 
-function BuyerStatusOverview({ requests, loadingReqs }: { requests: BuyerRequest[]; loadingReqs: boolean }) {
-  if (loadingReqs) return null;
-  const total      = requests.length;
-  const inReview   = requests.filter((r) => r.status === 'in-review').length;
-  const proposals  = requests.filter((r) => r.status === 'proposal-sent').length;
-  const needsInfo  = requests.filter((r) => r.status === 'needs-more-info').length;
-  const completed  = requests.filter((r) => r.status === 'completed').length;
+function BuyerStatusOverview({
+  requests,
+  loadingReqs,
+  orderByRequestId,
+  deliverables,
+}: {
+  requests: BuyerRequest[];
+  loadingReqs: boolean;
+  orderByRequestId: Record<string, OrderPipelineRow>;
+  deliverables: Record<string, DeliverablePlaceholder>;
+}) {
+  if (loadingReqs) {
+    return <div className="dash-loading buyer-status-loading">Loading your requests…</div>;
+  }
 
-  const latest = requests[0];
-  const { build, reason } = latest
-    ? getRecommendedBuild({ industry: latest.industry ?? '', main_goal: latest.main_goal ?? '', build_type: latest.build_type })
-    : { build: 'Quote Funnel', reason: 'Great starting point' };
+  let waiting = 0;
+  let review = 0;
+  let selected = 0;
+  let inProgress = 0;
+  let completed = 0;
+
+  for (const r of requests) {
+    const ord = orderByRequestId[r.id];
+    const del = ord?.id ? deliverables[ord.id] : null;
+    const headline = formatBuyerRequestHeadline(r, ord ?? null, del ?? null);
+    const label = headline.label;
+    if (label === 'Waiting for creators') waiting++;
+    else if (label === 'Review applicants') review++;
+    else if (label === 'Creator selected') selected++;
+    else if (label === 'Project in progress' || label === 'In progress' || label === 'In review') inProgress++;
+    else if (label === 'Completed' || label === 'Delivery submitted') completed++;
+  }
 
   return (
-    <div className="buyer-status-row">
+    <div className="buyer-status-row" aria-label="My requests at a glance">
       <div className="buyer-sc">
-        <div className="buyer-sc-val">{total}</div>
-        <div className="buyer-sc-label">Requests Submitted</div>
-        <div className="buyer-sc-sub">Total</div>
+        <div className="buyer-sc-val">{requests.length}</div>
+        <div className="buyer-sc-label">My requests</div>
+        <div className="buyer-sc-sub">Total submitted</div>
       </div>
       <div className="buyer-sc">
-        <div className="buyer-sc-val" style={{ color: inReview > 0 ? '#63b3ed' : undefined }}>{inReview}</div>
-        <div className="buyer-sc-label">Under Review</div>
-        <div className="buyer-sc-sub">Being evaluated</div>
+        <div className="buyer-sc-val" style={{ color: waiting > 0 ? '#f9b032' : undefined }}>{waiting}</div>
+        <div className="buyer-sc-label">Waiting for creators</div>
+        <div className="buyer-sc-sub">Open to applications</div>
       </div>
       <div className="buyer-sc">
-        <div className="buyer-sc-val" style={{ color: proposals > 0 ? '#00d478' : undefined }}>{proposals}</div>
-        <div className="buyer-sc-label">Proposals Pending</div>
-        <div className="buyer-sc-sub">Ready to scope</div>
+        <div className="buyer-sc-val" style={{ color: review > 0 ? '#63b3ed' : undefined }}>{review}</div>
+        <div className="buyer-sc-label">Review applicants</div>
+        <div className="buyer-sc-sub">Compare proposals</div>
       </div>
       <div className="buyer-sc">
-        <div className="buyer-sc-val" style={{ color: needsInfo > 0 ? '#f9b032' : undefined }}>{needsInfo}</div>
-        <div className="buyer-sc-label">Needs More Info</div>
-        <div className="buyer-sc-sub">Awaiting reply</div>
+        <div className="buyer-sc-val" style={{ color: selected > 0 ? '#00d478' : undefined }}>{selected}</div>
+        <div className="buyer-sc-label">Creator selected</div>
+        <div className="buyer-sc-sub">Assignment confirmed</div>
+      </div>
+      <div className="buyer-sc">
+        <div className="buyer-sc-val" style={{ color: inProgress > 0 ? '#63b3ed' : undefined }}>{inProgress}</div>
+        <div className="buyer-sc-label">Project in progress</div>
+        <div className="buyer-sc-sub">Active builds</div>
       </div>
       <div className="buyer-sc">
         <div className="buyer-sc-val" style={{ color: completed > 0 ? '#00d478' : undefined }}>{completed}</div>
-        <div className="buyer-sc-label">Completed Builds</div>
-        <div className="buyer-sc-sub">Delivered</div>
-      </div>
-      <div className="buyer-sc buyer-sc--rec">
-        <div className="buyer-sc-val buyer-sc-val--build">{build}</div>
-        <div className="buyer-sc-label">Recommended Next</div>
-        <div className="buyer-sc-sub" style={{ maxWidth: '100%' }}>{reason}</div>
+        <div className="buyer-sc-label">Completed / delivered</div>
+        <div className="buyer-sc-sub">Finished MicroBuilds</div>
       </div>
     </div>
   );
@@ -1057,7 +1015,13 @@ function BusinessProfilePanel({ requests }: { requests: BuyerRequest[] }) {
 
 // ─── Buyer Dashboard ───────────────────────────────────────────────────────────
 
-function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
+export function BuyerDashboard({
+  userProfile,
+  mode = 'overview',
+}: {
+  userProfile: UserProfileRow;
+  mode?: 'overview' | 'requests';
+}) {
   const [requests,     setRequests]     = useState<BuyerRequest[]>([]);
   const [orders,       setOrders]       = useState<OrderPipelineRow[]>([]);
   const [deliverables, setDeliverables] = useState<Record<string, DeliverablePlaceholder>>({});
@@ -1167,134 +1131,134 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
 
   return (
     <div className="dash-buyer">
-
-      {/* Header */}
-      <div className="dash-buyer-header">
-        <div>
-          <h2 className="dash-buyer-title">Welcome back, {displayName}</h2>
-          <p className="dash-buyer-sub">Track your MicroBuild requests and grow your business.</p>
-        </div>
-        <div className="dash-buyer-actions">
-          <Link to="/request" className="btn btn-primary btn-sm">+ New Request</Link>
-          <Link to="/browse" className="btn btn-ghost btn-sm">Browse workflows</Link>
-        </div>
-      </div>
-
-      {/* Status overview cards */}
-      <BuyerStatusOverview requests={requests} loadingReqs={loadingReqs} />
-
-      {!loadingReqs ?
-        (
-          <>
-            <MarketplaceApplicantsPanel
-              buyerProfile={userProfile}
-              requests={requests}
-              ordersByRequestId={orderByRequestId}
-              deliverablesByOrderId={deliverables}
-              onMarketplaceEvent={loadBuyerRequests}
-            />
-            <BuyerProposalSection
-              userProfile={userProfile}
-              requests={requests}
-              ordersByRequestId={orderByRequestId}
-              creatorProfileLabels={creatorProfileLabels}
-            />
-          </>
-        )
-      : null}
-
-      {/* Active requests with timeline */}
-      <div className="buyer-section">
-        <div className="buyer-section-header">
-          <h3 className="buyer-section-title">Active Requests</h3>
-          <Link to="/request" className="buyer-section-action">+ New Request</Link>
-        </div>
-        {loadingReqs ? (
-          <div className="dash-loading">Loading requests…</div>
-        ) : activeRequests.length === 0 ? (
-          <div className="buyer-empty-state">
-            <span className="buyer-empty-icon">📋</span>
-            <p>No active requests yet.</p>
-            <Link to="/request" className="btn btn-primary btn-sm">Submit Your First MicroBuild Request →</Link>
-          </div>
-        ) : (
-          <div className="buyer-active-list">
-            {activeRequests.map((r) => (
-              <ActiveRequestCard
-                key={r.id}
-                request={r}
-                linkedOrder={orderByRequestId[r.id] ?? null}
-                deliverable={
-                  orderByRequestId[r.id]
-                    ? deliverables[orderByRequestId[r.id]!.id] ?? null
-                    : null
-                }
-                sourceCreatorDisplayName={
-                  r.source_creator_profile_id ? creatorProfileLabels[r.source_creator_profile_id] : undefined
-                }
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Recommended next build */}
-      {!loadingReqs && dashAnalysis && (
-        <div className="buyer-rec-section">
-          <div className="buyer-rec-card">
-            <span className="buyer-rec-icon">💡</span>
-            <div className="buyer-rec-body">
-              <div className="buyer-rec-eyebrow">Recommended Next MicroBuild</div>
-              <div className="buyer-rec-build">{dashAnalysis.recommendedBuild}</div>
-              <p className="buyer-rec-reason">{dashAnalysis.recommendedReason}</p>
+      {mode === 'overview' ? (
+        <>
+          <div className="dash-buyer-header">
+            <div>
+              <h2 className="dash-buyer-title">Welcome back, {displayName}</h2>
+              <p className="dash-buyer-sub">
+                Your marketplace overview — open My Requests to review applicants and track delivery.
+              </p>
             </div>
-            <Link
-              to={`/request?build=${dashAnalysis.recommendedBuild.toLowerCase().replace(/\s+/g, '-')}`}
-              className="buyer-rec-btn"
-            >
-              Request This Build →
-            </Link>
+            <div className="dash-buyer-actions">
+              <Link to="/request" className="btn btn-primary btn-sm">New Request</Link>
+              <Link to="/dashboard/requests" className="btn btn-ghost btn-sm">My Requests</Link>
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Business profile completeness */}
-      {!loadingReqs && <BusinessProfilePanel requests={requests} />}
-
-      {/* Past requests list */}
-      {!loadingReqs && requests.length > 0 && (
-        <div className="buyer-section">
-          <h3 className="buyer-section-title">All Requests</h3>
-          <div className="buyer-requests-table">
-            {requests.map((r) => (
-              <div key={r.id} className="buyer-req-row">
-                <div className="buyer-req-row-info">
-                  <span className="buyer-req-row-biz">{r.business_name}</span>
-                  <span className="buyer-req-row-type">{r.build_type}</span>
+          <BuyerStatusOverview
+            requests={requests}
+            loadingReqs={loadingReqs}
+            orderByRequestId={orderByRequestId}
+            deliverables={deliverables}
+          />
+          {!loadingReqs && dashAnalysis ? (
+            <div className="buyer-rec-section">
+              <div className="buyer-rec-card">
+                <span className="buyer-rec-icon">💡</span>
+                <div className="buyer-rec-body">
+                  <div className="buyer-rec-eyebrow">Recommended Next MicroBuild</div>
+                  <div className="buyer-rec-build">{dashAnalysis.recommendedBuild}</div>
+                  <p className="buyer-rec-reason">{dashAnalysis.recommendedReason}</p>
                 </div>
-                <div className="buyer-req-row-meta">
-                  {r.budget   && <span className="buyer-req-meta-tag">{r.budget}</span>}
-                  {r.deadline && <span className="buyer-req-meta-tag">{r.deadline}</span>}
-                  <span className="buyer-req-meta-date">{fmtDate(r.created_at)}</span>
-                </div>
-                <span className="buyer-req-row-status" style={{ color: STATUS_COLORS[r.status] ?? '#8a94a6' }}>
-                  {r.status.replace(/[-_]/g, ' ')}
-                </span>
+                <Link
+                  to={`/request?build=${dashAnalysis.recommendedBuild.toLowerCase().replace(/\s+/g, '-')}`}
+                  className="buyer-rec-btn"
+                >
+                  Request This Build →
+                </Link>
               </div>
-            ))}
+            </div>
+          ) : null}
+          {!loadingReqs ? <BusinessProfilePanel requests={requests} /> : null}
+          <div className="buyer-section buyer-section--dim">
+            <h3 className="buyer-section-title">Quick Actions</h3>
+            <div className="buyer-quick-actions">
+              <Link to="/request" className="buyer-qa-card"><span>📋</span><span>New Request</span></Link>
+              <Link to="/dashboard/requests" className="buyer-qa-card"><span>📋</span><span>My Requests</span></Link>
+              <Link to="/browse" className="buyer-qa-card"><span>🔍</span><span>Browse Workflows</span></Link>
+            </div>
           </div>
-        </div>
-      )}
+        </>
+      ) : null}
 
-      {/* Quick actions */}
-      <div className="buyer-section buyer-section--dim">
-        <h3 className="buyer-section-title">Quick Actions</h3>
-        <div className="buyer-quick-actions">
-          <Link to="/request"      className="buyer-qa-card"><span>📋</span><span>New Request</span></Link>
-          <Link to="/browse"       className="buyer-qa-card"><span>🔍</span><span>Browse Builds</span></Link>
-          <Link to="/how-it-works" className="buyer-qa-card"><span>⚡</span><span>How It Works</span></Link>
-        </div>
-      </div>
+      {mode === 'requests' && !loadingReqs ? (
+        <>
+          <MarketplaceApplicantsPanel
+            buyerProfile={userProfile}
+            requests={requests}
+            ordersByRequestId={orderByRequestId}
+            deliverablesByOrderId={deliverables}
+            onMarketplaceEvent={loadBuyerRequests}
+          />
+          <BuyerProposalSection
+            userProfile={userProfile}
+            requests={requests}
+            ordersByRequestId={orderByRequestId}
+            creatorProfileLabels={creatorProfileLabels}
+          />
+        </>
+      ) : null}
+
+      {mode === 'requests' ? (
+        <>
+          <div className="buyer-section" id="buyer-active-projects">
+            <div className="buyer-section-header">
+              <h3 className="buyer-section-title">Active Requests</h3>
+              <Link to="/request" className="buyer-section-action">+ New Request</Link>
+            </div>
+            {loadingReqs ? (
+              <div className="dash-loading">Loading requests…</div>
+            ) : activeRequests.length === 0 ? (
+              <div className="buyer-empty-state">
+                <span className="buyer-empty-icon">📋</span>
+                <p>No active requests yet.</p>
+                <Link to="/request" className="btn btn-primary btn-sm">Submit Your First MicroBuild Request →</Link>
+              </div>
+            ) : (
+              <div className="buyer-active-list">
+                {activeRequests.map((r) => (
+                  <ActiveRequestCard
+                    key={r.id}
+                    request={r}
+                    linkedOrder={orderByRequestId[r.id] ?? null}
+                    deliverable={
+                      orderByRequestId[r.id]
+                        ? deliverables[orderByRequestId[r.id]!.id] ?? null
+                        : null
+                    }
+                    sourceCreatorDisplayName={
+                      r.source_creator_profile_id ? creatorProfileLabels[r.source_creator_profile_id] : undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          {!loadingReqs && requests.length > 0 ? (
+            <div className="buyer-section">
+              <h3 className="buyer-section-title">All Requests</h3>
+              <div className="buyer-requests-table">
+                {requests.map((r) => (
+                  <div key={r.id} className="buyer-req-row">
+                    <div className="buyer-req-row-info">
+                      <span className="buyer-req-row-biz">{r.business_name}</span>
+                      <span className="buyer-req-row-type">{r.build_type}</span>
+                    </div>
+                    <div className="buyer-req-row-meta">
+                      {r.budget && <span className="buyer-req-meta-tag">{r.budget}</span>}
+                      {r.deadline && <span className="buyer-req-meta-tag">{r.deadline}</span>}
+                      <span className="buyer-req-meta-date">{fmtDate(r.created_at)}</span>
+                    </div>
+                    <span className="buyer-req-row-status" style={{ color: STATUS_COLORS[r.status] ?? '#8a94a6' }}>
+                      {r.status.replace(/[-_]/g, ' ')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1484,24 +1448,18 @@ export default function Dashboard() {
   const isCreator = userProfile.account_type === 'creator';
 
   return (
-    <div className="dashboard-page">
-      <div className="dashboard-header">
-        <div className="container">
-          <div className="dashboard-eyebrow">My Account</div>
-          <h1 className="dashboard-title">
-            {isCreator ? 'Creator Dashboard' : 'Buyer Dashboard'}
-          </h1>
-          <p className="dashboard-sub">
-            {isCreator
-              ? 'Manage your profile, track your status, and grow your creator presence.'
-              : 'Track your MicroBuild requests and manage your account.'}
-          </p>
-        </div>
-      </div>
+    <div className="dashboard-page app-workspace">
+      <AppPageHeader
+        eyebrow={isCreator ? 'Creator workspace' : 'Buyer workspace'}
+        title="Overview"
+        subtitle={
+          isCreator
+            ? 'Status, next actions, and a snapshot of applications, projects, and workflows.'
+            : 'Your marketplace summary — use My Requests for applicants and delivery tracking.'
+        }
+      />
 
       <div className="container dashboard-body">
-        <DashboardNav />
-
         {isCreator && (
           creatorProfile
             ? <CreatorDashboard profile={creatorProfile} appStatus={creatorApplication} />

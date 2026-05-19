@@ -10,7 +10,14 @@ import type {
   UserProfileRow,
 } from '../types/database';
 import { isBuyerRequestOpenForApplications } from '../lib/marketplaceEligibility';
-import DashboardNav from '../components/DashboardNav';
+import AppPageHeader from '../components/AppPageHeader';
+import StatusBadge from '../components/StatusBadge';
+import {
+  formatCreatorSelectionOutcome,
+  formatRequestApplicationStatus,
+  requestSourceLabel,
+  statusPillClassName,
+} from '../lib/statusLabels';
 import './Dashboard.css';
 
 function fmtDate(iso?: string | null): string {
@@ -34,30 +41,15 @@ function normalizeStatus(raw: unknown): string {
   return safeStr(raw).trim().toLowerCase() || 'submitted';
 }
 
-function nextStep(status: string): string {
-  switch (status) {
-    case 'submitted':
-      return 'Waiting for buyer review';
-    case 'shortlisted':
-      return 'Buyer is considering your proposal';
-    case 'buyer_selected':
-      return 'You were selected — project should appear in your pipeline';
-    case 'rejected':
-      return 'Buyer chose another creator or request was closed';
-    case 'withdrawn':
-      return 'You withdrew this application';
-    case 'admin_blocked':
-      return 'Application blocked by admin review';
-    default:
-      return 'Awaiting marketplace update';
-  }
-}
-
-function statusBadgeClasses(status: string): string {
-  if (status === 'buyer_selected') return 'mb-status-pill mb-status-pill--ok';
-  if (status === 'rejected' || status === 'admin_blocked') return 'mb-status-pill mb-status-pill--err';
-  if (status === 'shortlisted') return 'mb-status-pill mb-status-pill--info';
-  return 'mb-status-pill';
+function creatorApplicationNextStep(status: string): string {
+  const st = normalizeStatus(status);
+  if (st === 'submitted') return 'Waiting for buyer';
+  if (st === 'shortlisted') return 'Shortlisted — buyer is comparing applicants';
+  if (st === 'buyer_selected') return 'Selected — open your project workspace';
+  if (st === 'rejected') return 'Not selected for this request';
+  if (st === 'withdrawn') return 'You withdrew this application';
+  if (st === 'admin_blocked') return 'Blocked by admin review';
+  return 'Awaiting marketplace update';
 }
 
 function oneBr(edge: BuyerRequestRow | BuyerRequestRow[] | null | undefined): BuyerRequestRow | null {
@@ -200,7 +192,6 @@ export default function DashboardApplications() {
     return (
       <div className="dashboard-page">
         <div className="container dashboard-body">
-          <DashboardNav />
           <div className="dash-loading">Loading…</div>
         </div>
       </div>
@@ -208,21 +199,14 @@ export default function DashboardApplications() {
   }
 
   return (
-    <div className="dashboard-page">
-      <div className="dashboard-header">
-        <div className="container">
-          <div className="dashboard-eyebrow">Marketplace · Applications</div>
-          <h1 className="dashboard-title">My Request Applications</h1>
-          <p className="dashboard-sub mb-browse-intro">
-            Every row ties back to your <code>request_applications</code> footprint — shortlisted or selected updates land
-            here before you see richer pipeline tooling.
-          </p>
-        </div>
-      </div>
+    <div className="dashboard-page app-workspace">
+      <AppPageHeader
+        eyebrow="Creator workspace"
+        title="My Applications"
+        subtitle="Track what you applied to, whether you were selected, and open project workspaces when a buyer picks you."
+      />
 
       <div className="container dashboard-body">
-        <DashboardNav />
-
         <section className="mb-workflow-requests-section" aria-labelledby="wf-req-first-right-heading">
           <h2 id="wf-req-first-right-heading" className="mb-workflow-requests-title">
             Workflow requests from your published workflows
@@ -335,7 +319,7 @@ export default function DashboardApplications() {
             <section className="dash-empty mb-my-apps-empty">
               <p>You have not applied to any buyer requests yet.</p>
               <Link className="btn btn-primary btn-sm" to="/browse">
-                Browse Buyer Requests
+                Browse buyer requests
               </Link>
             </section>
           )
@@ -345,10 +329,16 @@ export default function DashboardApplications() {
               if (!a) return null;
               const st = normalizeStatus(a.application_status);
               const req = pickRow(a);
+              const statusDisplay = formatRequestApplicationStatus(st);
+              const selectionDisplay = formatCreatorSelectionOutcome(st);
+              const sourceLabel = requestSourceLabel(
+                req?.source_type,
+                req?.requested_from_workflow ?? null,
+              );
 
               const bizLabel =
                 [req?.business_name, req?.industry].filter((x): x is string => typeof x === 'string' && !!x.trim())[0] ??
-                'Buyer request';
+                'Buyer';
 
               const buildLabel =
                 req?.build_type?.trim()
@@ -378,25 +368,37 @@ export default function DashboardApplications() {
                         Applied {fmtDate(a.created_at)} · {safeStr(req?.industry, '') || 'Industry n/a'}
                       </p>
                     </div>
-                    <span className={statusBadgeClasses(st)}>{st.replace(/_/g, ' ')}</span>
+                    <StatusBadge display={statusDisplay} />
                   </header>
 
+                  <p className="mb-card-goal">
+                    <span className="mb-card-strong">Source: </span>
+                    {sourceLabel}
+                  </p>
                   <p className="mb-card-goal">
                     <span className="mb-card-strong">Requested MicroBuild: </span>
                     {buildLabel}
                   </p>
                   <p className="mb-card-goal">
-                    <span className="mb-card-strong">Goal: </span>
-                    {goal}
+                    <span className={statusPillClassName(selectionDisplay.tone)} style={{ display: 'inline-block' }}>
+                      {selectionDisplay.label}
+                    </span>
                   </p>
-                  <p className="mb-card-goal">
-                    <span className="mb-card-strong">Challenge: </span>
-                    {problem}
-                  </p>
-                  <p className="mb-card-goal">
-                    <span className="mb-card-strong">Proposal: </span>
-                    {safeStr(a.proposal_message, '—').slice(0, 560)}
-                  </p>
+                  <details className="mb-applicant-expand">
+                    <summary>Proposal & context</summary>
+                    <p className="mb-card-goal">
+                      <span className="mb-card-strong">Goal: </span>
+                      {goal}
+                    </p>
+                    <p className="mb-card-goal">
+                      <span className="mb-card-strong">Challenge: </span>
+                      {problem}
+                    </p>
+                    <p className="mb-card-goal">
+                      <span className="mb-card-strong">Proposal: </span>
+                      {safeStr(a.proposal_message, '—')}
+                    </p>
+                  </details>
                   {fitReason ?
                     (
                       <p className="mb-card-goal">
@@ -422,7 +424,7 @@ export default function DashboardApplications() {
                   </div>
 
                   <footer className="mb-application-footer">
-                    <span className="mb-next-step-chip">{nextStep(st)}</span>
+                    <span className="mb-next-step-chip">{creatorApplicationNextStep(st)}</span>
                     {st === 'buyer_selected' && orderId ?
                       (
                         <Link className="btn btn-primary btn-sm mb-open-workspace-btn" to={`/dashboard/projects/${orderId}`}>

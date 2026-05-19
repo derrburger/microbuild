@@ -1,25 +1,72 @@
-import { useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfileRow } from '../hooks/useUserProfileRow';
+import { isAdminEmail } from '../lib/admin';
+import {
+  isNavItemActive,
+  navItemsForRole,
+  resolveAppShellRole,
+  type AppNavItem,
+} from '../lib/appNav';
 import './Navbar.css';
 
+function AppNavLink({
+  item,
+  pathname,
+  hash,
+  onNavigate,
+}: {
+  item: AppNavItem;
+  pathname: string;
+  hash: string;
+  onNavigate: () => void;
+}) {
+  const active = isNavItemActive(pathname, hash, item);
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      onClick={onNavigate}
+      className={`navbar-link app-nav-link${active ? ' active' : ''}`}
+      aria-current={active ? 'page' : undefined}
+    >
+      {item.label}
+    </NavLink>
+  );
+}
+
 export default function Navbar() {
-  const [menuOpen, setMenuOpen]     = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenu] = useState(false);
-  const { user, signOut }           = useAuth();
-  const navigate                    = useNavigate();
+  const ref = useRef<HTMLDivElement>(null);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { profile: userProfileRow, loading: profileLoading } = useUserProfileRow();
 
-  const isCreator = userProfileRow?.account_type?.toLowerCase() === 'creator';
+  const isAdmin = Boolean(user?.email && isAdminEmail(user.email));
+  const accountType = userProfileRow?.account_type;
+  const shellRole = resolveAppShellRole(Boolean(user), accountType, isAdmin);
+  const navItems = user && !profileLoading ? navItemsForRole(shellRole) : navItemsForRole('public');
 
-  const browseLabel =
-    profileLoading ? 'Browse' :
-    user && isCreator ? 'Buyer Requests'
-    : user ? 'Browse workflows'
-    : 'Browse';
+  const isCreator = shellRole === 'creator';
+  const isBuyer = shellRole === 'buyer';
+  const isAppShell = shellRole !== 'public';
 
-  const close = () => { setMenuOpen(false); setUserMenu(false); };
+  const close = () => {
+    setMenuOpen(false);
+    setUserMenu(false);
+  };
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setUserMenu(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [userMenuOpen]);
 
   async function handleSignOut() {
     close();
@@ -27,91 +74,107 @@ export default function Navbar() {
     navigate('/signin');
   }
 
-  // For email/password users, user_metadata may be empty — fall back to email prefix
   const username =
-    (user?.user_metadata?.name as string | undefined)      ??
+    (user?.user_metadata?.name as string | undefined) ??
     (user?.user_metadata?.user_name as string | undefined) ??
-    user?.email?.split('@')[0]                              ??
+    user?.email?.split('@')[0] ??
     'Account';
 
-  // Avatar: GitHub OAuth will set this; email users have none
   const avatarUrl = user?.user_metadata?.avatar_url as string | undefined;
 
   return (
-    <nav className="navbar">
+    <nav className={`navbar${isAppShell ? ' navbar--app' : ' navbar--public'}`}>
       <div className="navbar-inner">
-        <Link to="/" className="navbar-logo" onClick={close}>
+        <Link to={user ? (isAdmin ? '/admin' : '/dashboard') : '/'} className="navbar-logo" onClick={close}>
           Micro<span className="logo-accent">Build</span>
         </Link>
 
         <button
+          type="button"
           className={`navbar-hamburger${menuOpen ? ' open' : ''}`}
           onClick={() => setMenuOpen(!menuOpen)}
           aria-label="Toggle menu"
         >
-          <span /><span /><span />
+          <span />
+          <span />
+          <span />
         </button>
 
         <div className={`navbar-links${menuOpen ? ' open' : ''}`}>
-          <NavLink to="/browse"       onClick={close}>{browseLabel}</NavLink>
-          <NavLink to="/how-it-works" onClick={close}>How It Works</NavLink>
-          <NavLink to="/pricing"      onClick={close}>Pricing</NavLink>
-          <NavLink to="/case-studies" onClick={close}>Case Studies</NavLink>
+          {navItems.map((item) => (
+            <AppNavLink
+              key={`${item.to}-${item.label}`}
+              item={item}
+              pathname={location.pathname}
+              hash={location.hash}
+              onNavigate={close}
+            />
+          ))}
 
-          {user ? (
-            /* ── Signed-in nav ──────────────────────────────────── */
-            <>
-              <NavLink to="/messages" className="nav-link-secondary mb-nav-msg" onClick={close}>
-                💬 Messages
-                <span className="navbar-msg-indicator" aria-hidden title="Unread counts coming soon">
-                  ·
-                </span>
-              </NavLink>
-              <NavLink to="/dashboard" className="nav-link-secondary" onClick={close}>
-                Dashboard
-              </NavLink>
-              <div className="navbar-user-menu">
-                <button
-                  className="navbar-avatar-btn"
-                  onClick={() => setUserMenu(!userMenuOpen)}
-                  aria-label="User menu"
-                >
-                  {avatarUrl
-                    ? <img src={avatarUrl} alt={username} className="navbar-avatar-img" />
-                    : <span className="navbar-avatar-initials">
-                        {username.slice(0, 2).toUpperCase()}
-                      </span>
-                  }
-                  <span className="navbar-username">{username}</span>
-                  <span className="navbar-chevron">{userMenuOpen ? '▲' : '▼'}</span>
-                </button>
-                {userMenuOpen && (
-                  <div className="navbar-dropdown">
-                    <Link to="/dashboard/profile"   className="navbar-dropdown-item" onClick={close}>Edit Profile</Link>
-                    <Link to="/dashboard/settings"  className="navbar-dropdown-item" onClick={close}>Settings</Link>
-                    <Link to="/dashboard/analytics" className="navbar-dropdown-item" onClick={close}>Analytics</Link>
-                    <div className="navbar-dropdown-divider" />
-                    <button className="navbar-dropdown-item navbar-signout-item" onClick={handleSignOut}>
-                      Sign Out
+          <div className="navbar-links-actions">
+            {user ?
+              (
+                <>
+                  {isBuyer && (
+                    <Link to="/request" className="btn btn-primary btn-sm navbar-cta" onClick={close}>
+                      New Request
+                    </Link>
+                  )}
+                  <div className="navbar-user-menu" ref={ref}>
+                    <button
+                      type="button"
+                      className="navbar-avatar-btn"
+                      onClick={() => setUserMenu(!userMenuOpen)}
+                      aria-expanded={userMenuOpen}
+                      aria-haspopup="true"
+                      aria-label="Account menu"
+                    >
+                      {avatarUrl ?
+                        <img src={avatarUrl} alt="" className="navbar-avatar-img" />
+                      : (
+                        <span className="navbar-avatar-initials">{username.slice(0, 2).toUpperCase()}</span>
+                      )}
+                      <span className="navbar-username">{username}</span>
+                      <span className="navbar-chevron">{userMenuOpen ? '▲' : '▼'}</span>
                     </button>
+                    {userMenuOpen && (
+                      <div className="navbar-dropdown">
+                        {!isAdmin && (
+                          <Link to="/dashboard/profile" className="navbar-dropdown-item" onClick={close}>
+                            Profile
+                          </Link>
+                        )}
+                        {isCreator && (
+                          <Link to="/dashboard/analytics" className="navbar-dropdown-item" onClick={close}>
+                            Analytics
+                          </Link>
+                        )}
+                        <Link to="/dashboard/settings" className="navbar-dropdown-item" onClick={close}>
+                          Settings
+                        </Link>
+                        <div className="navbar-dropdown-divider" />
+                        <button type="button" className="navbar-dropdown-item navbar-signout-item" onClick={handleSignOut}>
+                          Sign out
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </>
-          ) : (
-            /* ── Signed-out nav ─────────────────────────────────── */
-            <>
-              <NavLink to="/creators/apply" className="nav-link-secondary" onClick={close}>
-                Apply as Creator
-              </NavLink>
-              <Link to="/signin" className="btn btn-ghost btn-sm" onClick={close}>
-                Sign In
-              </Link>
-              <Link to="/request" className="btn btn-primary btn-sm" onClick={close}>
-                Request a MicroBuild
-              </Link>
-            </>
-          )}
+                </>
+              )
+            : (
+              <>
+                <NavLink to="/creators/apply" className="navbar-link nav-link-secondary" onClick={close}>
+                  Apply as Creator
+                </NavLink>
+                <Link to="/signin" className="btn btn-ghost btn-sm navbar-cta-secondary" onClick={close}>
+                  Sign In
+                </Link>
+                <Link to="/request" className="btn btn-primary btn-sm navbar-cta" onClick={close}>
+                  Request a MicroBuild
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </nav>

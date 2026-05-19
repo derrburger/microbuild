@@ -11,6 +11,30 @@ export type AdminSectionId =
   | 'health'
   | 'deferred';
 
+/** Map URL hash fragments from top nav / dashboard links to admin tab ids. */
+const ADMIN_HASH_TO_SECTION: Record<string, AdminSectionId> = {
+  command: 'command',
+  admin: 'command',
+  buyers: 'buyers',
+  requests: 'buyers',
+  creators: 'creators',
+  marketplace: 'marketplace',
+  applications: 'marketplace',
+  pipeline: 'pipeline',
+  projects: 'pipeline',
+  deliverables: 'deliverables',
+  workflows: 'workflows',
+  messages: 'messages',
+  health: 'health',
+  deferred: 'deferred',
+};
+
+export function adminSectionFromHash(hash: string): AdminSectionId | null {
+  const key = hash.replace(/^#/, '').trim().toLowerCase();
+  if (!key) return null;
+  return ADMIN_HASH_TO_SECTION[key] ?? null;
+}
+
 export const ADMIN_SECTIONS: { id: AdminSectionId; label: string; hint: string }[] = [
   { id: 'command', label: 'AI Command Center', hint: 'Rules-based ops overview' },
   { id: 'buyers', label: 'Buyer Requests', hint: 'Request queue & review' },

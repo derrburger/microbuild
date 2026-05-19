@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchTemplates } from '../lib/templates';
 import { generateBuildPacket, generateCreatorReview } from '../lib/buildPacket';
@@ -45,8 +46,7 @@ import {
   copyTextToClipboard,
 } from '../lib/workspaceCopy';
 import './Admin.css';
-import type { AdminSectionId } from '../components/admin/adminSections';
-import AdminSectionTabs from '../components/admin/AdminSectionTabs';
+import { adminSectionFromHash, type AdminSectionId } from '../components/admin/adminSections';
 import AdminCommandCenter from '../components/admin/AdminCommandCenter';
 import AdminMarketplaceApplications, {
   type MarketplaceAppAdminRow,
@@ -3784,6 +3784,12 @@ export default function Admin() {
   >('all');
   const [activeSection, setActiveSection] = useState<AdminSectionId>('command');
   const [marketplaceRefreshNonce, setMarketplaceRefreshNonce] = useState(0);
+  const location = useLocation();
+
+  useEffect(() => {
+    const fromHash = adminSectionFromHash(location.hash);
+    if (fromHash) setActiveSection(fromHash);
+  }, [location.hash]);
 
   useEffect(() => {
     supabase
@@ -4322,7 +4328,7 @@ export default function Admin() {
           <div className="admin-header-top">
             <div>
               <div className="admin-eyebrow">MicroBuild Operations</div>
-              <h1 className="admin-title">Admin Dashboard</h1>
+              <h1 className="admin-title">AI Command Center</h1>
               <p className="admin-sub">
                 AI operations command center · oversight &amp; override · proposal/payment workflow deferred
               </p>
@@ -4343,8 +4349,6 @@ export default function Admin() {
       </div>
 
       <div className="container admin-body">
-
-        <AdminSectionTabs active={activeSection} onChange={setActiveSection} />
 
         {showAdminSection(activeSection, 'command') && (
           <>
