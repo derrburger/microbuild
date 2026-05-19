@@ -18,7 +18,6 @@ import {
   linkBuildPacketToOrder,
   fetchDeliverableByOrderId,
   createDeliverablePlaceholder,
-  adminReviewDeliverable,
   fetchBuildPacketForOrder,
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
@@ -46,8 +45,16 @@ import {
   copyTextToClipboard,
 } from '../lib/workspaceCopy';
 import './Admin.css';
-import AdminProposalSection from '../components/AdminProposalSection';
-import type { BuildPacketSnippet } from '../lib/proposals';
+import type { AdminSectionId } from '../components/admin/adminSections';
+import AdminSectionTabs from '../components/admin/AdminSectionTabs';
+import AdminCommandCenter from '../components/admin/AdminCommandCenter';
+import AdminMarketplaceApplications, {
+  type MarketplaceAppAdminRow,
+} from '../components/admin/AdminMarketplaceApplications';
+import AdminDeliverablesSection from '../components/admin/AdminDeliverablesSection';
+import AdminMessagesPlaceholder from '../components/admin/AdminMessagesPlaceholder';
+import AdminDeferredProposals from '../components/admin/AdminDeferredProposals';
+import AdminMetricsStrip from '../components/admin/AdminMetricsStrip';
 
 // ─── Defensive helpers ────────────────────────────────────────────────────────
 
@@ -1335,17 +1342,6 @@ function RequestProjectWorkflow({
 
   const displayPacket = packet;
 
-  const proposalPacketSnippet: BuildPacketSnippet | null = dbPacket
-    ? {
-        business_summary: dbPacket.business_summary ?? null,
-        customer_problem: dbPacket.customer_problem ?? null,
-        recommended_build: dbPacket.recommended_build ?? null,
-        creator_instructions: dbPacket.creator_instructions ?? null,
-        suggested_page_sections: dbPacket.suggested_page_sections ?? null,
-        automation_needs: dbPacket.automation_needs ?? null,
-      }
-    : null;
-
   return (
     <div className="req-project-workflow">
       <div className="req-project-workflow-head">
@@ -1575,12 +1571,9 @@ function RequestProjectWorkflow({
             </div>
           )}
 
-          <AdminProposalSection
-            buyerRequest={row as unknown as DatabaseBuyerRequestRow}
-            order={order}
-            packetSnippet={proposalPacketSnippet}
-            onReload={refreshLocal}
-          />
+          <p className="req-proposal-deferred-badge" role="status">
+            Proposal feature deferred — use <strong>Later: Proposals</strong> tab for test tools only.
+          </p>
 
           {showGenPreview && (
             <div className="req-project-gen-preview">
@@ -1693,7 +1686,7 @@ function OrderCard({
   buyerBuildType,
   deliverable,
   onUpdate,
-  onDeliverableRefresh,
+  onDeliverableRefresh: _onDeliverableRefresh,
 }: {
   order: OrderPipelineRow;
   activeCreators: CreatorProfileSnap[];
@@ -1704,17 +1697,13 @@ function OrderCard({
   onUpdate: (id: string, updates: Partial<OrderPipelineRow>) => void;
   onDeliverableRefresh?: () => void;
 }) {
+  void _onDeliverableRefresh;
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [assigning, setAssigning]           = useState(false);
   const [selectedCreator, setSelectedCreator] = useState(order.creator_id ?? '');
   const [notesVal, setNotesVal]             = useState(order.admin_notes ?? '');
   const [savingNotes, setSavingNotes]       = useState(false);
   const [msgAssign, setMsgAssign]           = useState<'idle' | 'ok' | 'err'>('idle');
-  const [revisionFeedback, setRevisionFeedback] = useState('');
-  const [reviewBusy, setReviewBusy]         = useState<
-    'idle' | 'revision' | 'approve' | 'delivered' | 'completed'
-  >('idle');
-  const [reviewMsg, setReviewMsg]           = useState<'idle' | 'ok' | 'err'>('idle');
   const [pipelineMsg, setPipelineMsg]       = useState<'idle' | 'ok' | 'err'>('idle');
   const [adminClipMsg, setAdminClipMsg]     = useState<string | null>(null);
   const [workspacePacket, setWorkspacePacket] = useState<BuildPacketWorkspaceRow | null>(null);
@@ -1768,66 +1757,6 @@ function OrderCard({
     }
   }
 
-  async function runDeliverableReview(
-    action: 'request_revision' | 'approve_deliverable' | 'mark_delivered' | 'mark_completed',
-  ) {
-    const busyMap = {
-      request_revision: 'revision',
-      approve_deliverable: 'approve',
-      mark_delivered: 'delivered',
-      mark_completed: 'completed',
-    } as const;
-    setReviewBusy(busyMap[action]);
-    setReviewMsg('idle');
-
-    let ok = false;
-    if (action === 'request_revision') {
-      const note =
-        revisionFeedback.trim() ||
-        (order.admin_notes?.trim() ?? '') ||
-        'Please apply the requested revisions and resubmit.';
-      ok = await adminReviewDeliverable({
-        deliverableId: deliverable?.id ?? null,
-        orderId: order.id,
-        action: 'request_revision',
-        revisionNote: note,
-        currentRevisionCount: deliverable?.revision_count ?? 0,
-      });
-      if (ok) onUpdate(order.id, { order_status: 'in_progress' });
-    } else if (action === 'approve_deliverable') {
-      ok = await adminReviewDeliverable({
-        deliverableId: deliverable?.id ?? null,
-        orderId: order.id,
-        action: 'approve_deliverable',
-      });
-      if (ok) onUpdate(order.id, { order_status: 'delivered' });
-    } else if (action === 'mark_delivered') {
-      ok = await adminReviewDeliverable({
-        deliverableId: null,
-        orderId: order.id,
-        action: 'mark_delivered',
-      });
-      if (ok) onUpdate(order.id, { order_status: 'delivered' });
-    } else {
-      ok = await adminReviewDeliverable({
-        deliverableId: null,
-        orderId: order.id,
-        action: 'mark_completed',
-      });
-      if (ok) onUpdate(order.id, { order_status: 'completed' });
-    }
-
-    setReviewBusy('idle');
-    if (ok) {
-      setReviewMsg('ok');
-      onDeliverableRefresh?.();
-      setTimeout(() => setReviewMsg('idle'), 4000);
-    } else {
-      setReviewMsg('err');
-      setTimeout(() => setReviewMsg('idle'), 6000);
-    }
-  }
-
   async function handleAdminClipboard(kind: 'brief' | 'delivery' | 'revision' | 'buyer' | 'completion' | 'checklist') {
     let text: string;
     switch (kind) {
@@ -1839,10 +1768,7 @@ function OrderCard({
         break;
       case 'revision':
         text = buildRevisionRequestCopy(
-          deliverable?.revision_note?.trim() ||
-            revisionFeedback.trim() ||
-            order.admin_notes?.trim() ||
-            '',
+          deliverable?.revision_note?.trim() || order.admin_notes?.trim() || '',
         );
         break;
       case 'buyer':
@@ -2025,103 +1951,14 @@ function OrderCard({
         </p>
       )}
 
-      {/* Deliverable review */}
-      <div className="order-deliverable-panel">
-        <div className="order-detail-label">Deliverable</div>
-        {!deliverable ? (
-          <p className="order-detail-val muted">
-            No deliverable row yet — creators submit from their project workspace, or create a placeholder from the buyer request workflow.
-          </p>
-        ) : (
-          <>
-            {deliverable.revision_note?.trim() ? (
-              <blockquote className="order-del-revision-quote">{deliverable.revision_note.trim()}</blockquote>
-            ) : null}
-            <div className="order-deliverable-meta">
-              <span className="order-del-tag">
-                Status: {DELIVERY_STATUS_LABELS[deliverable.delivery_status] ?? deliverable.delivery_status}
-              </span>
-              {deliverable.revision_note?.trim() ? (
-                <span className="order-del-revision-note" title={deliverable.revision_note}>
-                  Last revision note on file
-                </span>
-              ) : null}
-            </div>
-            <div className="order-del-urls">
-              {deliverable.preview_url?.trim() ? (
-                <a href={deliverable.preview_url.trim()} target="_blank" rel="noopener noreferrer" className="order-del-link">
-                  Preview URL →
-                </a>
-              ) : (
-                <span className="muted">Preview URL —</span>
-              )}
-              {deliverable.live_url?.trim() ? (
-                <a href={deliverable.live_url.trim()} target="_blank" rel="noopener noreferrer" className="order-del-link">
-                  Delivery URL →
-                </a>
-              ) : (
-                <span className="muted">Delivery URL —</span>
-              )}
-            </div>
-            {deliverable.notes?.trim() ? (
-              <div className="order-del-notes">
-                <span className="order-del-notes-label">Creator notes</span>
-                <p>{deliverable.notes.trim()}</p>
-              </div>
-            ) : null}
-            <label className="order-del-revision-field">
-              <span>Revision feedback (sent to creator)</span>
-              <textarea
-                rows={2}
-                value={revisionFeedback}
-                onChange={(e) => setRevisionFeedback(e.target.value)}
-                placeholder="Optional — overrides empty requests; falls back to internal admin notes below if left blank."
-              />
-            </label>
-            <div className="order-del-actions">
-              <button
-                type="button"
-                className="order-del-btn order-del-btn--warn"
-                disabled={reviewBusy !== 'idle' || !deliverable}
-                onClick={() => runDeliverableReview('request_revision')}
-              >
-                {reviewBusy === 'revision' ? '…' : 'Request Revision'}
-              </button>
-              <button
-                type="button"
-                className="order-del-btn order-del-btn--ok"
-                disabled={reviewBusy !== 'idle' || !deliverable}
-                onClick={() => runDeliverableReview('approve_deliverable')}
-              >
-                {reviewBusy === 'approve' ? '…' : 'Approve Deliverable'}
-              </button>
-              <button
-                type="button"
-                className="order-del-btn"
-                disabled={reviewBusy !== 'idle'}
-                onClick={() => runDeliverableReview('mark_delivered')}
-              >
-                {reviewBusy === 'delivered' ? '…' : 'Mark Delivered'}
-              </button>
-              <button
-                type="button"
-                className="order-del-btn"
-                disabled={reviewBusy !== 'idle'}
-                onClick={() => runDeliverableReview('mark_completed')}
-              >
-                {reviewBusy === 'completed' ? '…' : 'Mark Completed'}
-              </button>
-            </div>
-            {reviewMsg === 'ok' && (
-              <span className="wf-feedback wf-feedback--ok order-del-feedback">Deliverable / order updated</span>
-            )}
-            {reviewMsg === 'err' && (
-              <span className="wf-feedback wf-feedback--err order-del-feedback">
-                Action failed — check console (missing column revision_note → run migration).
-              </span>
-            )}
-          </>
-        )}
+      <div className="order-deliverable-compact">
+        <span className="order-detail-label">Deliverable</span>
+        <span className="order-del-tag">
+          {deliverable
+            ? DELIVERY_STATUS_LABELS[deliverable.delivery_status] ?? deliverable.delivery_status ?? '—'
+            : 'None yet'}
+        </span>
+        <span className="subtle order-deliverable-tab-hint">Full review → Deliverables tab</span>
       </div>
 
       {/* Status action buttons */}
@@ -2376,6 +2213,7 @@ function RequestCard({
   assignmentDiagnostics,
   onRefreshOrders,
   originalCreatorApplied,
+  onViewApplicants,
 }: {
   enriched: EnrichedRequest;
   onStatusChange: (id: string, newStatus: string) => void;
@@ -2386,8 +2224,10 @@ function RequestCard({
   onRefreshOrders: () => void;
   /** True when source workflow publisher has an active request_application */
   originalCreatorApplied?: boolean;
+  onViewApplicants?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [wfNonce, setWfNonce]   = useState(0);
   const { row, packet } = enriched;
 
@@ -2602,14 +2442,17 @@ function RequestCard({
         </div>
       )}
 
-      <RequestProjectWorkflow
-        row={row}
-        packet={packet}
-        creatorProfiles={creatorProfiles}
-        assignmentDiagnostics={assignmentDiagnostics}
-        onRefreshOrders={onRefreshOrders}
-        reloadNonce={wfNonce}
-      />
+      <details className="admin-advanced-project">
+        <summary>Advanced: project &amp; build packet (fallback controls)</summary>
+        <RequestProjectWorkflow
+          row={row}
+          packet={packet}
+          creatorProfiles={creatorProfiles}
+          assignmentDiagnostics={assignmentDiagnostics}
+          onRefreshOrders={onRefreshOrders}
+          reloadNonce={wfNonce}
+        />
+      </details>
 
       {/* Goal/problem summary */}
       <div className="req-card-summary">
@@ -2623,39 +2466,38 @@ function RequestCard({
         )}
       </div>
 
-      {/* Quick action buttons */}
-      <div className="req-quick-actions">
-        <span className="req-qa-label">Quick Actions:</span>
-        {[
-          { status: 'in-review',        label: 'Mark Reviewed',    color: '#63b3ed' },
-          { status: 'needs-more-info',  label: 'Needs More Info',  color: '#f9b032' },
-          { status: 'proposal-sent',    label: 'Ready to Quote',   color: '#a78bfa' },
-          { status: 'in-progress',      label: 'In Progress',      color: '#00d478' },
-          { status: 'completed',        label: 'Complete',         color: '#00d478' },
-          { status: 'rejected',         label: 'Reject',           color: '#ef4444' },
-        ].map(({ status, label, color }) => (
-          <QuickStatusBtn
-            key={status}
-            requestId={row.id}
-            status={status}
-            label={label}
-            color={color}
-            currentStatus={row.status}
-            onStatusChange={onStatusChange}
-          />
-        ))}
+      <div className="req-quick-actions req-quick-actions--primary">
+        <span className="req-qa-label">Actions:</span>
+        <button type="button" className="req-qa-btn" onClick={() => setDetailsOpen((v) => !v)}>
+          {detailsOpen ? 'Hide details' : 'View details'}
+        </button>
+        {onViewApplicants ?
+          (
+            <button type="button" className="req-qa-btn" onClick={onViewApplicants}>
+              View applicants
+            </button>
+          )
+        : null}
+        <QuickStatusBtn requestId={row.id} status="in-review" label="Mark Reviewed" color="#63b3ed" currentStatus={row.status} onStatusChange={onStatusChange} />
+        <QuickStatusBtn requestId={row.id} status="needs-more-info" label="Needs More Info" color="#f9b032" currentStatus={row.status} onStatusChange={onStatusChange} />
+        <QuickStatusBtn requestId={row.id} status="rejected" label="Close Request" color="#ef4444" currentStatus={row.status} onStatusChange={onStatusChange} />
       </div>
 
-      {/* AI Ops toggle */}
-      <button
-        className="req-ops-toggle"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-      >
-        {expanded ? '▲ Hide AI Operations' : '▼ View AI Operations Panel'}
-      </button>
-
-      {expanded && <AiOpsPanel row={row} packet={packet} onPacketSaved={() => setWfNonce((n) => n + 1)} />}
+      {detailsOpen ?
+        (
+          <>
+            <button
+              type="button"
+              className="req-ops-toggle"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+            >
+              {expanded ? '▲ Hide AI Operations' : '▼ View AI Operations Panel'}
+            </button>
+            {expanded && <AiOpsPanel row={row} packet={packet} onPacketSaved={() => setWfNonce((n) => n + 1)} />}
+          </>
+        )
+      : null}
     </div>
   );
 }
@@ -2678,179 +2520,6 @@ function applyFilter(enriched: EnrichedRequest[], filter: RequestFilter): Enrich
     case 'ready-to-quote': return enriched.filter((r) => r.packet.quoteReadiness.startsWith('Ready') || r.packet.quoteReadiness.startsWith('Nearly'));
     default:               return enriched;
   }
-}
-
-// ─── AI Ops Assistant panel ───────────────────────────────────────────────────
-
-function AiOpsAssistant({
-  enriched,
-  applications,
-}: {
-  enriched: EnrichedRequest[];
-  applications: CreatorApplicationRow[];
-}) {
-  // Buyer signals
-  const highPriority  = enriched.filter((e) => e.packet.priorityLabel === 'High');
-  const readyToQuote  = enriched.filter((e) => e.packet.quoteReadiness.startsWith('Ready') || e.packet.quoteReadiness.startsWith('Nearly'));
-  const needsFollowup = enriched.filter((e) => e.packet.missingInfoFlags.length > 2 || e.packet.leadQualityLabel === 'Needs Detail');
-
-  // Creator signals
-  const pendingReview       = applications.filter((a) => a.status === 'new' || a.status === 'reviewing');
-  const needsMoreInfo       = applications.filter((a) => a.status === 'needs_more_info');
-  const approvedPending     = applications.filter((a) => a.status === 'approved_pending_payment');
-  const activeCreators      = applications.filter((a) => a.status === 'active');
-  const unlinkedApps        = applications.filter((a) => !a.auth_user_id);
-  const profilelessApproved = applications.filter((a) =>
-    (a.status === 'active' || a.status === 'approved_pending_payment') && !a.linked_creator_profile_id
-  );
-
-  // Determine focus sentence
-  let focus: string;
-  if (pendingReview.length > 0 && highPriority.length > 0) {
-    focus = `Review ${pendingReview.length} creator application${pendingReview.length > 1 ? 's' : ''} pending — plus ${highPriority.length} high-priority buyer request${highPriority.length > 1 ? 's' : ''}`;
-  } else if (profilelessApproved.length > 0) {
-    focus = `${profilelessApproved.length} approved creator${profilelessApproved.length > 1 ? 's' : ''} still ${profilelessApproved.length > 1 ? 'need' : 'needs'} a profile — create it from the approval panel`;
-  } else if (pendingReview.length > 0) {
-    focus = `Review ${pendingReview.length} new creator application${pendingReview.length > 1 ? 's' : ''} in the queue`;
-  } else if (needsMoreInfo.length > 0) {
-    focus = `${needsMoreInfo.length} creator application${needsMoreInfo.length > 1 ? 's' : ''} waiting on more information from applicant`;
-  } else if (highPriority.length > 0 && readyToQuote.length > 0) {
-    focus = `Review ${highPriority.length} high-priority request${highPriority.length > 1 ? 's' : ''} — ${readyToQuote.length} ${readyToQuote.length === 1 ? 'is' : 'are'} ready to quote`;
-  } else if (readyToQuote.length > 0) {
-    focus = `Send quote proposals for ${readyToQuote.length} request${readyToQuote.length > 1 ? 's' : ''} that are ready to scope`;
-  } else if (needsFollowup.length > 0) {
-    focus = `Follow up on ${needsFollowup.length} buyer request${needsFollowup.length > 1 ? 's' : ''} — clarify details before scoping`;
-  } else if (enriched.length === 0 && applications.length === 0) {
-    focus = 'No data yet — share the buyer request URL and creator apply URL to start receiving submissions';
-  } else {
-    focus = 'All clear — no urgent items. Review open applications and pending requests';
-  }
-
-  // Build prioritized action list
-  const actionItems: { icon: string; text: string; color: string }[] = [];
-  if (profilelessApproved.length > 0) {
-    actionItems.push({ icon: '🔧', text: `Create profiles for ${profilelessApproved.length} approved creator${profilelessApproved.length !== 1 ? 's' : ''} — check Creator section`, color: '#ef4444' });
-  }
-  if (highPriority.length > 0) {
-    actionItems.push({ icon: '🔥', text: `${highPriority.length} high-priority buyer request${highPriority.length !== 1 ? 's' : ''} need attention`, color: '#ef4444' });
-  }
-  if (pendingReview.length > 0) {
-    actionItems.push({ icon: '📋', text: `Review ${pendingReview.length} creator application${pendingReview.length !== 1 ? 's' : ''} in the queue`, color: '#63b3ed' });
-  }
-  if (readyToQuote.length > 0) {
-    actionItems.push({ icon: '✍️', text: `Send proposals for ${readyToQuote.length} buyer request${readyToQuote.length !== 1 ? 's' : ''} ready to quote`, color: '#00d478' });
-  }
-  if (needsFollowup.length > 0) {
-    actionItems.push({ icon: '💬', text: `Follow up on ${needsFollowup.length} buyer request${needsFollowup.length !== 1 ? 's' : ''} with missing info`, color: '#f9b032' });
-  }
-  if (needsMoreInfo.length > 0) {
-    actionItems.push({ icon: '❓', text: `${needsMoreInfo.length} creator application${needsMoreInfo.length !== 1 ? 's' : ''} waiting on more info from applicant`, color: '#f9b032' });
-  }
-  if (approvedPending.length > 0) {
-    actionItems.push({ icon: '💳', text: `${approvedPending.length} creator${approvedPending.length !== 1 ? 's' : ''} approved and awaiting payment setup`, color: '#63b3ed' });
-  }
-  if (unlinkedApps.length > 0) {
-    actionItems.push({ icon: 'ℹ️', text: `${unlinkedApps.length} application${unlinkedApps.length !== 1 ? 's' : ''} not linked to an auth account`, color: '#8a94a6' });
-  }
-  if (actionItems.length === 0) {
-    actionItems.push({ icon: '✅', text: 'All clear — no urgent items queued', color: '#00d478' });
-  }
-
-  return (
-    <div className="ops-assistant" id="section-focus">
-      <div className="ops-assistant-header">
-        <span className="ops-assistant-title">⚡ Today&rsquo;s AI Focus</span>
-        <span className="ops-assistant-note">Rules-based · live data · no external AI API</span>
-      </div>
-      <div className="ops-assistant-focus">{focus}</div>
-
-      {/* Prioritized action items */}
-      <div className="ops-action-items">
-        {actionItems.map((item, i) => (
-          <div key={i} className="ops-action-item">
-            <span className="ops-action-num" style={{ color: item.color }}>{i + 1}</span>
-            <span className="ops-action-icon">{item.icon}</span>
-            <span className="ops-action-text">{item.text}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Buyer signals */}
-      <div className="ops-assistant-group">
-        <span className="ops-group-label">Buyer Requests</span>
-        <div className="ops-assistant-signals">
-          <span className="ops-signal" style={{ color: highPriority.length > 0 ? '#ef4444' : undefined }}>
-            {highPriority.length} High Priority
-          </span>
-          <span className="ops-signal" style={{ color: readyToQuote.length > 0 ? '#00d478' : undefined }}>
-            {readyToQuote.length} Ready to Quote
-          </span>
-          <span className="ops-signal" style={{ color: needsFollowup.length > 0 ? '#f9b032' : undefined }}>
-            {needsFollowup.length} Needs Follow-up
-          </span>
-        </div>
-      </div>
-
-      {/* Creator signals */}
-      <div className="ops-assistant-group">
-        <span className="ops-group-label">Creator Applications</span>
-        <div className="ops-assistant-signals">
-          <span className="ops-signal" style={{ color: pendingReview.length > 0 ? '#63b3ed' : undefined }}>
-            {pendingReview.length} Pending Review
-          </span>
-          <span className="ops-signal" style={{ color: needsMoreInfo.length > 0 ? '#f9b032' : undefined }}>
-            {needsMoreInfo.length} Needs Info
-          </span>
-          <span className="ops-signal" style={{ color: approvedPending.length > 0 ? '#63b3ed' : undefined }}>
-            {approvedPending.length} Pending Payment
-          </span>
-          <span className="ops-signal" style={{ color: activeCreators.length > 0 ? '#00d478' : undefined }}>
-            {activeCreators.length} Active
-          </span>
-        </div>
-      </div>
-
-      {/* Alerts row */}
-      {(profilelessApproved.length > 0 || unlinkedApps.length > 0) && (
-        <div className="ops-assistant-alerts">
-          {profilelessApproved.length > 0 && (
-            <span className="ops-alert ops-alert--warn">
-              ⚠ {profilelessApproved.length} approved without profile
-            </span>
-          )}
-          {unlinkedApps.length > 0 && (
-            <span className="ops-alert ops-alert--info">
-              ℹ {unlinkedApps.length} app{unlinkedApps.length > 1 ? 's' : ''} missing auth link
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Top lists */}
-      {highPriority.length > 0 && (
-        <div className="ops-assistant-toplist">
-          <span className="ops-tl-label">High Priority Buyers:</span>
-          {highPriority.slice(0, 3).map((e) => (
-            <span key={e.row.id} className="ops-tl-item">
-              {e.row.business_name} ({e.row.build_type})
-            </span>
-          ))}
-          {highPriority.length > 3 && <span className="ops-tl-more">+{highPriority.length - 3} more</span>}
-        </div>
-      )}
-      {pendingReview.length > 0 && (
-        <div className="ops-assistant-toplist">
-          <span className="ops-tl-label">Pending Creators:</span>
-          {pendingReview.slice(0, 3).map((a) => (
-            <span key={a.id} className="ops-tl-item">
-              {safeText(a.full_name, 'Unknown')} ({tierLabels[a.tier] ?? a.tier})
-            </span>
-          ))}
-          {pendingReview.length > 3 && <span className="ops-tl-more">+{pendingReview.length - 3} more</span>}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ─── Creator Application Card ─────────────────────────────────────────────────
@@ -3679,25 +3348,8 @@ function WorkflowTemplates() {
 
 // ─── Section navigation ───────────────────────────────────────────────────────
 
-function AdminSectionNav() {
-  const NAV = [
-    { id: 'focus',     label: '⚡ Focus'      },
-    { id: 'buyers',    label: '📋 Buyers'    },
-    { id: 'pipeline',  label: '🚀 Pipeline'  },
-    { id: 'creators',  label: '👤 Creators'  },
-    { id: 'profiles',  label: '🔍 Profiles'   },
-    { id: 'workflows-ai', label: '🤖 Workflows AI' },
-    { id: 'health',    label: '📊 Health'    },
-  ];
-  return (
-    <nav className="admin-section-nav" aria-label="Admin sections">
-      {NAV.map((s) => (
-        <a key={s.id} href={`#section-${s.id}`} className="admin-section-nav-link">
-          {s.label}
-        </a>
-      ))}
-    </nav>
-  );
+function showAdminSection(active: AdminSectionId, section: AdminSectionId): boolean {
+  return active === section;
 }
 
 // ─── Batch action bar ─────────────────────────────────────────────────────────
@@ -3957,12 +3609,14 @@ function ProfileQualityQueue({
 // ─── Platform Health Snapshot ─────────────────────────────────────────────────
 
 function PlatformHealthSnapshot({
-  requests, applications, profiles, loading,
+  requests, applications, profiles, loading, ordersCount, publishedWorkflowsCount,
 }: {
   requests: BuyerRequestRow[];
   applications: CreatorApplicationRow[];
   profiles: DBCreatorProfileRow[];
   loading: boolean;
+  ordersCount?: number;
+  publishedWorkflowsCount?: number;
 }) {
   const activeCreators  = applications.filter((a) => a.status === 'active').length;
   const publicProfiles  = profiles.filter((p) => p.public_profile_status === 'public').length;
@@ -4043,6 +3697,22 @@ function PlatformHealthSnapshot({
               </span>
               <span className="health-label">Pending Payment</span>
             </div>
+            <div className="health-cell">
+              <span className="health-val">{ordersCount ?? '—'}</span>
+              <span className="health-label">Open Projects</span>
+            </div>
+            <div className="health-cell">
+              <span className="health-val">{publishedWorkflowsCount ?? '—'}</span>
+              <span className="health-label">Published Workflows</span>
+            </div>
+          </div>
+
+          <div className="health-flags health-flags--system">
+            <span className="health-flag health-flag--warn">⚠ Temp dev RLS — replace before production</span>
+            <span className="health-flag health-flag--warn">⚠ Admin auth not hardened</span>
+            <span className="health-flag health-flag--info">ℹ Payments / Stripe not active</span>
+            <span className="health-flag health-flag--info">ℹ External AI not connected — rules-based only</span>
+            <span className="health-flag health-flag--info">ℹ Proposal/pricing deferred — no enforcement</span>
           </div>
 
           {(noProfileActive > 0 || weakPublic > 0) && (
@@ -4065,13 +3735,7 @@ function PlatformHealthSnapshot({
   );
 }
 
-interface MarketplaceReqAppRow {
-  id: string;
-  buyer_request_id: string;
-  creator_profile_id: string;
-  application_status: string | null;
-  created_at: string | null;
-}
+type MarketplaceReqAppRow = MarketplaceAppAdminRow;
 
 interface PublishedWorkflowAdminRow {
   id: string;
@@ -4118,6 +3782,8 @@ export default function Admin() {
   const [workflowAdminTab, setWorkflowAdminTab] = useState<
     'published' | 'ai_ok' | 'needs' | 'risk' | 'hidden' | 'all'
   >('all');
+  const [activeSection, setActiveSection] = useState<AdminSectionId>('command');
+  const [marketplaceRefreshNonce, setMarketplaceRefreshNonce] = useState(0);
 
   useEffect(() => {
     supabase
@@ -4195,7 +3861,9 @@ export default function Admin() {
 
     supabase
       .from('request_applications')
-      .select('id,buyer_request_id,creator_profile_id,application_status,created_at')
+      .select(
+        'id,buyer_request_id,creator_profile_id,application_status,proposal_message,fit_reason,estimated_timeline,proposed_price,created_at',
+      )
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) console.error('[Admin] request_applications:', error);
@@ -4207,8 +3875,15 @@ export default function Admin() {
               creator_profile_id: safeText(r.creator_profile_id),
               application_status:
                 r.application_status != null ? safeText(r.application_status) : null,
+              proposal_message: r.proposal_message != null ? safeText(r.proposal_message) : null,
+              fit_reason: r.fit_reason != null ? safeText(r.fit_reason) : null,
+              estimated_timeline: r.estimated_timeline != null ? safeText(r.estimated_timeline) : null,
+              proposed_price:
+                typeof r.proposed_price === 'number' && Number.isFinite(r.proposed_price)
+                  ? r.proposed_price
+                  : null,
               created_at: r.created_at != null ? safeText(r.created_at) : null,
-            }))
+            })),
           );
         }
       });
@@ -4267,6 +3942,34 @@ export default function Admin() {
         }
       });
   }, []);
+
+  useEffect(() => {
+    supabase
+      .from('request_applications')
+      .select(
+        'id,buyer_request_id,creator_profile_id,application_status,proposal_message,fit_reason,estimated_timeline,proposed_price,created_at',
+      )
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) console.error('[Admin] request_applications refresh:', error);
+        else {
+          setRequestApplications(
+            ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+              id: safeText(r.id, ''),
+              buyer_request_id: safeText(r.buyer_request_id),
+              creator_profile_id: safeText(r.creator_profile_id),
+              application_status: r.application_status != null ? safeText(r.application_status) : null,
+              proposal_message: r.proposal_message != null ? safeText(r.proposal_message) : null,
+              fit_reason: r.fit_reason != null ? safeText(r.fit_reason) : null,
+              estimated_timeline: r.estimated_timeline != null ? safeText(r.estimated_timeline) : null,
+              proposed_price:
+                typeof r.proposed_price === 'number' && Number.isFinite(r.proposed_price) ? r.proposed_price : null,
+              created_at: r.created_at != null ? safeText(r.created_at) : null,
+            })),
+          );
+        }
+      });
+  }, [marketplaceRefreshNonce]);
 
   // Enriched requests with AI packets — per-row isolation so one bad row can't crash
   const enriched = useMemo<EnrichedRequest[]>(
@@ -4347,32 +4050,6 @@ export default function Admin() {
       default:         return applications;
     }
   }, [applications, appStatusFilter]);
-
-  const marketplaceOpenRequests = useMemo(
-    () =>
-      requests.filter((r) => {
-        const vr = safeText(r.visibility_status, 'open').toLowerCase();
-        const ap = safeText(r.application_status, 'open').toLowerCase();
-        return (
-          vr !== 'closed'
-          && vr !== 'completed'
-          && vr !== 'draft'
-          && ap !== 'creator_selected'
-          && ap !== 'completed'
-          && ap !== 'closed'
-        );
-      }),
-    [requests],
-  );
-
-  const requestAppsNeedingBuyer = useMemo(
-    () =>
-      requestApplications.filter((a) => {
-        const s = safeText(a.application_status, '').toLowerCase();
-        return s === 'submitted' || s === 'shortlisted';
-      }),
-    [requestApplications],
-  );
 
   /** Workflow-first-right: original publisher submitted an active marketplace application */
   const originalWorkflowCreatorAppliedMap = useMemo(() => {
@@ -4567,11 +4244,6 @@ export default function Admin() {
     );
   }
 
-  const buyerSelectedOrdersCount = useMemo(
-    () => orders.filter((o) => safeText(o.selection_method, '').toLowerCase() === 'buyer_selected').length,
-    [orders],
-  );
-
   // Batch summaries (built from enriched/review data)
   const selectedAppSummaries = useMemo(
     () => applications
@@ -4610,6 +4282,37 @@ export default function Admin() {
     [enriched, selectedReqs],
   );
 
+  const creatorNameById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const c of activeCreators) {
+      m[c.id] = safeText(c.display_name).trim() || safeText(c.full_name, 'Creator');
+    }
+    for (const p of creatorProfiles) {
+      m[p.id] = safeText(p.display_name).trim() || safeText(p.full_name, 'Creator');
+    }
+    return m;
+  }, [activeCreators, creatorProfiles]);
+
+  const bizByOrderId = useMemo(() => {
+    const reqBiz: Record<string, string> = {};
+    for (const r of requests) {
+      reqBiz[r.id] = safeText(r.business_name, 'Unknown business');
+    }
+    const m: Record<string, string> = {};
+    for (const o of orders) {
+      m[o.id] =
+        o.request_id && reqBiz[o.request_id]
+          ? reqBiz[o.request_id]
+          : safeText(o.project_title, 'Project');
+    }
+    return m;
+  }, [orders, requests]);
+
+  const buyerRequestsForDeferred = useMemo(
+    () => requests.map((r) => r as unknown as DatabaseBuyerRequestRow),
+    [requests],
+  );
+
   return (
     <div className="admin-page">
 
@@ -4621,7 +4324,7 @@ export default function Admin() {
               <div className="admin-eyebrow">MicroBuild Operations</div>
               <h1 className="admin-title">Admin Dashboard</h1>
               <p className="admin-sub">
-                Live Supabase data · Rule-based AI analysis · Status updates write to database
+                AI operations command center · oversight &amp; override · proposal/payment workflow deferred
               </p>
             </div>
             <span className="admin-badge-internal">Internal Only</span>
@@ -4641,85 +4344,64 @@ export default function Admin() {
 
       <div className="container admin-body">
 
-        {/* ── Section navigation ───────────────────────────────────────────── */}
-        <AdminSectionNav />
+        <AdminSectionTabs active={activeSection} onChange={setActiveSection} />
 
-        {/* ── Marketplace foundation ─────────────────────────────────────── */}
-        <section className="admin-marketplace-summary">
-          <h2 className="admin-marketplace-title">Marketplace foundation oversight</h2>
-          <p className="admin-market-desc">
-            Mirrors new tables from <code>marketplace-application-foundation.sql</code>. Buyer-chosen creators are now the typical path alongside published workflows, while pipeline controls below still expose manual assignment as escalation or fallback support.
-          </p>
-          <div className="admin-market-metrics">
-            <div className="metric-card metric-card-slim">
-              <span className="metric-value">{marketplaceOpenRequests.length}</span>
-              <span className="metric-label">Buyer requests accepting marketplace bids</span>
-            </div>
-            <div className="metric-card metric-card-slim">
-              <span className="metric-value">{requestAppsNeedingBuyer.length}</span>
-              <span className="metric-label">Active request_applications awaiting buyer/admin</span>
-            </div>
-            <div className="metric-card metric-card-slim">
-              <span className="metric-value">
-                {
-                  requests.filter((r) => safeText(r.selected_creator_profile_id) !== '').length
-                }
-              </span>
-              <span className="metric-label">Requests with a selected_creator_profile_id</span>
-            </div>
-            <div className="metric-card metric-card-slim">
-              <span className="metric-value">{buyerSelectedOrdersCount}</span>
-              <span className="metric-label">Orders where selection_method = buyer_selected</span>
-            </div>
-            <div className="metric-card metric-card-slim">
-              <span className="metric-value">{workflowsPublishedLive.length}</span>
-              <span className="metric-label">Workflows live on buyer Browse</span>
-            </div>
-            <div className="metric-card metric-card-slim">
-              <span className="metric-value">{workflowsRiskFlagged.length}</span>
-              <span className="metric-label">Workflows AI risk-flagged (hidden)</span>
-            </div>
-          </div>
-          <p className="admin-market-muted">
-            Messaging stays refresh-only for now — use admin assignment when buyers need operational help even though most matches should originate from voluntary applications visible in the counters above.
-          </p>
-          <details className="admin-market-details">
-            <summary>Open sample rows · request_applications (latest 8)</summary>
-            <table className="admin-market-mini-table">
-              <thead>
-                <tr><th>Request</th><th>Creator</th><th>Status</th><th>Applied</th></tr>
-              </thead>
-              <tbody>
-                {requestApplications.slice(0, 8).map((a) => (
-                  <tr key={a.id}>
-                    <td>{safeText(a.buyer_request_id).slice(0, 8)}…</td>
-                    <td>{safeText(a.creator_profile_id).slice(0, 8)}…</td>
-                    <td>{safeText(a.application_status, 'unknown')}</td>
-                    <td>{safeDate(a.created_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
-        </section>
+        {showAdminSection(activeSection, 'command') && (
+          <>
+            {(!reqLoading || !appLoading) && (
+              <AdminCommandCenter
+                enriched={enriched}
+                applications={applications}
+                orders={orders}
+                deliverables={[]}
+                workflows={publishedWorkflowRows}
+                onNavigate={setActiveSection}
+              />
+            )}
+            <AdminMetricsStrip
+              reqLoading={reqLoading}
+              requestsLen={requests.length}
+              newReqCount={newReqCount}
+              highPriorityCount={highPriorityCount}
+              readyToQuoteCount={readyToQuoteCount}
+              needsFollowupCount={needsFollowupCount}
+              appLoading={appLoading}
+              pendingReviewCount={pendingReviewCount}
+              needsMoreInfoCount={needsMoreInfoCount}
+              approvedPendingCount={approvedPendingCount}
+              activeCreatorCount={activeCreatorCount}
+              rejectedSuspendedCount={rejectedSuspendedCount}
+            />
+          </>
+        )}
 
-        <section className="admin-section" id="section-workflows-ai">
+        {showAdminSection(activeSection, 'marketplace') && (
+          <AdminMarketplaceApplications
+            applications={requestApplications}
+            requests={requests as unknown as import('../types/database').BuyerRequestRow[]}
+            creatorNameById={creatorNameById}
+            onRefresh={() => setMarketplaceRefreshNonce((n) => n + 1)}
+          />
+        )}
+
+        {showAdminSection(activeSection, 'workflows') && (
+        <section className="admin-section" id="section-workflows">
           <div className="admin-section-header">
-            <h2>Workflow AI overview</h2>
+            <h2>Published Workflows</h2>
             {!profilesLoading && (
               <span className="admin-count">{publishedWorkflowRows.length}</span>
             )}
           </div>
-          <p className="admin-market-desc">
-            Creators pass through rules-based AI review before buyer-facing Browse. These controls are secondary —
-            prefer letting creators iterate on AI feedback unless you need compliance or safety overrides.
+          <p className="admin-section-intro">
+            Rules-based AI review before Browse. Admin is oversight/override — creators iterate on AI feedback first.
           </p>
           {workflowAdminNotice ?
-            <div className="admin-auth-warning">
-              <strong>Workflow action error:</strong> {workflowAdminNotice}
-            </div>
+            (
+              <div className="admin-auth-warning">
+                <strong>Workflow action error:</strong> {workflowAdminNotice}
+              </div>
+            )
           : null}
-
           <div className="req-filter-bar" style={{ marginBottom: '1rem' }}>
             {(
               [
@@ -4742,19 +4424,19 @@ export default function Admin() {
               </button>
             ))}
           </div>
-
           {workflowsAdminFiltered.length === 0 ?
             <div className="admin-state-row admin-empty">No workflows in this filter.</div>
           : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="admin-wf-table-wrap">
               <table className="admin-market-mini-table">
                 <thead>
                   <tr>
                     <th>Title</th>
                     <th>Creator</th>
-                    <th>WF status</th>
-                    <th>AI status</th>
+                    <th>Status</th>
+                    <th>AI</th>
                     <th>Score</th>
+                    <th>Readiness</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -4763,45 +4445,26 @@ export default function Admin() {
                     <tr key={w.id}>
                       <td>{safeText(w.title)}</td>
                       <td>{creatorLabelForWorkflowProfile(w.creator_profile_id)}</td>
-                      <td>{safeText(w.workflow_status, '—')}</td>
+                      <td>{safeText(w.workflow_status, '—')} / {safeText(w.visibility_status, '—')}</td>
                       <td>{safeText(w.ai_review_status, '—')}</td>
                       <td>{w.ai_quality_score ?? '—'}</td>
+                      <td>{safeText(w.ai_publish_readiness, '—')}</td>
                       <td>
-                        <details style={{ maxWidth: 280 }}>
-                          <summary className="subtle">View AI review</summary>
-                          <div style={{ marginTop: '0.35rem', fontSize: '0.78rem' }}>
-                            <p>{safeText(w.ai_review_summary, '—')}</p>
-                            <p>{safeText(w.ai_recommended_action, '')}</p>
-                            {w.ai_risk_flags.length > 0 ?
-                              (
-                                <p>
-                                  <strong>Risks:</strong> {w.ai_risk_flags.join('; ')}
-                                </p>
-                              )
-                            : null}
-                          </div>
+                        <details className="admin-wf-ai-details">
+                          <summary>View AI review</summary>
+                          <p>{safeText(w.ai_review_summary, '—')}</p>
+                          {w.ai_missing_items.length > 0 ?
+                            <p><strong>Missing:</strong> {w.ai_missing_items.slice(0, 3).join('; ')}</p>
+                          : null}
+                          {w.ai_risk_flags.length > 0 ?
+                            <p><strong>Risks:</strong> {w.ai_risk_flags.join('; ')}</p>
+                          : null}
                         </details>
                         <div className="wf-admin-row-actions">
-                          <button
-                            type="button"
-                            className="batch-btn"
-                            onClick={() => void adminWorkflowOverridePublish(w.id)}
-                          >
-                            Override publish
-                          </button>
-                          <button type="button" className="batch-btn" onClick={() => void adminWorkflowHide(w.id)}>
-                            Hide
-                          </button>
-                          <button type="button" className="batch-btn" onClick={() => void adminWorkflowArchive(w.id)}>
-                            Archive
-                          </button>
-                          <button
-                            type="button"
-                            className="batch-btn"
-                            onClick={() => void adminWorkflowMarkNeedsImprovement(w.id)}
-                          >
-                            Mark needs improvement
-                          </button>
+                          <button type="button" className="batch-btn" onClick={() => void adminWorkflowOverridePublish(w.id)}>Override publish</button>
+                          <button type="button" className="batch-btn" onClick={() => void adminWorkflowHide(w.id)}>Hide</button>
+                          <button type="button" className="batch-btn" onClick={() => void adminWorkflowArchive(w.id)}>Archive</button>
+                          <button type="button" className="batch-btn" onClick={() => void adminWorkflowMarkNeedsImprovement(w.id)}>Mark needs improvement</button>
                         </div>
                       </td>
                     </tr>
@@ -4811,85 +4474,10 @@ export default function Admin() {
             </div>
           )}
         </section>
-
-        {/* ── Today's AI Focus ─────────────────────────────────────────────── */}
-        {(!reqLoading || !appLoading) && (
-          <AiOpsAssistant enriched={enriched} applications={applications} />
         )}
 
-        {/* ── Metrics ──────────────────────────────────────────────────────── */}
-        <div className="admin-metrics-wrap">
-          <div className="admin-metrics-group">
-            <div className="admin-metrics-group-label">Buyer Requests</div>
-            <div className="admin-metrics">
-              <div className="metric-card">
-                <span className="metric-value">{reqLoading ? '…' : requests.length}</span>
-                <span className="metric-label">Total</span>
-              </div>
-              <div className="metric-card">
-                <span className="metric-value" style={{ color: newReqCount > 0 ? '#f9b032' : undefined }}>
-                  {reqLoading ? '…' : newReqCount}
-                </span>
-                <span className="metric-label">New</span>
-              </div>
-              <div className="metric-card">
-                <span className="metric-value" style={{ color: highPriorityCount > 0 ? '#ef4444' : undefined }}>
-                  {reqLoading ? '…' : highPriorityCount}
-                </span>
-                <span className="metric-label">High Priority</span>
-              </div>
-              <div className="metric-card">
-                <span className="metric-value" style={{ color: readyToQuoteCount > 0 ? '#00d478' : undefined }}>
-                  {reqLoading ? '…' : readyToQuoteCount}
-                </span>
-                <span className="metric-label">Ready to Quote</span>
-              </div>
-              <div className="metric-card">
-                <span className="metric-value" style={{ color: needsFollowupCount > 0 ? '#f9b032' : undefined }}>
-                  {reqLoading ? '…' : needsFollowupCount}
-                </span>
-                <span className="metric-label">Needs Follow-up</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="admin-metrics-group">
-            <div className="admin-metrics-group-label">Creator Applications</div>
-            <div className="admin-metrics">
-              <div className="metric-card">
-                <span className="metric-value" style={{ color: pendingReviewCount > 0 ? '#63b3ed' : undefined }}>
-                  {appLoading ? '…' : pendingReviewCount}
-                </span>
-                <span className="metric-label">Pending Review</span>
-              </div>
-              <div className="metric-card">
-                <span className="metric-value" style={{ color: needsMoreInfoCount > 0 ? '#f9b032' : undefined }}>
-                  {appLoading ? '…' : needsMoreInfoCount}
-                </span>
-                <span className="metric-label">Needs Info</span>
-              </div>
-              <div className="metric-card">
-                <span className="metric-value" style={{ color: approvedPendingCount > 0 ? '#63b3ed' : undefined }}>
-                  {appLoading ? '…' : approvedPendingCount}
-                </span>
-                <span className="metric-label">Pending Payment</span>
-              </div>
-              <div className="metric-card">
-                <span className="metric-value" style={{ color: activeCreatorCount > 0 ? '#00d478' : undefined }}>
-                  {appLoading ? '…' : activeCreatorCount}
-                </span>
-                <span className="metric-label">Active Creators</span>
-              </div>
-              <div className="metric-card">
-                <span className="metric-value" style={{ color: rejectedSuspendedCount > 0 ? '#ef4444' : undefined }}>
-                  {appLoading ? '…' : rejectedSuspendedCount}
-                </span>
-                <span className="metric-label">Rejected/Suspended</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
+                {showAdminSection(activeSection, 'buyers') && (
+        <>
         {/* ── Buyer Requests ────────────────────────────────────────────────── */}
         <section className="admin-section" id="section-buyers">
           <div className="admin-section-header">
@@ -4949,6 +4537,7 @@ export default function Admin() {
                       assignmentDiagnostics={creatorAssignmentDiag}
                       onRefreshOrders={reloadOrders}
                       originalCreatorApplied={originalWorkflowCreatorAppliedMap.get(e.row.id) ?? false}
+                      onViewApplicants={() => setActiveSection('marketplace')}
                     />
                   </SectionErrorBoundary>
                 ))}
@@ -4958,6 +4547,10 @@ export default function Admin() {
           )}
         </section>
 
+        </>)}
+
+        {showAdminSection(activeSection, 'pipeline') && (
+        <>
         {/* ── Project Pipeline (orders / creators / deliverables) ───────────── */}
         <SectionErrorBoundary name="Project Pipeline">
           <ProjectPipelineSection
@@ -4969,7 +4562,10 @@ export default function Admin() {
             onOrderUpdate={handleOrderUpdate}
           />
         </SectionErrorBoundary>
+        </>)}
 
+        {showAdminSection(activeSection, 'creators') && (
+        <>
         {/* ── Creator Applications ──────────────────────────────────────────── */}
         <section className="admin-section" id="section-creators">
           <div className="admin-section-header">
@@ -5036,8 +4632,9 @@ export default function Admin() {
           )}
         </section>
 
-        {/* ── MicroBuild Listings ───────────────────────────────────────────── */}
-        <section className="admin-section">
+        </>)}
+
+        <section className="admin-section admin-section--dim" style={{ display: activeSection === "health" ? undefined : "none" }}>
           <div className="admin-section-header">
             <h2>MicroBuild Listings</h2>
             {!tplLoading && <span className="admin-count">{templates.length}</span>}
@@ -5090,6 +4687,21 @@ export default function Admin() {
           </div>
         </SectionErrorBoundary>
 
+        {showAdminSection(activeSection, 'deliverables') && (
+          <AdminDeliverablesSection
+            orders={orders}
+            bizByOrderId={bizByOrderId}
+            creatorNameById={creatorNameById}
+            onOrderUpdate={handleOrderUpdate}
+          />
+        )}
+
+        {showAdminSection(activeSection, 'messages') && (
+          <AdminMessagesPlaceholder conversationHintCount={requestApplications.length} />
+        )}
+
+        {showAdminSection(activeSection, 'health') && (
+        <>
         {/* ── Platform Health Snapshot ──────────────────────────────────────── */}
         <SectionErrorBoundary name="Platform Health Snapshot">
           <PlatformHealthSnapshot
@@ -5097,8 +4709,15 @@ export default function Admin() {
             applications={applications}
             profiles={creatorProfiles}
             loading={reqLoading || appLoading || profilesLoading}
+            ordersCount={orders.length}
+            publishedWorkflowsCount={publishedWorkflowRows.length}
           />
         </SectionErrorBoundary>
+        </>)}
+
+        {showAdminSection(activeSection, 'deferred') && (
+          <AdminDeferredProposals buyerRequests={buyerRequestsForDeferred} />
+        )}
 
         {/* ── Phase 3+ placeholders ─────────────────────────────────────────── */}
         <div className="admin-placeholders">

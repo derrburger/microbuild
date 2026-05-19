@@ -8,7 +8,17 @@ This document summarizes the marketplace foundation introduced with `marketplace
 
 ---
 
-## Proposal / pricing workflow (v1 — placeholders only)
+## Admin dashboard (operations layout)
+
+- **`/admin`** uses **horizontal tabs** so only one major queue is visible at a time (reduces the old single-page “wall of buttons”).
+- **AI Command Center** (default tab): rules-based cards (counts, focus sentence, jump buttons) — **no external AI API**.
+- **Proposal & payment** moved to **Later: Proposal & Payment** (collapsed). Main buyer request and project cards show a **deferred** badge only; full `AdminProposalSection` remains for optional testing.
+- **Deliverables** have a dedicated review tab; project pipeline cards show status + link, not full review actions.
+- **Marketplace Applications** tab lists `request_applications` with buyer override only when needed; buyer selection stays primary.
+
+---
+
+## Proposal / pricing workflow (v1 — placeholders only; admin UI deferred)
 
 After buyer selection and an **`orders`** row exists (or even before, keyed by **`buyer_request_id`** only), MicroBuild can record a **`project_proposals`** row:
 
