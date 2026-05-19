@@ -31,6 +31,7 @@ export interface OrderPipelineRow {
   proposal_id?: string | null;
   proposal_status?: string | null;
   buyer_approval_status?: string | null;
+  agreement_status?: string | null;
   amount_cents: number;
   status: string;    // legacy field
   created_at: string;

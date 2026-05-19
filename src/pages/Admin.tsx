@@ -53,6 +53,9 @@ import AdminMarketplaceApplications, {
 } from '../components/admin/AdminMarketplaceApplications';
 import AdminDeliverablesSection from '../components/admin/AdminDeliverablesSection';
 import AdminMessagesPlaceholder from '../components/admin/AdminMessagesPlaceholder';
+import { fetchProposalByOrderId } from '../lib/proposals';
+import { getAgreementViewState } from '../lib/projectAgreement';
+import { displayAgreementStatus } from '../lib/projectAgreementAI';
 import AdminDeferredProposals from '../components/admin/AdminDeferredProposals';
 import AdminMetricsStrip from '../components/admin/AdminMetricsStrip';
 
@@ -1722,6 +1725,37 @@ function OrderCard({
     };
   }, [order.id, order.build_packet_id, order.request_id]);
 
+  const [agreementSnap, setAgreementSnap] = useState<{
+    status: string;
+    buyerOk: boolean;
+    creatorOk: boolean;
+    missing: number;
+    risks: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const row = await fetchProposalByOrderId(order.id);
+      if (cancelled) return;
+      if (!row) {
+        setAgreementSnap(null);
+        return;
+      }
+      const view = getAgreementViewState(row);
+      setAgreementSnap({
+        status: displayAgreementStatus(row.agreement_status),
+        buyerOk: view.buyerConfirmed,
+        creatorOk: view.creatorConfirmed,
+        missing: row.ai_missing_scope_items?.length ?? 0,
+        risks: row.ai_risk_flags?.length ?? 0,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [order.id]);
+
   const statusColor = ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6';
   const assignedCreator = activeCreators.find((c) => c.id === order.creator_id);
   const pipelineIdx = orderTimelineIndex(order.order_status);
@@ -1820,6 +1854,26 @@ function OrderCard({
       <div className="order-card-buyer-context">
         <span className="order-buyer-label">Buyer / MicroBuild</span>
         <span className="order-buyer-val">{buyerBusinessName} · {buyerBuildType}</span>
+      </div>
+
+      <div className="order-card-agreement-strip" role="status">
+        <span className="order-buyer-label">Project agreement</span>
+        {agreementSnap ?
+          (
+            <span className="order-buyer-val">
+              {agreementSnap.status}
+              {' · '}
+              Buyer {agreementSnap.buyerOk ? 'confirmed' : 'pending'}
+              {' · '}
+              Creator {agreementSnap.creatorOk ? 'confirmed' : 'pending'}
+              {(agreementSnap.missing > 0 || agreementSnap.risks > 0) ?
+                ` · ${agreementSnap.missing} missing · ${agreementSnap.risks} risks`
+              : ''}
+            </span>
+          )
+        : (
+          <span className="order-buyer-val subtle">Not drafted — parties generate on project workspace</span>
+        )}
       </div>
 
       <p className="order-msg-mod-placeholder">

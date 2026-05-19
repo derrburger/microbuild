@@ -16,6 +16,13 @@ A marketplace for focused, affordable web tools built for local service business
 - **Order integration:** Buyer **approve** sets **`proposal_status = buyer_approved`**, **`buyer_approval_status = approved`**, syncs **`orders`**, keeps **`payment_status` unpaid**, may advance **`assigned` → `in_progress`** — **no Stripe charge**.
 - **Future:** Stripe checkout, escrow / handoff security, production RLS, creator payout protection policies.
 
+### Project Agreement v1 (buyer ↔ creator on project workspace)
+
+- **Where:** `/dashboard/projects/:orderId` — **Project Agreement** panel (replaces admin-first proposal UX on the project page).
+- **Flow:** Either party can **Generate AI Agreement Draft** (rules-based, `src/lib/projectAgreementAI.ts`). Buyer **Confirm Agreement** and creator **Confirm Agreement** independently. When both confirm → `agreement_status = confirmed`, `locked_at` set, order `agreement_status` mirrored — **no Stripe / no payment**.
+- **Data:** Reuses `project_proposals` (one row per order) + optional columns from `supabase/migrations/project-agreement-fields.sql`.
+- **Admin:** Pipeline order cards show agreement status + buyer/creator confirmed + AI missing/risk counts — no generate/send controls on main paths (deferred **Later: Proposals** tab unchanged).
+
 ### Core marketplace loop (QA v1)
 
 End-to-end path: **buyer request** → **creator apply** → **buyer review/select** → **`orders` project** → **workspace deliverable** → **central `/messages`**. Role nav: buyer **Overview / Browse Workflows / My Requests / Messages**; creator **Buyer Requests / Applications / Projects / Workflows / Messages**; admin **AI Command Center** sections via `/admin#…`. Full manual checklist: **`docs/marketplace-application-flow.md`** (Core marketplace QA checklist). **Deferred:** Stripe, proposal enforcement UI, GitHub OAuth, external AI APIs.

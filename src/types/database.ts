@@ -499,6 +499,16 @@ export interface ProjectProposalRow {
   buyer_feedback: string | null;
   admin_notes: string | null;
   workflow_context_snapshot: string | null;
+  /** project-agreement-fields.sql */
+  agreement_status?: string | null;
+  buyer_confirmed_at?: string | null;
+  creator_confirmed_at?: string | null;
+  creator_approval_status?: string | null;
+  ai_agreement_summary?: string | null;
+  ai_missing_scope_items?: string[] | null;
+  ai_risk_flags?: string[] | null;
+  ai_recommended_next_step?: string | null;
+  locked_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -524,6 +534,15 @@ export interface ProjectProposalInsert {
   buyer_feedback?: string | null;
   admin_notes?: string | null;
   workflow_context_snapshot?: string | null;
+  agreement_status?: string | null;
+  buyer_confirmed_at?: string | null;
+  creator_confirmed_at?: string | null;
+  creator_approval_status?: string | null;
+  ai_agreement_summary?: string | null;
+  ai_missing_scope_items?: string[] | null;
+  ai_risk_flags?: string[] | null;
+  ai_recommended_next_step?: string | null;
+  locked_at?: string | null;
 }
 
 export interface ProjectMessageRow {

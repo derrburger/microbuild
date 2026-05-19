@@ -135,8 +135,10 @@ export default function BuyerProposalSection({
   return (
     <section className="buyer-section mb-buyer-proposals" id="buyer-proposals-pricing">
       <div className="buyer-section-header">
-        <h3 className="buyer-section-title">Proposals &amp; pricing</h3>
-        <span className="subtle buyer-muted-hint">Scope approval only — payments are not active yet.</span>
+        <h3 className="buyer-section-title">Project agreements (legacy list)</h3>
+        <span className="subtle buyer-muted-hint">
+          Confirm scope on your <strong>project workspace</strong> — payments are not active yet.
+        </span>
       </div>
       {toast ? <div className="mb-form-alert mb-form-alert--muted">{toast}</div> : null}
       {err ? <div className="mb-form-alert mb-form-alert--error">{err}</div> : null}
@@ -164,6 +166,13 @@ export default function BuyerProposalSection({
                 <span className="mb-buyer-proposal-pills">
                   <span className="mb-badge">{displayProposalLifecycle(p.proposal_status)}</span>
                   <span className="mb-badge">Buyer: {displayBuyerApproval(p.buyer_approval_status)}</span>
+                  {orderHref ?
+                    (
+                      <Link className="btn btn-primary btn-sm" to={orderHref}>
+                        Open Project Agreement →
+                      </Link>
+                    )
+                  : null}
                 </span>
               </div>
               {br ?

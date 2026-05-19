@@ -32,13 +32,15 @@ This document summarizes the marketplace foundation introduced with `marketplace
 
 ---
 
-## Proposal / pricing workflow (v1 — placeholders only; admin UI deferred)
+## Proposal / pricing workflow (legacy storage — Project Agreement is primary UI)
 
-After buyer selection and an **`orders`** row exists (or even before, keyed by **`buyer_request_id`** only), MicroBuild can record a **`project_proposals`** row:
+**Project Agreement v1** (above) is the buyer/creator-facing scope path on the project workspace. The same **`project_proposals`** table stores agreement rows (one per order).
 
-1. **Admin** generates or regenerates a **rules-based** draft (`src/lib/proposals.ts`) from the buyer request, winning **`request_application`** when linked, optional **`build_packets`** snippet, and **`published_workflows`** pricing/context when the request is workflow-backed.
-2. Admin edits title, scope, deliverables, timeline, revision limit, placeholder price — **Save** recomputes placeholder fee/payout — **Mark sent** exposes the proposal to the buyer dashboard.
-3. **Buyer** sees **Proposals & pricing** on the dashboard when at least one proposal exists (latest row per request); **Approve / Request changes / Reject** only when **`proposal_status = sent`**. Responses update **`project_proposals`** and **`orders`** via **`syncOrderProposalPointers`**; **`buyer_approval_status`** uses **`pending` / `approved` / `changes_requested` / `rejected`**; **`payment_status`** remains **`unpaid`** — **no Stripe**.
+Legacy admin proposal tooling (still available under **Later: Proposal & Payment** for testing):
+
+1. **Admin** can still generate/save/send via `src/lib/proposals.ts` (not required for marketplace happy path).
+2. **Buyer dashboard** may list older rows under “Project agreements (legacy list)” with a link to the workspace panel.
+3. Confirmations on the workspace set **`buyer_approval_status` / `creator_approval_status`** and **`agreement_status`**; **`payment_status`** remains **`unpaid`** — **no Stripe**.
 4. **Workflow customization:** provenance from **`buyer_requests`** (`source_workflow_title`, `customization_notes`, ids) is folded into scope text; **`workflow_context_snapshot`** on the proposal is the traceability anchor — **editing the live published workflow does not retroactively change** that snapshot or approved proposal text.
 5. **Creator workspace** shows read-only proposal status, buyer approval (canonical labels), placeholder price, scope/deliverables, workflow customization banner when applicable, and creator-facing guidance (wait vs proceed).
 
@@ -208,6 +210,24 @@ Legacy admin assignment retains `selection_method = 'admin_assigned'`.
 2. Move workflow AI scoring server-side (**Supabase Edge Functions**) + optional real models; keep browser thin.
 3. Stripe quotes/payments tying `proposed_price` → executed agreements (`published_workflows` checkout remains deferred).
 4. Realtime inbox + moderation tooling (`admin_only`, participant nuances).
+
+---
+
+## Project Agreement v1 (buyer ↔ creator)
+
+| Topic | Detail |
+|-------|--------|
+| **Primary UI** | Project workspace `/dashboard/projects/:orderId` — **Project Agreement** panel |
+| **Not** | Admin-generated “MicroBuild proposal” as the default path (admin proposal tools stay in **Later: Proposal & Payment**) |
+| **Draft** | `generateProjectAgreementForOrder()` — rules-based AI (`projectAgreementAI.ts`) from buyer request, application, workflow customization, build packet, order |
+| **Confirm** | Buyer: `buyerConfirmProjectAgreement` · Creator: `creatorConfirmProjectAgreement` · Either: `requestProjectAgreementChanges` |
+| **Locked** | Both confirmed → `agreement_status = confirmed`, `locked_at`, `orders.agreement_status = confirmed` — workspace/deliverables **not blocked** if agreement pending |
+| **Payment** | Explicit copy: scope confirmation only; `payment_status` stays `unpaid` |
+| **Migration** | Run `supabase/migrations/project-agreement-fields.sql` (additive columns only) |
+
+**Manual tests:** (1) buyer selects creator → (2) open project workspace → (3) generate draft → (4) buyer confirm → (5) creator confirm → (6) status shows confirmed / ready to build → (7) admin pipeline strip shows confirmations → (8) no payment triggered.
+
+**Later phase:** Stripe checkout, escrow/handoff, legal-grade contracts — out of scope for v1.
 
 ---
 

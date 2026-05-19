@@ -1,0 +1,130 @@
+.dpw-card--agreement {
+  border-color: rgba(99, 179, 237, 0.25);
+}
+
+.dpw-agreement-sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+}
+
+.dpw-agreement-empty {
+  text-align: center;
+  padding: 1.25rem 0.5rem;
+}
+
+.dpw-agreement-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.dpw-agreement-pill {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: rgba(99, 179, 237, 0.12);
+  border: 1px solid rgba(99, 179, 237, 0.35);
+  color: #63b3ed;
+}
+
+.dpw-agreement-pill--confirmed {
+  background: rgba(0, 212, 120, 0.12);
+  border-color: rgba(0, 212, 120, 0.4);
+  color: #00d478;
+}
+
+.dpw-agreement-pill--changes_requested {
+  background: rgba(249, 176, 50, 0.12);
+  border-color: rgba(249, 176, 50, 0.4);
+  color: #f9b032;
+}
+
+.dpw-agreement-readiness {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.dpw-agreement-confirm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.dpw-agreement-party {
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  font-size: 0.9rem;
+}
+
+.dpw-agreement-party.is-done {
+  border-style: solid;
+  border-color: rgba(0, 212, 120, 0.35);
+  background: rgba(0, 212, 120, 0.06);
+}
+
+.dpw-agreement-party-label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.dpw-agreement-partial-hint {
+  margin: 0 0 0.75rem;
+  color: #f9b032;
+  font-size: 0.9rem;
+}
+
+.dpw-agreement-ai-summary {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  font-size: 0.92rem;
+}
+
+.dpw-agreement-flags {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.dpw-agreement-flags ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.dpw-agreement-flags--risk {
+  color: #f9b032;
+}
+
+.dpw-agreement-disclaimer {
+  margin: 0.75rem 0;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.dpw-agreement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.dpw-agreement-changes {
+  flex: 1 1 100%;
+  display: block;
+}
+
+.dpw-copy-btn--ok {
+  border-color: #00d478;
+  color: #00d478;
+}

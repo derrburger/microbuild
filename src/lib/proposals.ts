@@ -284,6 +284,18 @@ export function normalizeProposalRow(raw: Record<string, unknown>): ProjectPropo
     buyer_feedback: raw.buyer_feedback != null ? norm(raw.buyer_feedback) : null,
     admin_notes: raw.admin_notes != null ? norm(raw.admin_notes) : null,
     workflow_context_snapshot: raw.workflow_context_snapshot != null ? norm(raw.workflow_context_snapshot) : null,
+    agreement_status: raw.agreement_status != null ? norm(raw.agreement_status) || 'draft' : 'draft',
+    buyer_confirmed_at: raw.buyer_confirmed_at != null ? norm(raw.buyer_confirmed_at) : null,
+    creator_confirmed_at: raw.creator_confirmed_at != null ? norm(raw.creator_confirmed_at) : null,
+    creator_approval_status: raw.creator_approval_status != null ? norm(raw.creator_approval_status) || 'pending' : 'pending',
+    ai_agreement_summary: raw.ai_agreement_summary != null ? norm(raw.ai_agreement_summary) : null,
+    ai_missing_scope_items: Array.isArray(raw.ai_missing_scope_items)
+      ? raw.ai_missing_scope_items.map((x) => norm(x)).filter(Boolean)
+      : null,
+    ai_risk_flags: Array.isArray(raw.ai_risk_flags) ? raw.ai_risk_flags.map((x) => norm(x)).filter(Boolean) : null,
+    ai_recommended_next_step:
+      raw.ai_recommended_next_step != null ? norm(raw.ai_recommended_next_step) : null,
+    locked_at: raw.locked_at != null ? norm(raw.locked_at) : null,
     created_at: norm(raw.created_at) || new Date().toISOString(),
     updated_at: norm(raw.updated_at) || new Date().toISOString(),
   };

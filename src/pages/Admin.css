@@ -2680,6 +2680,16 @@
 
 /* ─── Pipeline order cards — buyer context + packet badge ───────────────────── */
 
+.order-card-agreement-strip {
+  padding: 0.4rem 0;
+  margin-bottom: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.88rem;
+  border-bottom: 1px dashed rgba(99, 179, 237, 0.25);
+}
+
 .order-card-buyer-context {
   padding: 0.45rem 0;
   border-top: 1px dashed var(--border);
