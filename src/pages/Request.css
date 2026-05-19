@@ -587,6 +587,75 @@
 .success-missing ul { margin: 0; padding: 0 0 0 1.2rem; }
 .success-missing li { font-size: 0.82rem; color: var(--text-secondary); }
 
+/* Workflow customization context (/request?workflowId=) */
+.req-workflow-context-slot {
+  margin-bottom: 1.5rem;
+}
+.req-workflow-banner {
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.req-workflow-banner--loading {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+.req-workflow-banner--warn {
+  border-color: rgba(249, 115, 22, 0.45);
+  background: rgba(249, 115, 22, 0.06);
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+.req-workflow-banner--ok {
+  border-color: rgba(99, 179, 237, 0.45);
+  background: rgba(99, 179, 237, 0.06);
+}
+.req-workflow-kicker {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.req-workflow-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 0.25rem 0 0.35rem;
+}
+.req-workflow-publisher {
+  font-size: 0.88rem;
+  margin: 0 0 0.75rem;
+  line-height: 1.45;
+}
+.req-workflow-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  font-size: 0.88rem;
+  margin: 0 0 0.25rem;
+}
+.req-workflow-dl dt {
+  color: var(--text-muted);
+  margin: 0;
+}
+.req-workflow-dl dd {
+  margin: 0;
+  font-weight: 600;
+}
+.req-workflow-features-block,
+.req-workflow-setup-block {
+  margin-top: 0.75rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.req-wf-custom-block textarea {
+  width: 100%;
+}
+.req-prefill-note--workflow {
+  border-left: 3px solid #63b3ed;
+  padding-left: 0.65rem;
+}
+
 @media (max-width: 680px) {
   .req-ai-grid { grid-template-columns: repeat(2, 1fr); }
   .req-goal-grid { grid-template-columns: 1fr 1fr; }

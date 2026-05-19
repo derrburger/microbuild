@@ -665,6 +665,17 @@ interface BuyerRequest {
   selected_creator_profile_id?: string | null;
   selected_request_application_id?: string | null;
   user_id?: string | null;
+  source_type?: string | null;
+  source_workflow_id?: string | null;
+  source_workflow_title?: string | null;
+  source_creator_profile_id?: string | null;
+  customization_notes?: string | null;
+  requested_from_workflow?: boolean | null;
+}
+
+function buyerDashboardWorkflowBacked(r: BuyerRequest): boolean {
+  const st = safeStr(r.source_type).toLowerCase();
+  return st === 'workflow' || Boolean(r.requested_from_workflow) || Boolean(safeStr(r.source_workflow_title).trim());
 }
 
 // ─── Buyer: project journey (friendly labels) ──────────────────────────────────
@@ -739,10 +750,13 @@ function ActiveRequestCard({
   request,
   linkedOrder,
   deliverable,
+  sourceCreatorDisplayName,
 }: {
   request: BuyerRequest;
   linkedOrder?: OrderPipelineRow | null;
   deliverable?: DeliverablePlaceholder | null;
+  /** Resolved from `source_creator_profile_id` when workflow-backed */
+  sourceCreatorDisplayName?: string;
 }) {
   const data = {
     business_name:   request.business_name,
@@ -752,6 +766,9 @@ function ActiveRequestCard({
     budget:          request.budget,
     deadline:        request.deadline,
     website_social:  request.website_social,
+    source_type:     buyerDashboardWorkflowBacked(request) ? 'workflow' : 'custom_request',
+    source_workflow_title: request.source_workflow_title ?? null,
+    customization_notes: request.customization_notes ?? null,
   };
   const readiness = getQuoteReadiness(data);
   const missing   = getMissingInfoFlags(data);
@@ -759,6 +776,28 @@ function ActiveRequestCard({
 
   return (
     <div className="buyer-req-card">
+      <div className="buyer-req-source-row">
+        <span
+          className={`buyer-req-source-pill${buyerDashboardWorkflowBacked(request) ? ' buyer-req-source-pill--wf' : ''}`}
+        >
+          {buyerDashboardWorkflowBacked(request) ? 'Reusable workflow' : 'Custom request'}
+        </span>
+        {buyerDashboardWorkflowBacked(request) && safeStr(request.source_workflow_title).trim() ?
+          (
+            <span className="buyer-req-wf-title">
+              <strong>Workflow:</strong> {safeStr(request.source_workflow_title).trim()}
+            </span>
+          )
+        : null}
+        {buyerDashboardWorkflowBacked(request) ?
+          (
+            <span className="buyer-req-wf-title subtle">
+              Original workflow creator:{' '}
+              <strong>{safeStr(sourceCreatorDisplayName).trim() || '—'}</strong>
+            </span>
+          )
+        : null}
+      </div>
       <div className="buyer-req-header">
         <div className="buyer-req-title-row">
           <span className="buyer-req-biz">{request.business_name}</span>
@@ -842,6 +881,16 @@ function ActiveRequestCard({
         </div>
       )}
 
+      {buyerDashboardWorkflowBacked(request) && safeStr(request.customization_notes).trim() ?
+        (
+          <p className="buyer-req-custom-preview">
+            <strong>Customization notes:</strong>{' '}
+            {safeStr(request.customization_notes).trim().slice(0, 220)}
+            {safeStr(request.customization_notes).trim().length > 220 ? '…' : ''}
+          </p>
+        )
+      : null}
+
       {(linkedOrder?.creator_id?.trim() || request.selected_creator_profile_id?.trim()) && request.id ?
         (
           <div className="buyer-msg-launcher-row">
@@ -870,6 +919,12 @@ function ActiveRequestCard({
         <div className="buyer-req-detail-row">
           <span className="buyer-req-detail-key">Recommended Build</span>
           <span className="buyer-req-detail-val">{build}</span>
+        </div>
+        <div className="buyer-req-detail-row">
+          <span className="buyer-req-detail-key">Applicants</span>
+          <span className="buyer-req-detail-val">
+            {typeof request.applications_count === 'number' ? request.applications_count : 0}
+          </span>
         </div>
         {request.budget && (
           <div className="buyer-req-detail-row">
@@ -1005,6 +1060,7 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
   const [orders,       setOrders]       = useState<OrderPipelineRow[]>([]);
   const [deliverables, setDeliverables] = useState<Record<string, DeliverablePlaceholder>>({});
   const [loadingReqs,  setLoadingReqs]  = useState(true);
+  const [workflowCreatorLabels, setWorkflowCreatorLabels] = useState<Record<string, string>>({});
 
   const loadBuyerRequests = useCallback(async () => {
     setLoadingReqs(true);
@@ -1014,7 +1070,7 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
     let q = supabase
       .from('buyer_requests')
       .select(
-        'id, business_name, build_type, status, created_at, budget, deadline, main_goal, current_problem, industry, website_social, applications_count, application_status, selected_creator_profile_id, selected_request_application_id, user_id',
+        'id, business_name, build_type, status, created_at, budget, deadline, main_goal, current_problem, industry, website_social, applications_count, application_status, selected_creator_profile_id, selected_request_application_id, user_id, source_type, source_workflow_id, source_workflow_title, source_creator_profile_id, customization_notes, requested_from_workflow',
       )
       .order('created_at', { ascending: false })
       .limit(20);
@@ -1031,11 +1087,34 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
       setRequests([]);
       setOrders([]);
       setDeliverables({});
+      setWorkflowCreatorLabels({});
       setLoadingReqs(false);
       return;
     }
 
     const reqs = (data as BuyerRequest[]) ?? [];
+
+    const wfCreatorIds = [
+      ...new Set(
+        reqs
+          .map((r) => r.source_creator_profile_id)
+          .filter((x): x is string => typeof x === 'string' && x.trim().length > 0),
+      ),
+    ];
+    let wfLabels: Record<string, string> = {};
+    if (wfCreatorIds.length > 0) {
+      const { data: cpRows, error: cpErr } = await supabase
+        .from('creator_profiles')
+        .select('id, display_name, full_name')
+        .in('id', wfCreatorIds);
+      if (cpErr) console.error('[Dashboard] creator_profiles (workflow sources):', cpErr);
+      for (const row of (cpRows ?? []) as { id: string; display_name?: string | null; full_name?: string | null }[]) {
+        const label = safeStr(row.display_name).trim() || safeStr(row.full_name).trim() || 'Creator';
+        wfLabels[row.id] = label;
+      }
+    }
+    setWorkflowCreatorLabels(wfLabels);
+
     setRequests(reqs);
 
     if (reqs.length > 0) {
@@ -1138,6 +1217,9 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
                   orderByRequestId[r.id]
                     ? deliverables[orderByRequestId[r.id]!.id] ?? null
                     : null
+                }
+                sourceCreatorDisplayName={
+                  r.source_creator_profile_id ? workflowCreatorLabels[r.source_creator_profile_id] : undefined
                 }
               />
             ))}

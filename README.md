@@ -10,12 +10,19 @@ A marketplace for focused, affordable web tools built for local service business
 
 | Concept | Detail |
 |---------|--------|
-| SQL | `marketplace-application-foundation.sql` adds `request_applications`, `published_workflows`, `project_messages`; extends `buyer_requests` + `orders`. **`workflow-ai-review-fields.sql`** adds rules-based AI review columns on `published_workflows` (quality score, readiness, risk flags, etc.). |
-| Role-aware Browse | **`/browse`** — creators browse open marketplace buyer requests (+ Apply). Buyers, admins, and logged-out visitors see **creator `published_workflows`** that are **published + public + AI-visible** (`ai_review_status` in **`published` / `ai_approved`**, no risk flags), plus labelled **Platform starter examples**. **`/dashboard/browse`** redirects (creators → `/dashboard/applications`, everyone else → `/browse`). Creator dashboard includes **`Applications`** and **`Workflows`** (`/dashboard/workflows`). |
+| SQL | `marketplace-application-foundation.sql` adds `request_applications`, `published_workflows`, `project_messages`; extends `buyer_requests` + `orders`. **`workflow-ai-review-fields.sql`** adds rules-based AI review columns on `published_workflows` (quality score, readiness, risk flags, etc.). **`workflow-request-linking.sql`** adds buyer-request provenance when a buyer customizes a published workflow (`source_type`, `source_workflow_*`, `customization_notes`, `requested_from_workflow`). |
+| Role-aware Browse | **`/browse`** — creators browse open marketplace buyer requests (+ Apply). Buyers, admins, and logged-out visitors see **creator `published_workflows`** that are **published + public + AI-visible** (`ai_review_status` in **`published` / `ai_approved`**, no risk flags), plus labelled **Platform starter examples**. Workflow cards include **Request / Customize** → **`/request?workflowId=`** (buyer/creator split unchanged — creators never see the buyer workflow storefront on Buyer Requests browse). **`/dashboard/browse`** redirects (creators → `/dashboard/applications`, everyone else → `/browse`). Creator dashboard includes **`Applications`** and **`Workflows`** (`/dashboard/workflows`). |
 | Buyer selection | **My Requests & Applicants** — applicant cards + **Message creator** links to **`/messages`**; **Select** finalizes lineage on **`buyer_requests`** + **`orders`**. |
 | Messaging | **`/messages`** + **`src/lib/messages.ts`** + **`src/lib/messageInbox.ts`** — grouped conversations (**order** anchor preferred; application-only before selection), explicit column selects on **`project_messages`**, **`admin_only`** hidden in participant UI. **Signed-out** cannot open inbox; **`account_type === 'admin'`** returns an empty inbox (moderation dashboards later). Refresh-only · no realtime · no uploads. |
 | Admin | **`/admin`** pipeline cards show moderation placeholder text; **Workflow AI overview** surfaces AI-reviewed `published_workflows` with secondary override actions (publish/hide/archive/mark needs improvement). Buyer-selected badge + oversight panels unchanged. Manual assignment remains fallback. Console does **not** expose private **`project_messages`** content in v2. |
-| Future | Stripe, production-scoped policies, realtime messaging. |
+| Future | Stripe, production-scoped policies, realtime messaging. **Future:** notify original workflow publisher when a customization request lands; optional priority apply path for that creator. |
+
+### Buyer workflow customization (v1)
+
+- Buyers hit **Request / Customize** on **`/browse`** workflow cards → **`/request?workflowId=`** loads public, AI-eligible workflows only (`fetchPublishedWorkflowForPublicRequest`).
+- Submissions insert **`buyer_requests`** with `source_type = 'workflow'`, `source_workflow_id`, `source_workflow_title`, `source_creator_profile_id`, structured **`customization_notes`**, `requested_from_workflow = true`, plus merged context in `style_notes` for older readers.
+- **Original publisher is not auto-assigned** — marketplace applications + buyer selection rules stay the default; dashboard labels clarify “original workflow creator” for context.
+- **SQL:** apply **`supabase/migrations/workflow-request-linking.sql`** so inserts/selects against the new columns succeed.
 
 ### Project Workspace Polish v2
 
@@ -88,6 +95,7 @@ supabase/
     deliverables-revision-note.sql           # Adds revision_note on deliverables for admin→creator revision feedback
     marketplace-application-foundation.sql   # Marketplace: request_applications, published_workflows, project_messages, buyer/request selection fields — TEMP DEV RLS flagged in-file
     workflow-ai-review-fields.sql            # Additive AI review columns + indexes on published_workflows
+    workflow-request-linking.sql             # buyer_requests ↔ published workflow provenance + customization_notes
 docs/
   database-schema.md
   marketplace-application-flow.md

@@ -49,10 +49,13 @@ function fmtMoney(v: unknown): string {
 function WorkflowDashCard({
   row,
   creatorProfile,
+  customizationRequestCount,
   onDidMutate,
 }: {
   row: PublishedWorkflowRow;
   creatorProfile: CreatorProfileRow | null;
+  /** buyer_requests with source_workflow_id = this workflow (v1 dashboard telemetry) */
+  customizationRequestCount?: number;
   onDidMutate: () => void;
 }) {
   const ws = safeStr(row.workflow_status, 'draft');
@@ -147,6 +150,14 @@ function WorkflowDashCard({
           <dt>AI readiness</dt>
           <dd>{readiness}</dd>
         </div>
+        <div>
+          <dt>Buyer customization requests</dt>
+          <dd>
+            {typeof customizationRequestCount === 'number' ?
+              customizationRequestCount
+            : '—'}
+          </dd>
+        </div>
       </dl>
       <p className="wf-dash-summary subtle">{summary}</p>
       {missing.length > 0 && (
@@ -224,6 +235,7 @@ export default function DashboardWorkflows() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(true);
   const [rows, setRows] = useState<PublishedWorkflowRow[]>([]);
+  const [workflowCustomizationCounts, setWorkflowCustomizationCounts] = useState<Record<string, number>>({});
   const [creatorProfile, setCreatorProfile] = useState<CreatorProfileRow | null>(null);
   const [gateMsg, setGateMsg] = useState<string | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
@@ -260,8 +272,28 @@ export default function DashboardWorkflows() {
     if (cp?.id) {
       const list = await getCreatorPublishedWorkflows(cp.id);
       setRows(list);
+
+      const counts: Record<string, number> = {};
+      if (list.length > 0) {
+        const ids = list.map((w) => w.id);
+        const { data: brData, error: brErr } = await supabase
+          .from('buyer_requests')
+          .select('source_workflow_id')
+          .in('source_workflow_id', ids);
+        if (brErr) {
+          console.error('[DashboardWorkflows] buyer_requests workflow counts:', brErr);
+        } else {
+          for (const raw of (brData ?? []) as { source_workflow_id?: string | null }[]) {
+            const sid = raw.source_workflow_id;
+            if (!sid) continue;
+            counts[sid] = (counts[sid] ?? 0) + 1;
+          }
+        }
+      }
+      setWorkflowCustomizationCounts(counts);
     } else {
       setRows([]);
+      setWorkflowCustomizationCounts({});
     }
   }, [user, navigate]);
 
@@ -377,6 +409,7 @@ export default function DashboardWorkflows() {
                         key={w.id}
                         row={w}
                         creatorProfile={creatorProfile}
+                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
                         onDidMutate={() => void reload()}
                       />
                     ))}
@@ -395,6 +428,7 @@ export default function DashboardWorkflows() {
                         key={w.id}
                         row={w}
                         creatorProfile={creatorProfile}
+                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
                         onDidMutate={() => void reload()}
                       />
                     ))}
@@ -413,6 +447,7 @@ export default function DashboardWorkflows() {
                         key={w.id}
                         row={w}
                         creatorProfile={creatorProfile}
+                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
                         onDidMutate={() => void reload()}
                       />
                     ))}
@@ -431,6 +466,7 @@ export default function DashboardWorkflows() {
                         key={w.id}
                         row={w}
                         creatorProfile={creatorProfile}
+                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
                         onDidMutate={() => void reload()}
                       />
                     ))}
@@ -449,6 +485,7 @@ export default function DashboardWorkflows() {
                         key={w.id}
                         row={w}
                         creatorProfile={creatorProfile}
+                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
                         onDidMutate={() => void reload()}
                       />
                     ))}

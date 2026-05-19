@@ -22,7 +22,19 @@ This document summarizes the marketplace foundation introduced with `marketplace
    
    When no rows qualify, buyers see **“Reusable creator workflows are coming soon.”** Under that, **Platform starter examples** (curated template cards) stay clearly labelled as platform content.
 
-**Messaging v2 (central inbox):** Buyers & creators use **`/messages`** (linked from **`💬 Messages`** in top nav once signed-in). Rows are inferred from **`request_applications`** + **`orders`**; messages stay in **`project_messages`**. Prefer **`order_id`** as the inbox anchor whenever a matched project ties the buyer request + creator; otherwise show an **application** thread. Threads **merge** request-phase (**no `order_id`**) and order-phase (**`order_id`)** participant rows for one continuous chat per pairing. **`admin`** accounts see an intentionally **empty inbox** until moderation tooling exists (admin doesn’t silently read creator/buyer DMs).
+## Buyer workflow customization requests (v1)
+
+1. Buyer discovers reusable workflows on **`/browse`** (buyer-facing storefront — not shown on the creator “Buyer Requests” discovery surface).
+2. **Request / Customize** navigates to **`/request?workflowId=<uuid>`**, loads the workflow when it is **published + public** and passes the same AI visibility gates used on Browse (hidden, risky, or unpublished workflows show a clear fallback message — never a blank page).
+3. The request form shows workflow context (title, publisher display name when available, category, industry, pricing, turnaround, included features, setup requirements) plus a **Customize this workflow for your business** section. Answers pack into **`buyer_requests.customization_notes`** and are echoed into **`style_notes`** under a `[Workflow customization]` block for backward-compatible readers.
+4. Rows persist linkage via **`workflow-request-linking.sql`**:
+   - `source_type` — `'custom_request'` (default) vs `'workflow'` for customization submissions.
+   - `source_workflow_id`, `source_workflow_title`, `source_creator_profile_id` — nullable pointers back to the starter workflow + publisher profile.
+   - `requested_from_workflow` boolean guard for dashboards/reporting.
+5. downstream behaviors (**applicants**, **selection**, **`orders`**, **workspace**, **messages**) reuse the existing marketplace pipeline — no Stripe/GitHub OAuth/external AI additions.
+6. **Original workflow creator** surfaces as context only (buyer dashboard + admin queue). They are **not** auto-selected to fulfill the job in v1.
+
+**Future notifications + monetization:** see `docs/workflow-customization-notifications.md`.
 
 ---
 
@@ -80,7 +92,7 @@ Buyer/creator **`project_messages`** are visible in-product; **moderation dashbo
 | `request_applications` | Creator interest rows tied to buyer requests (`application_status`). |
 | `published_workflows` | Creator-published reusable storefront flows for buyer browse (`workflow_status`, `visibility_status`) **+ AI review columns** (`workflow-ai-review-fields.sql`). |
 | `project_messages` | Refresh-based buyer/creator/admin notes around requests/orders (`message_type`, `visibility`). |
-| Extended `buyer_requests` fields | Tracks marketplace openness, counters, pointers to selections. |
+| Extended `buyer_requests` fields | Tracks marketplace openness, counters, pointers to selections **+ workflow customization provenance** (`source_type`, `source_workflow_*`, `customization_notes`, `requested_from_workflow`) via `workflow-request-linking.sql`. |
 | Extended `orders` fields | Tracks buyer vs admin vs system lineage (`selection_method`, `selected_by_buyer`, `request_application_id`). |
 
 Partial unique index enforces single **active** application per `(buyer_request_id, creator_profile_id)`.

@@ -40,13 +40,17 @@ export interface BuyerRequest {
   industry: string;
   websiteSocial: string;
   // Project
-  buildType: MicroBuildCategory | 'Not sure' | '';
+  buildType: MicroBuildCategory | 'Not sure' | 'Not sure — recommend one' | '';
   mainGoal: string;
   currentProblem: string;
   // Details
   budget: string;
   deadline: string;
   styleNotes: string;
+  /** Populated when buyer_requests.workflow linking columns are used */
+  sourceType?: string | null;
+  sourceWorkflowTitle?: string | null;
+  customizationNotes?: string | null;
 }
 
 export interface CreatorApplication {

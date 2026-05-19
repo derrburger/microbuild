@@ -6,9 +6,11 @@ import { mockListings } from '../data/mockListings';
 import { fetchTemplateBySlug } from '../lib/templates';
 import { insertBuyerRequest } from '../lib/supabase';
 import type { SupabaseInsertError } from '../lib/supabase';
+import { fetchPublishedWorkflowForPublicRequest, fetchCreatorPublicDisplayName } from '../lib/marketplace';
 import { generateBuildPacket } from '../lib/buildPacket';
 import type { GeneratedBuildPacket } from '../lib/buildPacket';
 import { previewBuyerRequest } from '../lib/buyerAI';
+import type { PublishedWorkflowRow } from '../types/database';
 import './Request.css';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -70,6 +72,71 @@ const INITIAL_FORM: ExtendedForm = {
   preferredCta: '', servicesOffered: '', targetCustomer: '', leadSource: '',
 };
 
+interface WorkflowCustomizeState {
+  what: string;
+  services: string;
+  branding: string;
+  references: string;
+  integrations: string;
+  formQuestions: string;
+  timeline: string;
+  budgetNotes: string;
+}
+
+const INITIAL_WF_CUSTOMIZE: WorkflowCustomizeState = {
+  what: '',
+  services: '',
+  branding: '',
+  references: '',
+  integrations: '',
+  formQuestions: '',
+  timeline: '',
+  budgetNotes: '',
+};
+
+function mapWorkflowCategoryToBuildType(cat: string): MicroBuildCategory | 'Not sure — recommend one' {
+  const known: MicroBuildCategory[] = [
+    'Quote Funnel',
+    'Booking Page',
+    'Review Booster',
+    'Package Selector',
+    'Trust Page',
+  ];
+  const t = cat.trim();
+  if (known.includes(t as MicroBuildCategory)) return t as MicroBuildCategory;
+  const low = t.toLowerCase();
+  if (low.includes('quote') || low.includes('funnel')) return 'Quote Funnel';
+  if (low.includes('book')) return 'Booking Page';
+  if (low.includes('review')) return 'Review Booster';
+  if (low.includes('package')) return 'Package Selector';
+  if (low.includes('trust')) return 'Trust Page';
+  return 'Not sure — recommend one';
+}
+
+function fmtWorkflowPrice(p: number | string | null | undefined): string {
+  if (p == null || p === '') return '—';
+  if (typeof p === 'number' && Number.isFinite(p)) return `$${p}`;
+  const n = Number(p);
+  return Number.isFinite(n) ? `$${n}` : String(p);
+}
+
+function packWorkflowCustomizationNotes(w: WorkflowCustomizeState): string {
+  const pairs: [string, string][] = [
+    ['What should be customized?', w.what],
+    ['Your services/packages', w.services],
+    ['Branding/style notes', w.branding],
+    ['Example links/references', w.references],
+    ['Required integrations', w.integrations],
+    ['Must-have form questions', w.formQuestions],
+    ['Timeline/deadline', w.timeline],
+    ['Budget range', w.budgetNotes],
+  ];
+  const lines = pairs
+    .filter(([, v]) => v.trim().length > 0)
+    .map(([k, v]) => `${k}\n${v.trim()}`);
+  return lines.join('\n\n');
+}
+
 // ─── Error message ──────────────────────────────────────────────────────────────
 
 function friendlyErrorMessage(err: SupabaseInsertError): string {
@@ -103,17 +170,35 @@ function packStyleNotes(form: ExtendedForm): string {
 
 // ─── AI Preview Panel ───────────────────────────────────────────────────────────
 
-function AiPreviewPanel({ form }: { form: ExtendedForm }) {
-  const preview = useMemo(() => previewBuyerRequest({
-    business_name:   form.businessName,
-    industry:        form.industry,
-    build_type:      form.buildType,
-    main_goal:       form.mainGoal,
-    current_problem: form.currentProblem,
-    budget:          form.budget || null,
-    deadline:        form.deadline || null,
-    website_social:  form.websiteSocial || form.instagramUrl || null,
-  }), [form]);
+function AiPreviewPanel({
+  form,
+  workflowExtra,
+}: {
+  form: ExtendedForm;
+  workflowExtra?: { title: string; customizationBlock: string } | null;
+}) {
+  const customizeBlob =
+    workflowExtra?.customizationBlock.trim()
+      ? workflowExtra.customizationBlock
+      : null;
+
+  const preview = useMemo(
+    () =>
+      previewBuyerRequest({
+        business_name: form.businessName,
+        industry: form.industry,
+        build_type: form.buildType,
+        main_goal: form.mainGoal,
+        current_problem: form.currentProblem,
+        budget: form.budget || null,
+        deadline: form.deadline || null,
+        website_social: form.websiteSocial || form.instagramUrl || null,
+        source_type: workflowExtra?.title ? 'workflow' : 'custom_request',
+        source_workflow_title: workflowExtra?.title ?? null,
+        customization_notes: customizeBlob,
+      }),
+    [form, workflowExtra?.title, customizeBlob],
+  );
 
   const hasEnough = form.businessName.length > 1 || form.industry.length > 1 || form.mainGoal.length > 5;
   if (!hasEnough) return null;
@@ -172,6 +257,7 @@ export default function Request() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const prefillSlug = searchParams.get('build');
+  const workflowIdParam = searchParams.get('workflowId');
 
   const mockPrefill: MicroBuildListing | null = prefillSlug
     ? (mockListings.find((l) => l.slug === prefillSlug) ?? null)
@@ -187,6 +273,13 @@ export default function Request() {
   const [submitting,  setSubmitting]  = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [packet,      setPacket]      = useState<GeneratedBuildPacket | null>(null);
+
+  const [workflowCtx, setWorkflowCtx] = useState<PublishedWorkflowRow | null>(null);
+  const [workflowCreatorName, setWorkflowCreatorName] = useState('');
+  const [workflowLoadError, setWorkflowLoadError] = useState<string | null>(null);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [wfCustomize, setWfCustomize] = useState<WorkflowCustomizeState>(INITIAL_WF_CUSTOMIZE);
+  const [workflowSuccessTitle, setWorkflowSuccessTitle] = useState<string | null>(null);
 
   useEffect(() => {
     if (!prefillSlug) return;
@@ -204,6 +297,88 @@ export default function Request() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillSlug]);
 
+  useEffect(() => {
+    if (!workflowIdParam) {
+      setWorkflowCtx(null);
+      setWorkflowCreatorName('');
+      setWorkflowLoadError(null);
+      setWorkflowLoading(false);
+      setWfCustomize(INITIAL_WF_CUSTOMIZE);
+      return;
+    }
+
+    let cancelled = false;
+    setWorkflowLoading(true);
+    setWorkflowLoadError(null);
+
+    void (async () => {
+      const wf = await fetchPublishedWorkflowForPublicRequest(workflowIdParam);
+      if (cancelled) return;
+      if (!wf) {
+        setWorkflowCtx(null);
+        setWorkflowLoadError(
+          'This workflow link is invalid or the listing is not publicly available for customization.',
+        );
+        setWorkflowLoading(false);
+        return;
+      }
+      setWorkflowCtx(wf);
+      const nm = await fetchCreatorPublicDisplayName(wf.creator_profile_id);
+      if (!cancelled) setWorkflowCreatorName(nm);
+      setWorkflowLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workflowIdParam]);
+
+  useEffect(() => {
+    if (!workflowCtx) return;
+    const bt = mapWorkflowCategoryToBuildType(workflowCtx.category ?? '');
+    const desc = (workflowCtx.description ?? '').trim();
+    const feats = (workflowCtx.included_features ?? '').trim();
+    const setup = (workflowCtx.setup_requirements ?? '').trim();
+    const starterProblem =
+      [
+        desc && `Starter workflow description:\n${desc}`,
+        feats && `Included in starter workflow:\n${feats}`,
+        setup && `Typical setup expectations:\n${setup}`,
+      ]
+        .filter(Boolean)
+        .join('\n\n') || `Buyer is customizing the published reusable workflow “${workflowCtx.title}”.`;
+
+    setForm((prev) => ({
+      ...prev,
+      buildType: prev.buildType.trim() ? prev.buildType : bt,
+      mainGoal:
+        prev.mainGoal.trim().length > 5 ?
+          prev.mainGoal
+        : `Customize the “${workflowCtx.title}” workflow for my business`,
+      currentProblem: prev.currentProblem.trim().length > 40 ? prev.currentProblem : starterProblem,
+      styleNotes:
+        prev.styleNotes.trim().length > 5 ?
+          prev.styleNotes
+        : `Customizing reusable workflow: ${workflowCtx.title}${workflowCtx.category ? ` (${workflowCtx.category})` : ''}.`,
+      industry:
+        prev.industry.trim().length > 1 ?
+          prev.industry
+        : (workflowCtx.target_industry ?? prev.industry),
+    }));
+  }, [workflowCtx?.id, workflowCtx?.title, workflowCtx?.category, workflowCtx?.description, workflowCtx?.included_features, workflowCtx?.setup_requirements, workflowCtx?.target_industry]);
+
+  const aiWorkflowExtra = useMemo(() => {
+    if (!workflowCtx) return null;
+    return {
+      title: workflowCtx.title,
+      customizationBlock: packWorkflowCustomizationNotes(wfCustomize),
+    };
+  }, [workflowCtx, wfCustomize]);
+
+  function setWfField<K extends keyof WorkflowCustomizeState>(field: K, value: WorkflowCustomizeState[K]) {
+    setWfCustomize((prev) => ({ ...prev, [field]: value }));
+  }
+
   function set(field: keyof ExtendedForm, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -217,7 +392,12 @@ export default function Request() {
     setSubmitting(true);
     setSubmitError(null);
 
-    const packedNotes = packStyleNotes(form);
+    const customizationBlock = workflowCtx ? packWorkflowCustomizationNotes(wfCustomize) : '';
+    const packedNotes =
+      [
+        packStyleNotes(form),
+        customizationBlock.trim() ? `\n\n[Workflow customization]\n${customizationBlock.trim()}` : '',
+      ].join('').trim();
 
     const { error } = await insertBuyerRequest({
       full_name:           form.fullName,
@@ -231,17 +411,24 @@ export default function Request() {
       current_problem:     form.currentProblem || 'Not provided',
       budget:              form.budget    || null,
       deadline:            form.deadline  || null,
-      style_notes:         packedNotes   || null,
-      user_id:             null,
+      style_notes:         packedNotes || null,
+      user_id:             user?.id ?? null,
       business_profile_id: null,
-      template_id:         templateDbId,
+      template_id:         workflowCtx ? null : templateDbId,
       status:              'new',
+      source_type:         workflowCtx ? 'workflow' : 'custom_request',
+      source_workflow_id:  workflowCtx?.id ?? null,
+      source_workflow_title: workflowCtx?.title ?? null,
+      source_creator_profile_id: workflowCtx?.creator_profile_id ?? null,
+      customization_notes: customizationBlock.trim() || null,
+      requested_from_workflow: Boolean(workflowCtx),
     });
 
     setSubmitting(false);
 
     if (error) { setSubmitError(friendlyErrorMessage(error)); return; }
 
+    setWorkflowSuccessTitle(workflowCtx?.title ?? null);
     setPacket(generateBuildPacket({
       fullName: form.fullName, email: form.email, phone: form.phone,
       businessName: form.businessName, industry: form.industry,
@@ -249,35 +436,59 @@ export default function Request() {
       buildType: (form.buildType || 'Not sure') as MicroBuildCategory | 'Not sure',
       mainGoal: form.mainGoal, currentProblem: form.currentProblem,
       budget: form.budget, deadline: form.deadline, styleNotes: packedNotes,
-    }, prefillListing?.title));
+      sourceType: workflowCtx ? 'workflow' : undefined,
+      sourceWorkflowTitle: workflowCtx?.title ?? undefined,
+      customizationNotes: customizationBlock.trim() || undefined,
+    }, workflowCtx?.title ?? prefillListing?.title));
     setSubmitted(true);
   }
 
   // ── Success state ────────────────────────────────────────────────────────────
 
   if (submitted) {
+    const wfSuccess = workflowSuccessTitle;
     return (
       <div className="request-page">
         <div className="container request-success">
           <div className="success-check">✓</div>
-          <h2 className="success-title">Request Received</h2>
+          <h2 className="success-title">
+            {wfSuccess ? 'Workflow customization request submitted' : 'Request Received'}
+          </h2>
           <p className="success-message">
             Thanks, <strong>{form.fullName}</strong>. We received your request for{' '}
-            <strong>{form.businessName}</strong>. Every request is reviewed manually — we'll reach out
-            within 1–2 business days with next steps.
+            <strong>{form.businessName}</strong>
+            {wfSuccess ?
+              (
+                <>
+                  {' '}
+                  — customizing the reusable workflow <strong>{wfSuccess}</strong>.
+                </>
+              )
+            : '.'}
+          </p>
+          <p className="success-message subtle">
+            Every request is reviewed manually — we'll reach out within 1–2 business days with next steps.
           </p>
           <p className="success-note">
-            No payment is collected at this stage. We'll confirm scope and pricing before anything moves forward.
+            No payment is required yet. We'll confirm scope and pricing before anything moves forward.
           </p>
+          {wfSuccess ?
+            (
+              <p className="success-note subtle">
+                Next: MicroBuild reviews your customization notes, creators may apply to your request, and you can select a
+                builder — your project workspace opens from the buyer dashboard when you're ready.
+              </p>
+            )
+          : null}
 
           {/* Next Steps */}
           <div className="success-timeline">
             {[
               { icon: '✉', step: 'Request received',  desc: 'Your request is in the queue. We read every one.' },
               { icon: '🔍', step: 'We review it',      desc: 'Typically within 1–2 business days.' },
-              { icon: '📋', step: 'We send a proposal', desc: 'Scope, price, and timeline confirmed first.' },
-              { icon: '⚙', step: 'Creator builds it', desc: 'A vetted creator gets a structured brief.' },
-              { icon: '✅', step: 'You approve & go live', desc: 'One revision round included.' },
+              { icon: '👥', step: 'Applicants & selection', desc: wfSuccess ? 'Creators can apply; you review and pick a fit (same as other marketplace requests).' : 'We align on scope before assigning a creator.' },
+              { icon: '📋', step: 'Proposal & project', desc: 'Scope and timeline confirmed — your pipeline workspace opens from the dashboard.' },
+              { icon: '✅', step: 'Build & approve', desc: 'A vetted creator delivers your MicroBuild for approval.' },
             ].map((s) => (
               <div key={s.step} className="success-step">
                 <span className="success-step-icon">{s.icon}</span>
@@ -292,19 +503,29 @@ export default function Request() {
           {/* CTAs */}
           <div className="success-ctas">
             {user && (
-              <Link to="/dashboard" className="btn btn-primary btn-sm">View Dashboard →</Link>
+              <Link to="/dashboard" className="btn btn-primary btn-sm">Open Dashboard →</Link>
             )}
-            <Link to="/browse" className="btn btn-ghost btn-sm">Browse More MicroBuilds</Link>
+            <Link to="/browse" className="btn btn-ghost btn-sm">
+              {wfSuccess ? 'Browse workflows' : 'Browse MicroBuilds'}
+            </Link>
           </div>
 
           {/* AI review of submission */}
           {packet && (
             <div className="success-analysis">
-              <h3 className="success-analysis-title">What our team will review</h3>
+              <h3 className="success-analysis-title">What MicroBuild will review</h3>
               <p className="success-analysis-sub">
-                Here's a summary of your request. We'll confirm all details before scoping.
+                Here's a summary of your submission. We'll confirm every detail before scoping.
               </p>
               <div className="success-analysis-grid">
+                {wfSuccess ?
+                  (
+                    <div className="sai">
+                      <span className="sai-label">Workflow</span>
+                      <span className="sai-value">{wfSuccess}</span>
+                    </div>
+                  )
+                : null}
                 <div className="sai">
                   <span className="sai-label">Business</span>
                   <span className="sai-value">{form.businessName} · {form.industry}</span>
@@ -357,10 +578,13 @@ export default function Request() {
     <div className="request-page">
       <div className="request-hero">
         <div className="container">
-          <h1 className="request-title">Request a MicroBuild</h1>
+          <h1 className="request-title">
+            {workflowCtx ? 'Customize a published workflow' : 'Request a MicroBuild'}
+          </h1>
           <p className="request-sub">
-            Tell us about your business and what you want to accomplish.
-            The more detail you give, the faster we can scope and price your build.
+            {workflowCtx ?
+              'You are requesting changes on top of a reusable creator workflow. Complete the form — your buyer request stays on the same marketplace + pipeline rails.'
+            : 'Tell us about your business and what you want to accomplish. The more detail you give, the faster we can scope and price your build.'}
           </p>
           {user && (
             <p className="request-logged-in-note">
@@ -372,6 +596,78 @@ export default function Request() {
       </div>
 
       <div className="container request-body">
+        {(workflowIdParam || workflowLoading || workflowLoadError || workflowCtx) && (
+          <div className="req-workflow-context-slot">
+            {workflowLoading && (
+              <div className="req-workflow-banner req-workflow-banner--loading" role="status">
+                Loading workflow details…
+              </div>
+            )}
+            {!workflowLoading && workflowLoadError && (
+              <div className="req-workflow-banner req-workflow-banner--warn" role="alert">
+                {workflowLoadError}
+              </div>
+            )}
+            {!workflowLoading && workflowCtx && (
+              <div className="req-workflow-banner req-workflow-banner--ok">
+                <div className="req-workflow-banner-text">
+                  <div className="req-workflow-kicker">Customizing</div>
+                  <h2 className="req-workflow-title">{workflowCtx.title}</h2>
+                  <p className="req-workflow-publisher subtle">
+                    {workflowCreatorName.trim() ?
+                      (
+                        <>
+                          Original workflow creator / publisher: <strong>{workflowCreatorName}</strong>
+                          {' '}(not auto-assigned — marketplace rules apply).
+                        </>
+                      )
+                    : (
+                      'Publisher profile will show here when available.'
+                    )}
+                  </p>
+                  <dl className="req-workflow-dl">
+                    {workflowCtx.category ?
+                      (
+                        <>
+                          <dt>Category</dt>
+                          <dd>{workflowCtx.category}</dd>
+                        </>
+                      )
+                    : null}
+                    {workflowCtx.target_industry ?
+                      (
+                        <>
+                          <dt>Target industry</dt>
+                          <dd>{workflowCtx.target_industry}</dd>
+                        </>
+                      )
+                    : null}
+                    <dt>Starting price</dt>
+                    <dd>{fmtWorkflowPrice(workflowCtx.starting_price)}</dd>
+                    <dt>Est. turnaround</dt>
+                    <dd>{workflowCtx.estimated_turnaround?.trim() || '—'}</dd>
+                  </dl>
+                  {(workflowCtx.included_features ?? '').trim() ?
+                    (
+                      <div className="req-workflow-features-block">
+                        <strong>Included features</strong>
+                        <p className="subtle">{workflowCtx.included_features!.trim()}</p>
+                      </div>
+                    )
+                  : null}
+                  {(workflowCtx.setup_requirements ?? '').trim() ?
+                    (
+                      <div className="req-workflow-setup-block">
+                        <strong>Setup requirements</strong>
+                        <p className="subtle">{workflowCtx.setup_requirements!.trim()}</p>
+                      </div>
+                    )
+                  : null}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="request-grid">
           <form className="request-form" onSubmit={handleSubmit} noValidate>
 
@@ -486,12 +782,116 @@ export default function Request() {
                   </label>
                 ))}
               </div>
-              {prefillListing && (
-                <div className="req-prefill-note">
-                  Pre-selected from: <strong>{prefillListing.title}</strong> · Starting from ${prefillListing.startingPrice}
-                </div>
-              )}
+              {workflowCtx ?
+                (
+                  <div className="req-prefill-note req-prefill-note--workflow">
+                    Prefilled from workflow <strong>{workflowCtx.title}</strong>
+                    {workflowCtx.category ? <> · {workflowCtx.category}</> : null}
+                    {' '}· Starting from {fmtWorkflowPrice(workflowCtx.starting_price)}
+                    {workflowCtx.estimated_turnaround?.trim() ?
+                      <> · Typical turnaround: {workflowCtx.estimated_turnaround.trim()}</>
+                    : null}
+                  </div>
+                )
+              : prefillListing ?
+                (
+                  <div className="req-prefill-note">
+                    Pre-selected from: <strong>{prefillListing.title}</strong> · Starting from ${prefillListing.startingPrice}
+                  </div>
+                )
+              : null}
             </fieldset>
+
+            {workflowCtx && (
+              <fieldset className="form-group-block req-wf-custom-block">
+                <legend>Customize this workflow for your business</legend>
+                <p className="form-section-sub">
+                  Describe what should change versus the published starter. These notes are saved on your buyer request for MicroBuild and applicants.
+                </p>
+                <div className="form-group">
+                  <label htmlFor="wfWhat">What should be customized?</label>
+                  <textarea
+                    id="wfWhat"
+                    rows={3}
+                    placeholder="e.g. Swap the intake fields for my HVAC tune-up packages, add winter promo banner, tighten copy for homeowners."
+                    value={wfCustomize.what}
+                    onChange={(e) => setWfField('what', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="wfServices">Your services / packages</label>
+                  <textarea
+                    id="wfServices"
+                    rows={2}
+                    placeholder="List tiers, add-ons, or how you price jobs."
+                    value={wfCustomize.services}
+                    onChange={(e) => setWfField('services', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="wfBranding">Branding / style notes</label>
+                  <textarea
+                    id="wfBranding"
+                    rows={2}
+                    placeholder="Colors, fonts, tone, competitors you like/dislike."
+                    value={wfCustomize.branding}
+                    onChange={(e) => setWfField('branding', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="wfRefs">Example links / references</label>
+                  <textarea
+                    id="wfRefs"
+                    rows={2}
+                    placeholder="Sites, PDFs, or Looms that show what you want."
+                    value={wfCustomize.references}
+                    onChange={(e) => setWfField('references', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="wfIntegrations">Required integrations</label>
+                  <textarea
+                    id="wfIntegrations"
+                    rows={2}
+                    placeholder="CRM, calendar, Zapier, Stripe phase placeholder, SMS tools…"
+                    value={wfCustomize.integrations}
+                    onChange={(e) => setWfField('integrations', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="wfQuestions">Must-have form questions</label>
+                  <textarea
+                    id="wfQuestions"
+                    rows={2}
+                    placeholder="Exact fields or qualifiers your team needs on every lead."
+                    value={wfCustomize.formQuestions}
+                    onChange={(e) => setWfField('formQuestions', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="wfTimeline">Timeline / deadline details</label>
+                    <textarea
+                      id="wfTimeline"
+                      rows={2}
+                      placeholder="Hard dates, launches, seasonal peaks."
+                      value={wfCustomize.timeline}
+                      onChange={(e) => setWfField('timeline', e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="wfBudgetNotes">Budget range (details)</label>
+                    <textarea
+                      id="wfBudgetNotes"
+                      rows={2}
+                      placeholder="Comfort range, approval process, or billing preferences."
+                      value={wfCustomize.budgetNotes}
+                      onChange={(e) => setWfField('budgetNotes', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </fieldset>
+            )}
 
             {/* ── Section 4: Current Problem ────────────────────── */}
             <fieldset className="form-group-block">
@@ -609,7 +1009,7 @@ export default function Request() {
             </fieldset>
 
             {/* ── AI Preview ────────────────────────────────────── */}
-            <AiPreviewPanel form={form} />
+            <AiPreviewPanel form={form} workflowExtra={aiWorkflowExtra} />
 
             {submitError && (
               <div className="form-error-banner">{submitError}</div>

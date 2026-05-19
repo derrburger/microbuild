@@ -255,6 +255,13 @@ export interface BuyerRequestRow {
   selected_creator_profile_id?: string | null;
   selected_request_application_id?: string | null;
   applications_count?: number | null;
+  /** workflow-request-linking.sql — default custom_request; workflow = reusable workflow customization */
+  source_type?: string | null;
+  source_workflow_id?: string | null;
+  source_workflow_title?: string | null;
+  source_creator_profile_id?: string | null;
+  customization_notes?: string | null;
+  requested_from_workflow?: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -614,6 +621,12 @@ export interface BuyerRequestInsert {
   selected_creator_profile_id?: string | null;
   selected_request_application_id?: string | null;
   applications_count?: number | null;
+  source_type?: string | null;
+  source_workflow_id?: string | null;
+  source_workflow_title?: string | null;
+  source_creator_profile_id?: string | null;
+  customization_notes?: string | null;
+  requested_from_workflow?: boolean | null;
   created_at?: string;
   updated_at?: string;
 }

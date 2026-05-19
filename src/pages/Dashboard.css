@@ -1120,6 +1120,39 @@
 .buyer-req-build  { font-size: 0.82rem; color: #63b3ed; font-weight: 600; }
 .buyer-req-status { font-size: 0.8rem; font-weight: 600; text-transform: capitalize; }
 
+.buyer-req-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.85rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+.buyer-req-source-pill {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.buyer-req-source-pill--wf {
+  border-color: rgba(99, 179, 237, 0.45);
+  color: #63b3ed;
+  background: rgba(99, 179, 237, 0.08);
+}
+.buyer-req-wf-title {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.buyer-req-custom-preview {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0 0 0.85rem;
+}
+
 /* Timeline */
 .buyer-timeline {
   display: flex;

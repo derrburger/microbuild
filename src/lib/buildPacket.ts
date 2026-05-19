@@ -476,6 +476,10 @@ function scoreLeadQuality(form: BuyerRequest): { score: number; label: QualityLa
   // Style context (max 5)
   if (form.styleNotes.trim().length > 10) score += 5;
 
+  const custLen = (form.customizationNotes ?? '').trim().length;
+  if (custLen > 80) score += 8;
+  else if (custLen > 30) score += 4;
+
   const capped = Math.min(score, 100);
   let label: QualityLabel;
   if (capped >= 80)      label = 'Strong';
@@ -533,6 +537,16 @@ function scoreFitRating(score: number, buildType: string): FitRating {
   return 'Weak';
 }
 
+function isWorkflowBuyerForm(form: BuyerRequest): boolean {
+  const st = (form.sourceType ?? '').toLowerCase();
+  return st === 'workflow' || Boolean(form.sourceWorkflowTitle?.trim());
+}
+
+function buildTypeUnset(form: BuyerRequest): boolean {
+  const bt = (form.buildType ?? '').trim();
+  return !bt || bt === 'Not sure' || bt === 'Not sure — recommend one';
+}
+
 function getMissingInfoFlags(form: BuyerRequest): string[] {
   const flags: string[] = [];
   if (!form.phone.trim())
@@ -549,7 +563,7 @@ function getMissingInfoFlags(form: BuyerRequest): string[] {
     flags.push('Problem description is minimal — follow up to understand pain point');
   if (!form.styleNotes.trim())
     flags.push('No style direction provided — creator will use default professional approach');
-  if (!form.buildType || form.buildType === 'Not sure')
+  if (buildTypeUnset(form) && !isWorkflowBuyerForm(form))
     flags.push('Build type not selected — help buyer choose the right MicroBuild before accepting');
   return flags;
 }
@@ -562,7 +576,7 @@ function getRiskFlags(form: BuyerRequest, score: number, urgency: UrgencyRating)
     flags.push('Unclear budget + vague goal — high risk of scope mismatch without a discovery call');
   if (urgency === 'High' && score < 55)
     flags.push('High urgency + low request clarity — risk of building wrong thing under time pressure');
-  if (!form.buildType || form.buildType === 'Not sure')
+  if (buildTypeUnset(form) && !isWorkflowBuyerForm(form))
     flags.push('No build type selected — do not assign creator until type is confirmed');
   if (!form.websiteSocial.trim())
     flags.push('No existing online presence found — may need brand setup support during build');
@@ -572,8 +586,12 @@ function getRiskFlags(form: BuyerRequest, score: number, urgency: UrgencyRating)
 function deriveAdminNextAction(
   form: BuyerRequest, score: number, urgency: UrgencyRating
 ): string {
-  if (!form.buildType || form.buildType === 'Not sure')
+  if (buildTypeUnset(form)) {
+    if (isWorkflowBuyerForm(form)) {
+      return '📋 Workflow customization — reconcile buyer deltas vs published starter, integrations, and timeline before quoting';
+    }
     return '❓ Help buyer choose MicroBuild type — schedule a 10-minute discovery call before scoping';
+  }
   if (score >= 80 && urgency === 'High')
     return '⚡ Fast-track — high-quality urgent request. Assign creator and send proposal today';
   if (score >= 75)
@@ -626,8 +644,14 @@ function buildProposalDraft(
 // ─── Operational signal helpers ───────────────────────────────────────────────
 
 function deriveQuoteReadiness(score: number, form: BuyerRequest): string {
-  if (!form.buildType || form.buildType === 'Not sure')
+  if (buildTypeUnset(form)) {
+    const cust = (form.customizationNotes ?? '').trim().length;
+    if (isWorkflowBuyerForm(form) && cust > 60 && form.budget && form.budget !== 'Not sure yet')
+      return 'Nearly ready — confirm customization scope vs starter template';
+    if (isWorkflowBuyerForm(form) && cust > 40)
+      return 'Needs detail — confirm budget + starter deltas';
     return 'Not ready — build type unknown';
+  }
   if (score < 40)
     return 'Not ready — too many unknowns';
   if (score >= 80 && form.budget && form.budget !== 'Not sure yet')
@@ -958,8 +982,7 @@ export function generateBuildPacket(
   form: BuyerRequest,
   templateTitle?: string
 ): GeneratedBuildPacket {
-  const buildType = (form.buildType && form.buildType !== 'Not sure')
-    ? form.buildType : 'Quote Funnel';
+  const buildType = !buildTypeUnset(form) ? form.buildType! : 'Quote Funnel';
 
   // Scores
   const { score, label }  = scoreLeadQuality(form);
@@ -996,10 +1019,17 @@ export function generateBuildPacket(
     : `${buildType} — tailored for ${form.businessName} (${form.industry})`;
 
   const whyFits = (whyThisBuildFits[buildType] ?? whyThisBuildFits['Quote Funnel'])(form);
-  const proposalAngle = (proposalAngles[buildType] ?? proposalAngles['Quote Funnel'])(form);
+  const wfTitle = form.sourceWorkflowTitle?.trim();
+  let proposalAngle = (proposalAngles[buildType] ?? proposalAngles['Quote Funnel'])(form);
+  if (wfTitle) {
+    proposalAngle = `Buyer is customizing the published workflow “${wfTitle}”. ${proposalAngle}`;
+  }
   const proposalDraft = buildProposalDraft(form, recommendedBuild, complexity);
 
   const creatorInstructions = [
+    wfTitle
+      ? `This request originated from reusable workflow: ${wfTitle}. Adapt the starter template using the buyer's customization notes and confirm gaps before build.`
+      : '',
     `Build: ${buildType} for ${form.businessName} (${form.industry}).`,
     `Owner: ${form.fullName} | Contact: ${form.email}${form.phone ? ` / ${form.phone}` : ''}.`,
     `Goal: ${form.mainGoal}`,
@@ -1028,8 +1058,9 @@ export function generateBuildPacket(
     ? `${missingInfoFlags.length} missing info flag(s).`
     : 'Request appears complete.';
   const riskNote = riskFlags.length > 0 ? ` ${riskFlags.length} risk flag(s).` : '';
+  const workflowOrigin = wfTitle ? `Request originated from reusable workflow “${wfTitle}”. ` : '';
   const aiSummary =
-    `${form.businessName} (${form.industry}) is requesting a ${buildType} to ${form.mainGoal.toLowerCase().replace(/\.$/, '') || 'achieve their business goal'}. ` +
+    `${workflowOrigin}${form.businessName} (${form.industry}) is requesting a ${buildType} to ${form.mainGoal.toLowerCase().replace(/\.$/, '') || 'achieve their business goal'}. ` +
     `Lead quality: ${score}/100 (${label}) | Priority: ${priority} | Urgency: ${urgency} | Complexity: ${complexity} | Revenue potential: ${revenue}. ` +
     `${missingNote}${riskNote} ` +
     adminNextAction.replace(/^[⚡✅📋📞❓]\s*/, '');

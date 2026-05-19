@@ -35,6 +35,10 @@ export interface BuyerRequestMarketplaceBrief {
   selected_creator_profile_id?: string | null;
   selected_request_application_id?: string | null;
   status?: string | null;
+  source_type?: string | null;
+  source_workflow_title?: string | null;
+  customization_notes?: string | null;
+  requested_from_workflow?: boolean | null;
 }
 
 interface Props {
@@ -42,6 +46,11 @@ interface Props {
   requests: BuyerRequestMarketplaceBrief[];
   ordersByRequestId: Record<string, OrderPipelineRow>;
   onMarketplaceEvent?: () => void | Promise<void>;
+}
+
+function marketplaceRequestIsWorkflow(r: BuyerRequestMarketplaceBrief): boolean {
+  const st = normalize(r.source_type);
+  return st === 'workflow' || Boolean(r.requested_from_workflow) || Boolean(safeStr(r.source_workflow_title).trim());
 }
 
 export default function MarketplaceApplicantsPanel({
@@ -178,6 +187,13 @@ export default function MarketplaceApplicantsPanel({
               </button>
 
               <div className="mb-request-inline-meta subtle">
+                <span>
+                  Source:{' '}
+                  {marketplaceRequestIsWorkflow(r) ? 'Reusable workflow' : 'Custom request'}
+                  {marketplaceRequestIsWorkflow(r) && safeStr(r.source_workflow_title).trim() ?
+                    ` · ${safeStr(r.source_workflow_title).trim()}`
+                  : ''}
+                </span>
                 <span>Budget: {r.budget?.trim() || '—'}</span>
                 <span>Deadline: {r.deadline?.trim() || '—'}</span>
                 <span>Request status: {readableStatus(normalize(r.status))}</span>

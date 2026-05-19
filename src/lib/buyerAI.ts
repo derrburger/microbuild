@@ -22,6 +22,10 @@ export interface BuyerRequestData {
   deadline?: string | null;
   style_notes?: string | null;
   website_social?: string | null;
+  /** workflow-request-linking.sql */
+  source_type?: string | null;
+  source_workflow_title?: string | null;
+  customization_notes?: string | null;
 }
 
 // ─── Result types ─────────────────────────────────────────────────────────────
@@ -76,6 +80,18 @@ const INDUSTRY_MAP: [string[], string][] = [
 ];
 
 export function getRecommendedBuild(data: BuyerRequestData): { build: string; reason: string } {
+  const src = low(data.source_type);
+  const wfTitle = s(data.source_workflow_title);
+  if ((src === 'workflow' || wfTitle) && s(data.build_type)) {
+    return {
+      build: s(data.build_type),
+      reason:
+        wfTitle ?
+          `Anchored to reusable workflow “${wfTitle}”`
+        : 'Based on your workflow customization request',
+    };
+  }
+
   const bt = low(data.build_type);
   if (bt && bt !== 'not sure' && bt !== '') {
     return { build: s(data.build_type), reason: 'Based on your selection' };
@@ -118,6 +134,9 @@ export function getQuoteReadiness(data: BuyerRequestData): {
   const dl = s(data.deadline);
   if (dl && !dl.toLowerCase().includes('no hard'))                       score += 10;
   if (s(data.website_social).length > 5)                                 score += 5;
+  const cust = s(data.customization_notes);
+  if (cust.length > 80)                                                  score += 10;
+  else if (cust.length > 20)                                           score += 5;
 
   let label = 'Not ready';
   let color = '#ef4444';
@@ -138,7 +157,8 @@ export function getMissingInfoFlags(data: BuyerRequestData): string[] {
   if (s(data.main_goal).length < 10)                       flags.push('Business goal is too vague or missing');
   if (s(data.current_problem).length < 30)                 flags.push('Problem description needs more detail');
   const bt = s(data.build_type);
-  if (!bt || bt === 'Not sure' || bt === 'Not sure — recommend one')
+  const workflowish = low(data.source_type) === 'workflow' || s(data.source_workflow_title).length > 0;
+  if ((!bt || bt === 'Not sure' || bt === 'Not sure — recommend one') && !workflowish)
                                                            flags.push('Specific MicroBuild type not selected');
   if (!s(data.budget) || s(data.budget).toLowerCase().includes('not sure'))
                                                            flags.push('Budget range not provided');
@@ -215,6 +235,16 @@ export function getPriorityScore(data: BuyerRequestData): { score: number; label
 // ─── Proposal angle ───────────────────────────────────────────────────────────
 
 export function getProposalAngle(data: BuyerRequestData): string {
+  const wf = s(data.source_workflow_title);
+  const cust = s(data.customization_notes);
+  if (wf) {
+    const bn = s(data.business_name, 'your business');
+    const tail =
+      cust.length > 40 ?
+        ` Buyer customization priorities: ${cust.slice(0, 220)}${cust.length > 220 ? '…' : ''}`
+      : ' Gather any remaining brand assets and integrations early.';
+    return `${bn} is customizing the reusable MicroBuild workflow “${wf}”.${tail}`;
+  }
   const bt = low(data.build_type);
   const ind = low(data.industry);
   const goal = low(data.main_goal);
@@ -267,6 +297,10 @@ export function getFollowUpQuestions(data: BuyerRequestData): string[] {
 // ─── Creator brief summary ────────────────────────────────────────────────────
 
 export function getCreatorBriefSummary(data: BuyerRequestData): string {
+  const wf = s(data.source_workflow_title);
+  const origin =
+    wf ? `This request originated from reusable workflow: ${wf}.`
+    : '';
   const { build } = getRecommendedBuild(data);
   const bn = s(data.business_name, 'Local business');
   const ind = s(data.industry, 'service industry');
@@ -274,6 +308,7 @@ export function getCreatorBriefSummary(data: BuyerRequestData): string {
   const problem = s(data.current_problem, 'No conversion from current traffic');
 
   return [
+    origin,
     `Build a ${build} for ${bn} (${ind}).`,
     `Goal: ${goal}.`,
     `Problem: ${problem.slice(0, 200)}`,
@@ -285,18 +320,22 @@ export function getCreatorBriefSummary(data: BuyerRequestData): string {
 // ─── Admin next action ────────────────────────────────────────────────────────
 
 export function getAdminNextAction(data: BuyerRequestData, status?: string): string {
+  const wfHint =
+    low(data.source_type) === 'workflow' || s(data.source_workflow_title)
+      ? '🧩 Workflow customization — reconcile customization_notes with the starter workflow deliverables before quoting. '
+      : '';
   const readiness = getQuoteReadiness(data);
   const st = s(status, 'new');
 
-  if (st === 'needs-more-info') return 'Waiting for buyer response — follow up if no reply in 2 days';
-  if (st === 'proposal-sent')   return 'Proposal sent — follow up in 2–3 days if no response';
-  if (st === 'in-progress')     return 'Build in progress — check with creator for update';
-  if (st === 'delivered')       return 'Delivered — confirm buyer approval and close out';
-  if (st === 'completed')       return 'Completed — consider requesting a testimonial';
+  if (st === 'needs-more-info') return wfHint + 'Waiting for buyer response — follow up if no reply in 2 days';
+  if (st === 'proposal-sent')   return wfHint + 'Proposal sent — follow up in 2–3 days if no response';
+  if (st === 'in-progress')     return wfHint + 'Build in progress — check with creator for update';
+  if (st === 'delivered')       return wfHint + 'Delivered — confirm buyer approval and close out';
+  if (st === 'completed')       return wfHint + 'Completed — consider requesting a testimonial';
 
-  if (readiness.score >= 70) return 'Ready to prepare proposal — assign creator and send draft';
-  if (readiness.score >= 45) return 'Follow up for missing details before scoping';
-  return 'Send intake follow-up to fill gaps before quoting';
+  if (readiness.score >= 70) return wfHint + 'Ready to prepare proposal — assign creator and send draft';
+  if (readiness.score >= 45) return wfHint + 'Follow up for missing details before scoping';
+  return wfHint + 'Send intake follow-up to fill gaps before quoting';
 }
 
 // ─── Request timeline stages ──────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import type { PublishedWorkflowRow } from '../../types/database';
 import type { MicroBuildListing } from '../../types';
+import { Link } from 'react-router-dom';
 import MicroBuildCard from '../MicroBuildCard';
 
 function safe(v: unknown, fb = ''): string {
@@ -108,9 +109,12 @@ export default function BuyerWorkflowsPublicBrowse({
                   : (
                     <span className="subtle buyer-muted-hint">Preview coming soon</span>
                   )}
-                  <button type="button" className="btn btn-ghost btn-sm mb-card-placeholder-btn" disabled>
-                    Request / Customize — coming soon
-                  </button>
+                  <Link
+                    to={`/request?workflowId=${encodeURIComponent(wf.id)}`}
+                    className="btn btn-primary btn-sm mb-card-placeholder-btn"
+                  >
+                    Request / Customize
+                  </Link>
                 </article>
               );
             })}

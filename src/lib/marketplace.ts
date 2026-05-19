@@ -410,6 +410,51 @@ export async function getPublishedWorkflowsForBuyers(): Promise<PublishedWorkflo
   });
 }
 
+/** Published workflow visible for customization requests (anon-safe SELECT must succeed under RLS). */
+export async function fetchPublishedWorkflowForPublicRequest(
+  workflowId: string,
+): Promise<PublishedWorkflowRow | null> {
+  const id = normalizeText(workflowId);
+  if (!id) return null;
+
+  const { data, error } = await supabase
+    .from('published_workflows')
+    .select('*')
+    .eq('id', id)
+    .eq('workflow_status', 'published')
+    .eq('visibility_status', 'public')
+    .in('ai_review_status', ['published', 'ai_approved'])
+    .maybeSingle();
+
+  if (error) {
+    console.error('[marketplace] fetchPublishedWorkflowForPublicRequest:', error);
+    return null;
+  }
+
+  const row = (data as PublishedWorkflowRow) ?? null;
+  if (!row) return null;
+  const risks = row.ai_risk_flags;
+  if (Array.isArray(risks) && risks.length > 0) return null;
+  return row;
+}
+
+export async function fetchCreatorPublicDisplayName(creatorProfileId: string): Promise<string> {
+  const id = normalizeText(creatorProfileId);
+  if (!id) return 'Creator';
+  const { data, error } = await supabase
+    .from('creator_profiles')
+    .select('display_name, full_name')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) console.error('[marketplace] fetchCreatorPublicDisplayName:', error);
+    return 'Creator';
+  }
+  const row = data as { display_name?: string | null; full_name?: string | null };
+  const nm = normalizeText(row.display_name) || normalizeText(row.full_name);
+  return nm || 'Creator';
+}
 export async function getCreatorPublishedWorkflows(
   creatorProfileId: string,
 ): Promise<PublishedWorkflowRow[]> {

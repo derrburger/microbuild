@@ -99,6 +99,12 @@ interface BuyerRequestRow {
   selected_creator_profile_id?: string | null;
   selected_request_application_id?: string | null;
   applications_count?: number | null;
+  source_type?: string | null;
+  source_workflow_id?: string | null;
+  source_workflow_title?: string | null;
+  source_creator_profile_id?: string | null;
+  customization_notes?: string | null;
+  requested_from_workflow?: boolean | null;
 }
 
 interface CreatorApplicationRow {
@@ -178,6 +184,20 @@ function normalizeBuyerRequest(raw: Record<string, unknown>): BuyerRequestRow {
       }
       return null;
     })(),
+    source_type: raw.source_type != null ? safeText(raw.source_type, 'custom_request') : 'custom_request',
+    source_workflow_id: raw.source_workflow_id != null ? safeText(raw.source_workflow_id) : null,
+    source_workflow_title: raw.source_workflow_title != null ? safeText(raw.source_workflow_title) : null,
+    source_creator_profile_id:
+      raw.source_creator_profile_id != null ? safeText(raw.source_creator_profile_id) : null,
+    customization_notes: raw.customization_notes != null ? safeText(raw.customization_notes) : null,
+    requested_from_workflow:
+      typeof raw.requested_from_workflow === 'boolean'
+        ? raw.requested_from_workflow
+        : raw.requested_from_workflow === 'true'
+          ? true
+          : raw.requested_from_workflow === 'false'
+            ? false
+            : null,
   };
 }
 
@@ -582,6 +602,9 @@ function rowToRequest(row: BuyerRequestRow) {
     budget:         row.budget ?? '',
     deadline:       row.deadline ?? '',
     styleNotes:     row.style_notes ?? '',
+    sourceType: row.source_type ?? undefined,
+    sourceWorkflowTitle: row.source_workflow_title ?? undefined,
+    customizationNotes: row.customization_notes ?? undefined,
   };
 }
 
@@ -2310,6 +2333,17 @@ function QuickStatusBtn({
   );
 }
 
+// ─── Request queue: workflow source helpers ───────────────────────────────────
+
+function adminWorkflowBackedRow(row: BuyerRequestRow): boolean {
+  const st = safeText(row.source_type, '').toLowerCase();
+  return st === 'workflow' || Boolean(row.requested_from_workflow) || Boolean(row.source_workflow_title?.trim());
+}
+
+function adminBuyerSourceHeading(row: BuyerRequestRow): string {
+  return adminWorkflowBackedRow(row) ? 'Workflow customization' : 'Custom request';
+}
+
 // ─── Request Card ─────────────────────────────────────────────────────────────
 
 function RequestCard({
@@ -2332,6 +2366,14 @@ function RequestCard({
   const [expanded, setExpanded] = useState(false);
   const [wfNonce, setWfNonce]   = useState(0);
   const { row, packet } = enriched;
+
+  const origSnap = row.source_creator_profile_id
+    ? creatorProfiles.find((c) => c.id === row.source_creator_profile_id)
+    : null;
+  const origCreatorLabel =
+    safeText(origSnap?.display_name).trim()
+    || safeText(origSnap?.full_name).trim()
+    || (row.source_creator_profile_id ? 'Original creator — open Profiles tab if name missing' : '—');
 
   return (
     <div className={`req-card${expanded ? ' req-card--open' : ''}${selected ? ' req-card--selected' : ''}`}>
@@ -2438,6 +2480,48 @@ function RequestCard({
           </span>
         </div>
       </div>
+
+      {(adminWorkflowBackedRow(row) || (row.customization_notes ?? '').trim().length > 0) && (
+        <div className="req-admin-workflow-strip">
+          <div className="req-admin-workflow-strip-title">Buyer request source</div>
+          <div className="req-admin-workflow-cols">
+            <div>
+              <span className="req-detail-label">Source type</span>
+              <div className="req-detail-value">{adminBuyerSourceHeading(row)}</div>
+            </div>
+            <div>
+              <span className="req-detail-label">Workflow title</span>
+              <div className="req-detail-value">{row.source_workflow_title?.trim() || '—'}</div>
+            </div>
+            <div>
+              <span className="req-detail-label">Original workflow creator</span>
+              <div className="req-detail-value">{origCreatorLabel}</div>
+            </div>
+          </div>
+          {(row.customization_notes ?? '').trim() ?
+            (
+              <div className="req-admin-workflow-notes">
+                <span className="req-detail-label">Customization notes</span>
+                <p className="req-admin-workflow-notes-body">
+                  {row.customization_notes!.trim().slice(0, 420)}
+                  {row.customization_notes!.trim().length > 420 ? '…' : ''}
+                </p>
+              </div>
+            )
+          : null}
+          <div className="req-admin-workflow-notes">
+            <span className="req-detail-label">Proposal angle</span>
+            <p className="req-admin-workflow-notes-body">{packet.suggestedProposalAngle}</p>
+          </div>
+          <div className="req-admin-workflow-notes">
+            <span className="req-detail-label">Creator brief (excerpt)</span>
+            <p className="req-admin-workflow-notes-body">
+              {packet.creatorInstructions.slice(0, 360)}
+              {packet.creatorInstructions.length > 360 ? '…' : ''}
+            </p>
+          </div>
+        </div>
+      )}
 
       <RequestProjectWorkflow
         row={row}
@@ -3963,6 +4047,7 @@ export default function Admin() {
         [
           'id,user_id,full_name,email,business_name,industry,website_social,build_type,main_goal,current_problem,budget,deadline,style_notes,status,created_at',
           'visibility_status,application_status,selected_creator_profile_id,selected_request_application_id,applications_count',
+          'source_type,source_workflow_id,source_workflow_title,source_creator_profile_id,customization_notes,requested_from_workflow',
         ].join(','),
       )
       .order('created_at', { ascending: false })
