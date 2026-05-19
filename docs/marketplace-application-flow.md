@@ -8,6 +8,22 @@ This document summarizes the marketplace foundation introduced with `marketplace
 
 ---
 
+## Proposal / pricing workflow (v1 — placeholders only)
+
+After buyer selection and an **`orders`** row exists (or even before, keyed by **`buyer_request_id`** only), MicroBuild can record a **`project_proposals`** row:
+
+1. **Admin** generates or regenerates a **rules-based** draft (`src/lib/proposals.ts`) from the buyer request, winning **`request_application`** when linked, optional **`build_packets`** snippet, and **`published_workflows`** pricing/context when the request is workflow-backed.
+2. Admin edits title, scope, deliverables, timeline, revision limit, placeholder price — **Save** recomputes placeholder fee/payout — **Mark sent** exposes the proposal to the buyer dashboard.
+3. **Buyer** sees **Proposals & pricing** on the dashboard when at least one proposal exists (latest row per request); **Approve / Request changes / Reject** only when **`proposal_status = sent`**. Responses update **`project_proposals`** and **`orders`** via **`syncOrderProposalPointers`**; **`buyer_approval_status`** uses **`pending` / `approved` / `changes_requested` / `rejected`**; **`payment_status`** remains **`unpaid`** — **no Stripe**.
+4. **Workflow customization:** provenance from **`buyer_requests`** (`source_workflow_title`, `customization_notes`, ids) is folded into scope text; **`workflow_context_snapshot`** on the proposal is the traceability anchor — **editing the live published workflow does not retroactively change** that snapshot or approved proposal text.
+5. **Creator workspace** shows read-only proposal status, buyer approval (canonical labels), placeholder price, scope/deliverables, workflow customization banner when applicable, and creator-facing guidance (wait vs proceed).
+
+6. **Admin save path:** **`adminUpsertProposalFields`** inserts or updates a single **`project_proposals`** row per request/order (no duplicate orders); **`Save proposal`** works after editing preview fields even before **Generate** if the operator prefers (still recommends generate first for snapshot text).
+
+**Future:** real payments, escrow, milestone holds, and creator payout protection — see README “Proposal / pricing workflow” and `proposal-pricing-foundation.sql` comments.
+
+---
+
 ## Buyer flow
 
 1. Submits `/request` (existing form). Request rows gain marketplace columns (`visibility_status`, `application_status`, `applications_count`, selection pointers).
@@ -107,7 +123,8 @@ Buyer/creator **`project_messages`** are visible in-product; **moderation dashbo
 | `published_workflows` | Creator-published reusable storefront flows for buyer browse (`workflow_status`, `visibility_status`) **+ AI review columns** (`workflow-ai-review-fields.sql`). |
 | `project_messages` | Refresh-based buyer/creator/admin notes around requests/orders (`message_type`, `visibility`). |
 | Extended `buyer_requests` fields | Tracks marketplace openness, counters, pointers to selections **+ workflow customization provenance** (`source_type`, `source_workflow_*`, `customization_notes`, `requested_from_workflow`) via `workflow-request-linking.sql`. |
-| Extended `orders` fields | Tracks buyer vs admin vs system lineage (`selection_method`, `selected_by_buyer`, `request_application_id`). |
+| Extended `orders` fields | Tracks buyer vs admin vs system lineage (`selection_method`, `selected_by_buyer`, `request_application_id`). **`proposal-pricing-foundation.sql`** adds **`proposal_id`**, **`proposal_status`**, **`buyer_approval_status`** (mirrored proposal lifecycle), **`payment_status`** (placeholder until Stripe). |
+| `project_proposals` | Scope & placeholder pricing rows — **`proposal-pricing-foundation.sql`** — rules-filled MVP until checkout ships. |
 
 Partial unique index enforces single **active** application per `(buyer_request_id, creator_profile_id)`.
 

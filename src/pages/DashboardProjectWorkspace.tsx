@@ -17,7 +17,15 @@ import {
   type BuildPacketWorkspaceRow,
   type DeliverablePlaceholder,
 } from '../lib/orders';
-import type { UserProfileRow } from '../types/database';
+import type { BuyerRequestRow, ProjectProposalRow, UserProfileRow } from '../types/database';
+import { fetchProposalByOrderId, workflowBackedRequest, displayBuyerApproval, displayProposalLifecycle } from '../lib/proposals';
+import {
+  buildBuyerScopeSummaryCopy,
+  buildCreatorScopeBriefCopy,
+  buildFullProposalCopy,
+  buildPaymentPlaceholderMessage,
+  buildScopeOnlyCopy,
+} from '../lib/proposalCopyTexts';
 import { verifyBuyerOwnsRequest } from '../lib/marketplace';
 import { buildMessagesHref } from '../lib/messages';
 import {
@@ -131,6 +139,33 @@ export default function DashboardProjectWorkspace() {
 
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
 
+  const [proposal, setProposal] = useState<ProjectProposalRow | null>(null);
+  const [proposalBuyerRequest, setProposalBuyerRequest] = useState<BuyerRequestRow | null>(null);
+  const [workflowPublisherName, setWorkflowPublisherName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = proposalBuyerRequest?.source_creator_profile_id?.trim();
+    if (!id) {
+      setWorkflowPublisherName(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from('creator_profiles')
+        .select('display_name, full_name')
+        .eq('id', id)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+      const r = data as Record<string, unknown>;
+      const label = safeStr(r.display_name).trim() || safeStr(r.full_name).trim() || 'Creator';
+      setWorkflowPublisherName(label);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [proposalBuyerRequest?.source_creator_profile_id]);
+
   useEffect(() => {
     if (!authLoading && !user) navigate('/signin', { replace: true });
   }, [user, authLoading, navigate]);
@@ -153,6 +188,8 @@ export default function DashboardProjectWorkspace() {
     if (!o) {
       setAccessDenied('Project not found.');
       setOrder(null);
+      setProposal(null);
+      setProposalBuyerRequest(null);
       setLoading(false);
       return;
     }
@@ -162,6 +199,8 @@ export default function DashboardProjectWorkspace() {
         'This project does not have an assigned creator yet. Check back after MicroBuild assigns someone.',
       );
       setOrder(null);
+      setProposal(null);
+      setProposalBuyerRequest(null);
       setLoading(false);
       return;
     }
@@ -183,6 +222,8 @@ export default function DashboardProjectWorkspace() {
       setOrder(null);
       setCreatorSelf(null);
       setCreatorAssignee(null);
+      setProposal(null);
+      setProposalBuyerRequest(null);
       setLoading(false);
       return;
     }
@@ -225,6 +266,16 @@ export default function DashboardProjectWorkspace() {
     }
 
     setOrder(o);
+
+    const prop = await fetchProposalByOrderId(o.id);
+    setProposal(prop);
+    if (o.request_id) {
+      const { data: brf } = await supabase.from('buyer_requests').select('*').eq('id', o.request_id).maybeSingle();
+      setProposalBuyerRequest(brf ? (brf as BuyerRequestRow) : null);
+    } else {
+      setProposalBuyerRequest(null);
+    }
+
     const [bp, deliv] = await Promise.all([
       fetchBuildPacketForOrder(o),
       fetchDeliverableByOrderId(o.id),
@@ -318,6 +369,24 @@ export default function DashboardProjectWorkspace() {
     : '';
 
   const isCreatorWorkspace = workspaceRole === 'creator';
+
+  const proposalCreatorGuidance = useMemo(() => {
+    if (!proposal || !isCreatorWorkspace) return '';
+    switch (proposal.proposal_status) {
+      case 'draft':
+        return 'Proposal is still internal — wait until MicroBuild marks it Sent before treating pricing as final.';
+      case 'sent':
+        return 'Buyer is reviewing this scope — avoid irreversible build bets until they approve.';
+      case 'buyer_changes_requested':
+        return 'Buyer asked for changes — coordinate in Messages; expect an updated proposal before locking scope.';
+      case 'buyer_rejected':
+        return 'Buyer rejected this snapshot — pause scope assumptions until MicroBuild sends a revised proposal.';
+      case 'buyer_approved':
+        return 'Buyer approved scope — proceed with build per packet and Messages. Payment is still not collected.';
+      default:
+        return '';
+    }
+  }, [proposal, isCreatorWorkspace]);
 
   const guidance = useMemo(() => {
     if (!order) return '';
@@ -442,12 +511,112 @@ export default function DashboardProjectWorkspace() {
                 : '—'}
               </dd>
               <dt>Payment</dt>
-              <dd className="dpw-muted">Stripe / escrow — coming later (no charge in workspace v2).</dd>
+              <dd className="dpw-muted">
+                {proposal?.proposal_status === 'buyer_approved' ?
+                  'Scope approved — Stripe/checkout coming later (no charge yet).'
+                : 'Payments are not active yet — placeholders only until checkout ships.'}
+              </dd>
               <dt>Deadline</dt>
               <dd>{buyer?.deadline?.trim() ? buyer.deadline : '—'}</dd>
               <dt>Request submitted</dt>
               <dd>{buyer?.created_at ? fmtDate(buyer.created_at) : '—'}</dd>
             </dl>
+          </section>
+
+          <section className="dpw-card dpw-card--proposal">
+            <div className="dpw-card-head">
+              <h2 className="dpw-card-title">Proposal &amp; pricing (read-only)</h2>
+              {isCreatorWorkspace && proposal ?
+                (
+                  <div className="dpw-copy-row">
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(buildFullProposalCopy(proposal, proposalBuyerRequest))}>
+                      Copy proposal
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(buildBuyerScopeSummaryCopy(proposal))}>
+                      Copy buyer summary
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(buildCreatorScopeBriefCopy(proposal))}>
+                      Copy creator brief
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(buildScopeOnlyCopy(proposal))}>
+                      Copy scope
+                    </button>
+                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(buildPaymentPlaceholderMessage())}>
+                      Copy payment placeholder
+                    </button>
+                  </div>
+                )
+              : !isCreatorWorkspace && proposal ?
+                <p className="dpw-muted dpw-card-head-muted">Use your buyer dashboard to approve or request changes.</p>
+              : null}
+            </div>
+            {!proposal ?
+              <p className="dpw-muted">
+                No proposal is linked to this order yet. MicroBuild generates scope from the buyer request after you are assigned.
+              </p>
+            : (
+              <>
+                <p className="dpw-muted dpw-proposal-hint">
+                  You cannot edit the buyer proposal here. Published workflows may change over time — this saved row is the reference for scope and placeholder price.
+                </p>
+                {proposalBuyerRequest && workflowBackedRequest(proposalBuyerRequest) ?
+                  (
+                    <div className="dpw-proposal-wf-banner">
+                      <strong>Workflow customization request</strong>
+                      <div>Source type: Workflow customization</div>
+                      <div>
+                        Template: {proposalBuyerRequest.source_workflow_title?.trim() || '—'}
+                      </div>
+                      <div>Original publisher: {workflowPublisherName ?? '—'}</div>
+                      <div>
+                        Customization notes: {proposalBuyerRequest.customization_notes?.trim() || '—'}
+                      </div>
+                    </div>
+                  )
+                : null}
+                {proposalCreatorGuidance ?
+                  (
+                    <p className="dpw-proposal-creator-guidance">
+                      <strong>For creators:</strong> {proposalCreatorGuidance}
+                    </p>
+                  )
+                : null}
+                <dl className="dpw-meta-grid">
+                  <dt>Proposal title</dt>
+                  <dd>{proposal.proposal_title?.trim() ? proposal.proposal_title : '—'}</dd>
+                  <dt>Proposal status</dt>
+                  <dd>{displayProposalLifecycle(proposal.proposal_status)}</dd>
+                  <dt>Buyer approval</dt>
+                  <dd>{displayBuyerApproval(proposal.buyer_approval_status)}</dd>
+                  <dt>Proposed price (placeholder)</dt>
+                  <dd>
+                    {(() => {
+                      const v = proposal.proposed_price;
+                      if (v == null || v === '') return '—';
+                      const x = typeof v === 'number' ? v : Number(v);
+                      if (!isFinite(x)) return String(v);
+                      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(x);
+                    })()}
+                  </dd>
+                  <dt>Timeline</dt>
+                  <dd>{proposal.timeline?.trim() ? proposal.timeline : '—'}</dd>
+                  <dt>Revision limit</dt>
+                  <dd>{typeof proposal.revision_limit === 'number' ? proposal.revision_limit : '—'}</dd>
+                  <dt>Scope summary</dt>
+                  <dd className="dpw-proposal-scope">{proposal.scope_summary?.trim() ? proposal.scope_summary : '—'}</dd>
+                  <dt>Included deliverables</dt>
+                  <dd className="dpw-proposal-scope">{proposal.included_deliverables?.trim() ? proposal.included_deliverables : '—'}</dd>
+                </dl>
+                {proposal.workflow_context_snapshot?.trim() ?
+                  (
+                    <div className="dpw-block dpw-proposal-wf-snap">
+                      <div className="dpw-label">Workflow context (frozen snapshot)</div>
+                      <pre className="dpw-proposal-snap-pre">{proposal.workflow_context_snapshot}</pre>
+                    </div>
+                  )
+                : null}
+              </>
+            )}
           </section>
 
           <section className="dpw-card dpw-card--activity">

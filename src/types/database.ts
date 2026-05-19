@@ -415,6 +415,12 @@ export interface OrderRow {
   request_application_id?: string | null;
   selected_by_buyer?: boolean | null;
   selection_method?: OrderSelectionMethod | string | null;
+  /** proposal-pricing-foundation.sql */
+  proposal_id?: string | null;
+  /** Mirrors primary proposal lifecycle: not_started | draft | sent | buyer_* … */
+  proposal_status?: string | null;
+  /** Buyer decision on scope/pricing proposal — pending | buyer_approved | changes_requested | buyer_rejected */
+  buyer_approval_status?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -469,6 +475,55 @@ export interface PublishedWorkflowRow {
   auto_publish_eligible?: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+/** project_proposals — proposal-pricing-foundation.sql */
+export interface ProjectProposalRow {
+  id: string;
+  buyer_request_id: string | null;
+  order_id: string | null;
+  request_application_id: string | null;
+  creator_profile_id: string | null;
+  buyer_user_profile_id: string | null;
+  proposal_title: string;
+  scope_summary: string;
+  included_deliverables: string;
+  timeline: string;
+  revision_limit: number;
+  proposed_price: number | string | null;
+  platform_fee: number | string | null;
+  creator_payout: number | string | null;
+  proposal_status: string;
+  buyer_approval_status: string;
+  admin_approval_status: string;
+  buyer_feedback: string | null;
+  admin_notes: string | null;
+  workflow_context_snapshot: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectProposalInsert {
+  id?: string;
+  buyer_request_id?: string | null;
+  order_id?: string | null;
+  request_application_id?: string | null;
+  creator_profile_id?: string | null;
+  buyer_user_profile_id?: string | null;
+  proposal_title?: string;
+  scope_summary?: string;
+  included_deliverables?: string;
+  timeline?: string;
+  revision_limit?: number;
+  proposed_price?: number | string | null;
+  platform_fee?: number | string | null;
+  creator_payout?: number | string | null;
+  proposal_status?: string;
+  buyer_approval_status?: string;
+  admin_approval_status?: string;
+  buyer_feedback?: string | null;
+  admin_notes?: string | null;
+  workflow_context_snapshot?: string | null;
 }
 
 export interface ProjectMessageRow {
@@ -681,6 +736,9 @@ export interface OrderInsert {
   request_application_id?: string | null;
   selected_by_buyer?: boolean | null;
   selection_method?: OrderSelectionMethod | string | null;
+  proposal_id?: string | null;
+  proposal_status?: string | null;
+  buyer_approval_status?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -759,6 +817,12 @@ export type Database = {
         Row: PublishedWorkflowRow;
         Insert: PublishedWorkflowInsert;
         Update: Partial<Omit<PublishedWorkflowRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      project_proposals: {
+        Row: ProjectProposalRow;
+        Insert: ProjectProposalInsert;
+        Update: Partial<Omit<ProjectProposalRow, 'id' | 'created_at'>>;
         Relationships: [];
       };
       project_messages: {

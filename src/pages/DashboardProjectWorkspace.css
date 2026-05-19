@@ -344,3 +344,58 @@
 .dpw-card--msgs .dpw-msg-preview {
   margin-bottom: 0.35rem;
 }
+
+/* Proposal snapshot (read-only) */
+
+.dpw-card--proposal .dpw-proposal-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+}
+
+.dpw-proposal-scope {
+  white-space: pre-wrap;
+}
+
+.dpw-proposal-wf-snap {
+  margin-top: 0.75rem;
+}
+
+.dpw-proposal-snap-pre {
+  margin: 0.35rem 0 0;
+  padding: 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2d3548);
+  background: var(--surface-2, #1a1f2e);
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.dpw-proposal-wf-banner {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(99, 179, 237, 0.35);
+  background: rgba(99, 179, 237, 0.06);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary, #c4c9d4);
+}
+
+.dpw-proposal-wf-banner strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--text-primary, #e5e7eb);
+}
+
+.dpw-proposal-creator-guidance {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2d3548);
+  background: rgba(251, 191, 36, 0.06);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary, #c4c9d4);
+}

@@ -33,6 +33,7 @@ import {
 import type { UserProfileRow, CreatorProfileRow } from '../types/database';
 import DashboardNav from '../components/DashboardNav';
 import MarketplaceApplicantsPanel from '../components/MarketplaceApplicantsPanel';
+import BuyerProposalSection from '../components/BuyerProposalSection';
 import CentralMessageLauncher from '../components/CentralMessageLauncher';
 import './Dashboard.css';
 
@@ -1061,7 +1062,7 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
   const [orders,       setOrders]       = useState<OrderPipelineRow[]>([]);
   const [deliverables, setDeliverables] = useState<Record<string, DeliverablePlaceholder>>({});
   const [loadingReqs,  setLoadingReqs]  = useState(true);
-  const [workflowCreatorLabels, setWorkflowCreatorLabels] = useState<Record<string, string>>({});
+  const [creatorProfileLabels, setCreatorProfileLabels] = useState<Record<string, string>>({});
 
   const loadBuyerRequests = useCallback(async () => {
     setLoadingReqs(true);
@@ -1088,33 +1089,33 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
       setRequests([]);
       setOrders([]);
       setDeliverables({});
-      setWorkflowCreatorLabels({});
+      setCreatorProfileLabels({});
       setLoadingReqs(false);
       return;
     }
 
     const reqs = (data as BuyerRequest[]) ?? [];
 
-    const wfCreatorIds = [
+    const creatorIdsForLabels = [
       ...new Set(
         reqs
-          .map((r) => r.source_creator_profile_id)
+          .flatMap((r) => [r.source_creator_profile_id, r.selected_creator_profile_id])
           .filter((x): x is string => typeof x === 'string' && x.trim().length > 0),
       ),
     ];
-    let wfLabels: Record<string, string> = {};
-    if (wfCreatorIds.length > 0) {
+    let profileLabels: Record<string, string> = {};
+    if (creatorIdsForLabels.length > 0) {
       const { data: cpRows, error: cpErr } = await supabase
         .from('creator_profiles')
         .select('id, display_name, full_name')
-        .in('id', wfCreatorIds);
-      if (cpErr) console.error('[Dashboard] creator_profiles (workflow sources):', cpErr);
+        .in('id', creatorIdsForLabels);
+      if (cpErr) console.error('[Dashboard] creator_profiles (proposal/source labels):', cpErr);
       for (const row of (cpRows ?? []) as { id: string; display_name?: string | null; full_name?: string | null }[]) {
         const label = safeStr(row.display_name).trim() || safeStr(row.full_name).trim() || 'Creator';
-        wfLabels[row.id] = label;
+        profileLabels[row.id] = label;
       }
     }
-    setWorkflowCreatorLabels(wfLabels);
+    setCreatorProfileLabels(profileLabels);
 
     setRequests(reqs);
 
@@ -1184,13 +1185,21 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
 
       {!loadingReqs ?
         (
-          <MarketplaceApplicantsPanel
-            buyerProfile={userProfile}
-            requests={requests}
-            ordersByRequestId={orderByRequestId}
-            deliverablesByOrderId={deliverables}
-            onMarketplaceEvent={loadBuyerRequests}
-          />
+          <>
+            <MarketplaceApplicantsPanel
+              buyerProfile={userProfile}
+              requests={requests}
+              ordersByRequestId={orderByRequestId}
+              deliverablesByOrderId={deliverables}
+              onMarketplaceEvent={loadBuyerRequests}
+            />
+            <BuyerProposalSection
+              userProfile={userProfile}
+              requests={requests}
+              ordersByRequestId={orderByRequestId}
+              creatorProfileLabels={creatorProfileLabels}
+            />
+          </>
         )
       : null}
 
@@ -1221,7 +1230,7 @@ function BuyerDashboard({ userProfile }: { userProfile: UserProfileRow }) {
                     : null
                 }
                 sourceCreatorDisplayName={
-                  r.source_creator_profile_id ? workflowCreatorLabels[r.source_creator_profile_id] : undefined
+                  r.source_creator_profile_id ? creatorProfileLabels[r.source_creator_profile_id] : undefined
                 }
               />
             ))}

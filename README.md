@@ -5,6 +5,17 @@ A marketplace for focused, affordable web tools built for local service business
 **Status:** Marketplace **Buyer Applicant Review Polish v2 + Selection + Central Messaging** — buyer dashboard **My Requests & Applicants** surfaces source type, workflow title, budgets, marketplace + project status, **next-step** hints, expandable applicant comparison with **rules-based fit insights** (`src/lib/buyerApplicantReviewAI.ts`), **Shortlist / Reject applicant / Select creator** (confirm modal), secure buyer-scoped status updates, and **Message creator** → **`/messages?buyerRequestId&creatorProfileId[&orderId]`** (prefers `orderId` after assignment). **`selectCreatorForRequest`** still syncs **`buyer_requests`** + **`orders`** without duplicate rows per request. Admin buyer queue shows a **marketplace strip** (applicants count, buyer-selected badge). **TEMP DEV RLS remains unsafe** until production policies ship.
 
 
+### Proposal / pricing workflow (v1 — scope approval, no payments)
+
+- **SQL:** `supabase/migrations/proposal-pricing-foundation.sql` adds **`project_proposals`** (rules-filled scope, placeholder **`proposed_price` / `platform_fee` / `creator_payout`**, lifecycle **`proposal_status`**, **`buyer_approval_status`**, frozen **`workflow_context_snapshot`** for workflow-backed requests) and extends **`orders`** with **`proposal_id`**, **`proposal_status`** (mirrors proposal lifecycle once linked), **`buyer_approval_status`**, **`payment_status`** (stays **`unpaid`**). File includes **TEMP DEV RLS — replace before production.** No new migration needed for v1 tidy-ups — buyer approval values use plain text columns.
+- **Generator:** `src/lib/proposals.ts` — **`generateProposalDraft`**, **`generateAndPersistProposal`**, **`adminUpsertProposalFields`** (save without requiring a prior generate), **`adminSetProposalStatus`**, buyer actions — rules-only (no external AI).
+- **Statuses:** **`proposal_status`** remains `draft` \| `sent` \| `buyer_approved` \| `buyer_changes_requested` \| `buyer_rejected` \| … (DB CHECK). **`buyer_approval_status`** is normalized in-app to **`pending`** \| **`approved`** \| **`changes_requested`** \| **`rejected`** (legacy `buyer_approved` / `buyer_rejected` rows are treated as approved/rejected when read).
+- **Admin:** `/admin` → **Project Workflow** → **Official proposal (scope & price)** — empty-state banner, summary cards when saved, step labels (**Draft & save** vs **Send & outcomes**), primary **[Generate / Regenerate]** + **[Save proposal]** (upserts one row per request/order), lifecycle buttons (**Mark sent**, buyer outcomes for testing), workflow customization context, copy helpers.
+- **Buyer:** Dashboard **Proposals & pricing** — latest proposal per request (deduped), selected creator + workflow publisher labels when known; respond when **`proposal_status === sent`**. Disclaimer: **payments not active** — approval confirms **project scope** only for MVP; Stripe and protected handoff come later.
+- **Creator:** `/dashboard/projects/:orderId` — read-only proposal + workflow banner + **guidance** by proposal status; copy buttons; cannot edit proposal rows.
+- **Order integration:** Buyer **approve** sets **`proposal_status = buyer_approved`**, **`buyer_approval_status = approved`**, syncs **`orders`**, keeps **`payment_status` unpaid**, may advance **`assigned` → `in_progress`** — **no Stripe charge**.
+- **Future:** Stripe checkout, escrow / handoff security, production RLS, creator payout protection policies.
+
 ### Marketplace Application Foundation v1
 
 
@@ -98,6 +109,7 @@ supabase/
     marketplace-application-foundation.sql   # Marketplace: request_applications, published_workflows, project_messages, buyer/request selection fields — TEMP DEV RLS flagged in-file
     workflow-ai-review-fields.sql            # Additive AI review columns + indexes on published_workflows
     workflow-request-linking.sql             # buyer_requests ↔ published workflow provenance + customization_notes
+    proposal-pricing-foundation.sql           # project_proposals + orders proposal pointers (TEMP DEV RLS — see file)
 docs/
   database-schema.md
   marketplace-application-flow.md

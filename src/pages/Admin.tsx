@@ -35,6 +35,7 @@ import type {
   BuildPacketWorkspaceRow,
 } from '../lib/orders';
 import type { OrderPipelineStatus } from '../types/database';
+import type { BuyerRequestRow as DatabaseBuyerRequestRow } from '../types/database';
 import {
   buildBuyerUpdateCopy,
   buildCompletionMessageCopy,
@@ -45,6 +46,8 @@ import {
   copyTextToClipboard,
 } from '../lib/workspaceCopy';
 import './Admin.css';
+import AdminProposalSection from '../components/AdminProposalSection';
+import type { BuildPacketSnippet } from '../lib/proposals';
 
 // ─── Defensive helpers ────────────────────────────────────────────────────────
 
@@ -1332,6 +1335,17 @@ function RequestProjectWorkflow({
 
   const displayPacket = packet;
 
+  const proposalPacketSnippet: BuildPacketSnippet | null = dbPacket
+    ? {
+        business_summary: dbPacket.business_summary ?? null,
+        customer_problem: dbPacket.customer_problem ?? null,
+        recommended_build: dbPacket.recommended_build ?? null,
+        creator_instructions: dbPacket.creator_instructions ?? null,
+        suggested_page_sections: dbPacket.suggested_page_sections ?? null,
+        automation_needs: dbPacket.automation_needs ?? null,
+      }
+    : null;
+
   return (
     <div className="req-project-workflow">
       <div className="req-project-workflow-head">
@@ -1560,6 +1574,13 @@ function RequestProjectWorkflow({
               </div>
             </div>
           )}
+
+          <AdminProposalSection
+            buyerRequest={row as unknown as DatabaseBuyerRequestRow}
+            order={order}
+            packetSnippet={proposalPacketSnippet}
+            onReload={refreshLocal}
+          />
 
           {showGenPreview && (
             <div className="req-project-gen-preview">

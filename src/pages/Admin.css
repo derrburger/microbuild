@@ -3026,3 +3026,241 @@
   font-size: 0.65rem;
   padding: 0.2rem 0.45rem;
 }
+
+/* ─── Admin proposal section (request project workflow) ───────────────────── */
+
+.req-admin-proposal {
+  margin-top: 1.25rem;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface, var(--bg-secondary));
+}
+
+.req-admin-proposal-head {
+  margin-bottom: 0.65rem;
+}
+
+.req-admin-proposal-subtle {
+  margin: 0.35rem 0 0;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.req-admin-proposal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.req-admin-proposal-wf {
+  margin-bottom: 0.85rem;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.req-admin-proposal-wf details {
+  margin-top: 0.45rem;
+}
+
+.req-admin-proposal-pre {
+  margin: 0.35rem 0 0;
+  padding: 0.6rem;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.68rem;
+}
+
+.req-admin-proposal-actions-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+}
+
+.req-admin-proposal-fields {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.65rem;
+}
+
+.req-admin-proposal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.req-admin-proposal-field span:first-child {
+  font-weight: 700;
+}
+
+.req-admin-proposal-input,
+.req-admin-proposal-textarea {
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.req-admin-proposal-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+@media (max-width: 640px) {
+  .req-admin-proposal-grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.req-admin-proposal-kv {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 1rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+}
+
+.req-admin-proposal-empty-banner {
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  border: 1px dashed rgba(99, 179, 237, 0.45);
+  background: rgba(99, 179, 237, 0.06);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  margin-bottom: 0.85rem;
+}
+
+.req-admin-proposal-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.req-admin-proposal-summary-card {
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.req-admin-proposal-summary-label {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.req-admin-proposal-summary-val {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.req-admin-proposal-wf-tag {
+  display: inline-block;
+  margin-top: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  border: 1px solid rgba(0, 212, 120, 0.35);
+  color: #63ffb0;
+}
+
+.req-admin-proposal-step-label {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.req-admin-proposal-step-hint {
+  margin: 0 0 0.55rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.req-admin-proposal-actions-primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.req-admin-proposal-btn-lg {
+  min-height: 2.35rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  font-weight: 700;
+}
+
+.req-admin-proposal-actions-lifecycle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.req-admin-proposal-lifecycle-sent {
+  border-color: rgba(99, 179, 237, 0.55);
+}
+
+.req-admin-proposal-lifecycle-approved {
+  border-color: rgba(0, 212, 120, 0.55);
+}
+
+.req-admin-proposal-lifecycle-changes {
+  border-color: rgba(251, 191, 36, 0.55);
+}
+
+.req-admin-proposal-lifecycle-rejected {
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+.req-admin-proposal-copy-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.req-admin-proposal-copied {
+  border-color: #63ffb0 !important;
+  color: #63ffb0 !important;
+}
+
+.req-admin-proposal-fee-hint {
+  margin: -0.35rem 0 0.35rem;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
