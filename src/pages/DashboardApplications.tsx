@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { getCreatorApplicationsWithBuyerRequests, resolveCreatorProfileForMarketplace } from '../lib/marketplace';
+import { getCreatorApplicationsWithBuyerRequests, getWorkflowFirstRightBuyerRequestsForCreator, resolveCreatorProfileForMarketplace } from '../lib/marketplace';
 import CentralMessageLauncher from '../components/CentralMessageLauncher';
 import type {
   BuyerRequestRow,
   RequestApplicationRow,
   UserProfileRow,
 } from '../types/database';
+import { isBuyerRequestOpenForApplications } from '../lib/marketplaceEligibility';
 import DashboardNav from '../components/DashboardNav';
 import './Dashboard.css';
 
@@ -82,6 +83,7 @@ export default function DashboardApplications() {
   const [applications, setApplications] = useState<
     ((RequestApplicationRow & { buyer_requests?: BuyerRequestRow | BuyerRequestRow[] | null }) | null)[]
   >([]);
+  const [workflowOpportunities, setWorkflowOpportunities] = useState<BuyerRequestRow[]>([]);
   const [busy, setBusy] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -126,6 +128,11 @@ export default function DashboardApplications() {
 
         const row = await resolveCreatorProfileForMarketplace(authUid, prof);
 
+        let wfOpps: BuyerRequestRow[] = [];
+        if (row?.id) {
+          wfOpps = await getWorkflowFirstRightBuyerRequestsForCreator(row.id);
+        }
+
         const { data: appsMerged, errorMessage } = await getCreatorApplicationsWithBuyerRequests(
           row?.id ?? null,
           prof.id,
@@ -133,6 +140,7 @@ export default function DashboardApplications() {
 
         if (!cancelled) {
           setApplications(appsMerged);
+          setWorkflowOpportunities(wfOpps);
           setFetchError(errorMessage);
         }
       } catch (e) {
@@ -140,6 +148,7 @@ export default function DashboardApplications() {
         if (!cancelled) {
           setFetchError(e instanceof Error ? e.message : 'Something went wrong loading applications.');
           setApplications([]);
+          setWorkflowOpportunities([]);
         }
       } finally {
         if (!cancelled) setBusy(false);
@@ -175,6 +184,18 @@ export default function DashboardApplications() {
     return base;
   }, [applications]);
 
+  function creatorHasActiveApplicationForRequest(requestId: string): boolean {
+    const rid = safeStr(requestId).trim();
+    if (!rid) return false;
+    for (const a of applications) {
+      if (!a) continue;
+      if (safeStr(a.buyer_request_id).trim() !== rid) continue;
+      const st = normalizeStatus(a.application_status);
+      if (['submitted', 'shortlisted', 'buyer_selected'].includes(st)) return true;
+    }
+    return false;
+  }
+
   if (authLoading || busy || !user) {
     return (
       <div className="dashboard-page">
@@ -201,6 +222,85 @@ export default function DashboardApplications() {
 
       <div className="container dashboard-body">
         <DashboardNav />
+
+        <section className="mb-workflow-requests-section" aria-labelledby="wf-req-first-right-heading">
+          <h2 id="wf-req-first-right-heading" className="mb-workflow-requests-title">
+            Workflow requests from your published workflows
+          </h2>
+          <p className="mb-workflow-requests-sub subtle">
+            First-right visibility: buyers customized a workflow you published. Apply from Browse — you compete like any
+            creator; buyers still choose the winning applicant.
+          </p>
+          {workflowOpportunities.length === 0 ?
+            (
+              <p className="subtle buyer-muted-hint">No active workflow-linked requests need your attention.</p>
+            )
+          : (
+            <div className="mb-browse-grid">
+              {workflowOpportunities.map((r) => {
+                const applied = creatorHasActiveApplicationForRequest(r.id);
+                const accepting = isBuyerRequestOpenForApplications(r);
+                const wfTitle =
+                  safeStr(r.source_workflow_title).trim() || 'Published workflow';
+                const biz = safeStr(r.business_name).trim() || safeStr(r.industry).trim() || 'Buyer';
+                const cust = safeStr(r.customization_notes).trim();
+                const appCnt =
+                  typeof r.applications_count === 'number' && Number.isFinite(r.applications_count) ?
+                    r.applications_count
+                  : 0;
+
+                return (
+                  <article key={r.id} className="mb-card mb-card--request">
+                    <div className="mb-first-right-banner" role="status">
+                      <span className="mb-first-right-pill">Your workflow was requested</span>
+                    </div>
+                    <h3 className="mb-card-title">{wfTitle.slice(0, 100)}</h3>
+                    <p className="muted-sm mb-meta-line">{biz}</p>
+                    {cust ?
+                      (
+                        <p className="mb-card-goal subtle">
+                          <span className="mb-card-strong">Customization: </span>
+                          {cust.slice(0, 220)}
+                          {cust.length > 220 ? '…' : ''}
+                        </p>
+                      )
+                    : null}
+                    <div className="mb-card-row mb-card-grid-2">
+                      <span className="mb-card-row-label">Budget</span>
+                      <span className="mb-card-row-val">{r.budget?.trim() || '—'}</span>
+                      <span className="mb-card-row-label">Deadline</span>
+                      <span className="mb-card-row-val">{r.deadline?.trim() || '—'}</span>
+                      <span className="mb-card-row-label">Request status</span>
+                      <span className="mb-card-row-val">{safeStr(r.status, '—').replace(/-/g, ' ')}</span>
+                      <span className="mb-card-row-label">Applicants</span>
+                      <span className="mb-card-row-val">{appCnt}</span>
+                    </div>
+                    <div className="mb-wf-opp-actions">
+                      {applied ?
+                        (
+                          <>
+                            <span className="mb-applied-pill">Applied</span>
+                            <Link className="btn btn-ghost btn-sm" to="/dashboard/applications#my-applications-list">
+                              My Applications →
+                            </Link>
+                          </>
+                        )
+                      : accepting ?
+                        (
+                          <Link className="btn btn-primary btn-sm" to={`/browse#mb-req-${r.id}`}>
+                            Apply to Build / View Request →
+                          </Link>
+                        )
+                      : (
+                        <span className="subtle buyer-muted-hint">Applications closed for this request.</span>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         <div className="mb-application-summary-grid">
           {(
@@ -240,7 +340,7 @@ export default function DashboardApplications() {
             </section>
           )
         : (
-          <div className="mb-browse-grid">
+          <div className="mb-browse-grid" id="my-applications-list">
             {applications.map((a) => {
               if (!a) return null;
               const st = normalizeStatus(a.application_status);

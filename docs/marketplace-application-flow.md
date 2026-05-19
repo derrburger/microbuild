@@ -31,8 +31,15 @@ This document summarizes the marketplace foundation introduced with `marketplace
    - `source_type` — `'custom_request'` (default) vs `'workflow'` for customization submissions.
    - `source_workflow_id`, `source_workflow_title`, `source_creator_profile_id` — nullable pointers back to the starter workflow + publisher profile.
    - `requested_from_workflow` boolean guard for dashboards/reporting.
-5. downstream behaviors (**applicants**, **selection**, **`orders`**, **workspace**, **messages**) reuse the existing marketplace pipeline — no Stripe/GitHub OAuth/external AI additions.
-6. **Original workflow creator** surfaces as context only (buyer dashboard + admin queue). They are **not** auto-selected to fulfill the job in v1.
+5. Downstream behaviors (**applicants**, **selection**, **`orders`**, **workspace**, **messages**) reuse the existing marketplace pipeline — no Stripe/GitHub OAuth/external AI additions.
+
+### Original workflow creator — first-right-to-build (v1, priority only)
+
+- **Not auto-selected.** The buyer still picks the creator via **Select creator**; **`selectCreatorForRequest`** rejects sibling active applications, updates **`buyer_requests`** (`creator_selected`, pointers), and **`createOrUpdateOrderFromSelectedApplication`** syncs **`orders`** (`selection_method = buyer_selected`, `selected_by_buyer`, `order_status = assigned`) as before.
+- **Creator Browse (`/browse` — Buyer Requests):** workflow-backed rows sort with **original publisher opportunities first**. Badge **Your workflow was requested** when `buyer_requests.source_creator_profile_id` matches the signed-in creator; others see **Workflow customization request** when the request is otherwise open. Apply CTA copy emphasizes workflow requests; optional default **`fit_reason`**: *Original creator of the requested workflow* (still a normal `request_applications` row; duplicates blocked by the existing partial unique index).
+- **Creator Dashboard → Applications:** section **Workflow requests from your published workflows** lists open workflow-backed scopes for that creator (excludes terminal marketplace rows such as **creator_selected** / closed analogues).
+- **Buyer Dashboard → applicants:** applicant cards can show **Original Workflow Creator** when the applicant’s profile id matches **`buyer_requests.source_creator_profile_id`**.
+- **Admin queue:** workflow-backed cards show provenance (reusable workflow source, title, original creator application status, applicant count, selected creator). Admin override remains available but is not the default selector.
 
 **Future notifications + monetization:** see `docs/workflow-customization-notifications.md`.
 
@@ -41,7 +48,7 @@ This document summarizes the marketplace foundation introduced with `marketplace
 ## Creator flow
 
 1. Top navigation **Buyer Requests** (same route **`/browse`**) exposes **Browse Buyer Requests** cards with Apply / eligibility messaging.
-2. **Dashboard · Applications (`/dashboard/applications`)** summarizes + lists that creator's `request_applications` (distinct from discovering new open scopes).
+2. **Dashboard · Applications (`/dashboard/applications`)** summarizes + lists that creator's `request_applications` (distinct from discovering new open scopes) and surfaces **Workflow requests from your published workflows** for customization scopes tied to that creator’s published workflows.
 3. **Dashboard · Workflows (`/dashboard/workflows`)** — approved creators author **`published_workflows`**: drafts, AI review, improvement loop, optional publish after AI approval or auto-publish when the rules engine clears the top band.
 4. Creator submits lightweight application (proposal, fit, timeline, optional price/link/questions).
 5. Duplicate **active** applications are blocked (`submitted` / `shortlisted` / `buyer_selected`).

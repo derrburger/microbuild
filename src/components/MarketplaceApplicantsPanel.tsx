@@ -39,6 +39,7 @@ export interface BuyerRequestMarketplaceBrief {
   source_workflow_title?: string | null;
   customization_notes?: string | null;
   requested_from_workflow?: boolean | null;
+  source_creator_profile_id?: string | null;
 }
 
 interface Props {
@@ -301,6 +302,10 @@ function ApplicantRow({
 }) {
   const prof = oneProfile(app.creator_profiles ?? null);
   const name = creatorDisplayName(app.creator_profiles ?? null);
+  const sourceCreatorId = safeStr(request.source_creator_profile_id).trim();
+  const applicantCreatorId = safeStr(prof?.id).trim();
+  const showOriginalWorkflowCreatorBadge =
+    Boolean(sourceCreatorId && applicantCreatorId && sourceCreatorId === applicantCreatorId);
   const tier = prof?.tier ?? '—';
   const verif = prof?.verification_status ?? '—';
   const approval = prof?.approval_status ?? '—';
@@ -368,7 +373,12 @@ function ApplicantRow({
   return (
     <div className="mb-applicant-row">
       <div className="mb-applicant-meta">
-        <div className="mb-applicant-name">{name}</div>
+        <div className="mb-applicant-name-row">
+          <div className="mb-applicant-name">{name}</div>
+          {showOriginalWorkflowCreatorBadge ?
+            <span className="mb-badge-original-creator">Original Workflow Creator</span>
+          : null}
+        </div>
         <div className="mb-applicant-badges">
           <span className="mb-badge">Tier: {tier}</span>
           <span className="mb-badge">Verification: {verif}</span>

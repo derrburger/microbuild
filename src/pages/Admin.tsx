@@ -2354,6 +2354,7 @@ function RequestCard({
   creatorProfiles,
   assignmentDiagnostics,
   onRefreshOrders,
+  originalCreatorApplied,
 }: {
   enriched: EnrichedRequest;
   onStatusChange: (id: string, newStatus: string) => void;
@@ -2362,6 +2363,8 @@ function RequestCard({
   creatorProfiles: CreatorProfileSnap[];
   assignmentDiagnostics: CreatorAssignmentDiagnostics | null;
   onRefreshOrders: () => void;
+  /** True when source workflow publisher has an active request_application */
+  originalCreatorApplied?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [wfNonce, setWfNonce]   = useState(0);
@@ -2374,6 +2377,13 @@ function RequestCard({
     safeText(origSnap?.display_name).trim()
     || safeText(origSnap?.full_name).trim()
     || (row.source_creator_profile_id ? 'Original creator — open Profiles tab if name missing' : '—');
+
+  const selPid = row.selected_creator_profile_id;
+  const selSnap = selPid ? creatorProfiles.find((c) => safeText(c.id) === safeText(selPid)) : null;
+  const selectedCreatorLabel =
+    safeText(selSnap?.display_name).trim()
+    || safeText(selSnap?.full_name).trim()
+    || (selPid ? `${safeText(selPid).slice(0, 8)}…` : '—');
 
   return (
     <div className={`req-card${expanded ? ' req-card--open' : ''}${selected ? ' req-card--selected' : ''}`}>
@@ -2497,6 +2507,26 @@ function RequestCard({
               <span className="req-detail-label">Original workflow creator</span>
               <div className="req-detail-value">{origCreatorLabel}</div>
             </div>
+            {adminWorkflowBackedRow(row) ?
+              (
+                <>
+                  <div>
+                    <span className="req-detail-label">Original creator applied</span>
+                    <div className="req-detail-value">{originalCreatorApplied ? 'Yes' : 'Not yet'}</div>
+                  </div>
+                  <div>
+                    <span className="req-detail-label">Applicants</span>
+                    <div className="req-detail-value">
+                      {typeof row.applications_count === 'number' ? row.applications_count : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="req-detail-label">Selected creator</span>
+                    <div className="req-detail-value">{selectedCreatorLabel}</div>
+                  </div>
+                </>
+              )
+            : null}
           </div>
           {(row.customization_notes ?? '').trim() ?
             (
@@ -4295,6 +4325,20 @@ export default function Admin() {
     [requestApplications],
   );
 
+  /** Workflow-first-right: original publisher submitted an active marketplace application */
+  const originalWorkflowCreatorAppliedMap = useMemo(() => {
+    const m = new Map<string, boolean>();
+    for (const a of requestApplications) {
+      const rid = safeText(a.buyer_request_id);
+      const req = requests.find((x) => safeText(x.id) === rid);
+      if (!req?.source_creator_profile_id) continue;
+      if (safeText(a.creator_profile_id) !== safeText(req.source_creator_profile_id)) continue;
+      const st = safeText(a.application_status, '').toLowerCase();
+      if (['submitted', 'shortlisted', 'buyer_selected'].includes(st)) m.set(rid, true);
+    }
+    return m;
+  }, [requestApplications, requests]);
+
   const workflowsPublishedLive = useMemo(
     () =>
       publishedWorkflowRows.filter((w) => {
@@ -4855,6 +4899,7 @@ export default function Admin() {
                       creatorProfiles={activeCreators}
                       assignmentDiagnostics={creatorAssignmentDiag}
                       onRefreshOrders={reloadOrders}
+                      originalCreatorApplied={originalWorkflowCreatorAppliedMap.get(e.row.id) ?? false}
                     />
                   </SectionErrorBoundary>
                 ))}

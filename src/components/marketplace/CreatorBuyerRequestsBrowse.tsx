@@ -1,11 +1,13 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import type { BuyerRequestRow } from '../../types/database';
 import {
   applyToBuyerRequest,
   estimateRequestComplexity,
   hasCreatorAlreadyApplied,
+  isOriginalWorkflowCreatorForRequest,
+  isWorkflowCustomizationBuyerRequest,
 } from '../../lib/marketplace';
-import { getQuoteReadiness } from '../../lib/buyerAI';
+import { getQuoteReadiness, getPriorityScore } from '../../lib/buyerAI';
 import {
   creatorEligibleForApplying,
   isBuyerRequestOpenForApplications,
@@ -49,6 +51,21 @@ export default function CreatorBuyerRequestsBrowse({
   const [formErr, setFormErr] = useState<string | null>(null);
   const [applyToast, setApplyToast] = useState<string | null>(null);
 
+  const creatorPid = creatorProfileId ?? '';
+
+  const sortedRequests = useMemo(() => {
+    const list = [...requests];
+    list.sort((a, b) => {
+      const ao = creatorPid && isOriginalWorkflowCreatorForRequest(a, creatorPid) ? 0 : 1;
+      const bo = creatorPid && isOriginalWorkflowCreatorForRequest(b, creatorPid) ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      const tb = Date.parse(safe(b.created_at));
+      const ta = Date.parse(safe(a.created_at));
+      return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+    });
+    return list;
+  }, [requests, creatorPid]);
+
   if (!eligible)
     return (
       <section className="mb-browse-creator-msg dash-empty">
@@ -75,9 +92,15 @@ export default function CreatorBuyerRequestsBrowse({
         </div>
       ) : null}
       <div className="mb-browse-grid">
-        {requests.map((r) => {
+        {sortedRequests.map((r) => {
           const acceptsApps = isBuyerRequestOpenForApplications(r);
           const applied = appliedIds.has(r.id) || extraApplied[r.id];
+          const isYourWorkflow = isOriginalWorkflowCreatorForRequest(r, pid);
+          const isWfCustom = isWorkflowCustomizationBuyerRequest(r);
+          const wfTitle =
+            safe(r.source_workflow_title).trim()
+            || (isWfCustom ? 'Published workflow (title pending)' : '');
+          const custPreview = safe(r.customization_notes).trim();
           const data = {
             business_name: r.business_name ?? '',
             industry: r.industry ?? '',
@@ -86,8 +109,12 @@ export default function CreatorBuyerRequestsBrowse({
             budget: r.budget ?? null,
             deadline: r.deadline ?? null,
             website_social: r.website_social ?? null,
+            source_type: isWfCustom ? 'workflow' : 'custom_request',
+            source_workflow_title: r.source_workflow_title ?? null,
+            customization_notes: r.customization_notes ?? null,
           };
           const readiness = getQuoteReadiness(data);
+          const priority = getPriorityScore(data);
           const cx = estimateRequestComplexity(r);
           const appCnt =
             typeof r.applications_count === 'number' && Number.isFinite(r.applications_count) ?
@@ -99,7 +126,19 @@ export default function CreatorBuyerRequestsBrowse({
           const canApplyUi = acceptsApps && !applied && eligible;
 
           return (
-            <article key={r.id} className="mb-card mb-card--request">
+            <article key={r.id} id={`mb-req-${r.id}`} className="mb-card mb-card--request">
+              {isYourWorkflow ?
+                (
+                  <div className="mb-first-right-banner" role="status">
+                    <span className="mb-first-right-pill">Your workflow was requested</span>
+                    <span className="mb-first-right-sub subtle">
+                      First opportunity to apply — buyers may still select any applicant.
+                    </span>
+                  </div>
+                )
+              : isWfCustom ?
+                <div className="mb-wf-custom-banner subtle">Workflow customization request</div>
+              : null}
               <div className="mb-card-header">
                 <h3 className="mb-card-title">
                   {(r.business_name || r.industry || 'Business').slice(0, 80)}
@@ -109,6 +148,23 @@ export default function CreatorBuyerRequestsBrowse({
               <p className="mb-card-meta muted-sm">
                 {safe(r.industry, 'Industry not stated')}
               </p>
+              {wfTitle ?
+                (
+                  <p className="mb-card-goal">
+                    <span className="mb-card-strong">Source workflow: </span>
+                    {wfTitle}
+                  </p>
+                )
+              : null}
+              {custPreview ?
+                (
+                  <p className="mb-card-goal subtle">
+                    <span className="mb-card-strong">Customization preview: </span>
+                    {custPreview.slice(0, 200)}
+                    {custPreview.length > 200 ? '…' : ''}
+                  </p>
+                )
+              : null}
               <p className="mb-card-goal">
                 <span className="mb-card-strong">Goal: </span>
                 {safe(r.main_goal, '—')}
@@ -128,6 +184,10 @@ export default function CreatorBuyerRequestsBrowse({
                 </span>
                 <span className="mb-card-row-label">Complexity</span>
                 <span className="mb-card-row-val">{cx}</span>
+                <span className="mb-card-row-label">Priority</span>
+                <span className="mb-card-row-val" style={{ color: priority.color }}>
+                  {priority.label}
+                </span>
                 <span className="mb-card-row-label">Applications</span>
                 <span className="mb-card-row-val">{appCnt}</span>
                 <span className="mb-card-row-label">Request status</span>
@@ -152,14 +212,27 @@ export default function CreatorBuyerRequestsBrowse({
                   }}
                   disabled={!canApplyUi}
                 >
-                  {showApply ? 'Close application form' : 'Apply to Build'}
+                  {showApply ?
+                    'Close application form'
+                  : isYourWorkflow ?
+                    'Apply to Build This Workflow Request'
+                  : 'Apply to Build'}
                 </button>
               )}
 
               {showApply && canApplyUi && !applied && (
                 <CreatorApplyMiniForm
+                  key={`${r.id}-${isYourWorkflow ? 'orig' : 'std'}`}
                   busy={busy}
                   error={formErr}
+                  initialFitReason={
+                    isYourWorkflow ? 'Original creator of the requested workflow' : ''
+                  }
+                  fitReasonPlaceholder={
+                    isYourWorkflow ?
+                      'Original creator of the requested workflow (editable)'
+                    : 'Why this aligns with your past work'
+                  }
                   onCancel={() => {
                     setApplyFor(null);
                     setFormErr(null);
@@ -182,16 +255,19 @@ export default function CreatorBuyerRequestsBrowse({
                         null
                       : Number.parseFloat(payload.proposed_price.trim());
 
+                    const defaultFit =
+                      isYourWorkflow ? 'Original creator of the requested workflow' : '';
                     const res = await applyToBuyerRequest({
                       buyerRequestId: r.id,
                       creatorProfileId: pid,
                       creatorUserProfileId,
                       proposal_message: payload.proposal_message,
-                      fit_reason: payload.fit_reason,
+                      fit_reason: payload.fit_reason.trim() || defaultFit,
                       estimated_timeline: payload.estimated_timeline,
                       proposed_price: parsed != null && isFinite(parsed) ? parsed : null,
                       creator_questions: payload.creator_questions,
                       relevant_workflow_url: payload.relevant_workflow_url || null,
+                      relevant_workflow_id: isYourWorkflow ? (r.source_workflow_id ?? null) : null,
                     });
 
                     setBusy(false);
@@ -217,11 +293,16 @@ export default function CreatorBuyerRequestsBrowse({
 function CreatorApplyMiniForm({
   busy,
   error,
+  initialFitReason,
+  fitReasonPlaceholder,
   onSubmit,
   onCancel,
 }: {
   busy: boolean;
   error: string | null;
+  /** Pre-filled when original workflow creator applies */
+  initialFitReason?: string;
+  fitReasonPlaceholder?: string;
   onSubmit: (p: {
     proposal_message: string;
     fit_reason: string;
@@ -233,11 +314,15 @@ function CreatorApplyMiniForm({
   onCancel: () => void;
 }) {
   const [proposal_message, setProposal] = useState('');
-  const [fit_reason, setFit] = useState('');
+  const [fit_reason, setFit] = useState(initialFitReason ?? '');
   const [estimated_timeline, setTl] = useState('');
   const [proposed_price, setPrice] = useState('');
   const [creator_questions, setQ] = useState('');
   const [relevant_workflow_url, setUrl] = useState('');
+
+  useEffect(() => {
+    setFit(initialFitReason ?? '');
+  }, [initialFitReason]);
 
   async function handle(ev: FormEvent) {
     ev.preventDefault();
@@ -278,7 +363,7 @@ function CreatorApplyMiniForm({
           className="mb-form-input mb-form-textarea"
           value={fit_reason}
           onChange={(e) => setFit(e.target.value)}
-          placeholder="Why this aligns with your past work"
+          placeholder={fitReasonPlaceholder ?? 'Why this aligns with your past work'}
         />
       </label>
       <label className="mb-form-label">

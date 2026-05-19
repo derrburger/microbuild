@@ -1570,6 +1570,70 @@
   gap: 1rem;
 }
 
+.mb-first-right-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.6rem;
+  margin: -0.15rem -0.15rem 0.35rem;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 212, 120, 0.35);
+  background: rgba(0, 212, 120, 0.08);
+}
+.mb-first-right-pill {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #00d478;
+}
+.mb-first-right-sub {
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+.mb-wf-custom-banner {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.35rem 0.45rem;
+  margin: -0.15rem -0.15rem 0.35rem;
+  border-radius: 6px;
+  border: 1px dashed rgba(99, 179, 237, 0.45);
+  background: rgba(99, 179, 237, 0.06);
+}
+.mb-badge-original-creator {
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #00d478;
+  border: 1px solid rgba(0, 212, 120, 0.4);
+  border-radius: 6px;
+  padding: 0.12rem 0.4rem;
+  background: rgba(0, 212, 120, 0.1);
+}
+.mb-workflow-requests-section {
+  margin-bottom: 1.75rem;
+}
+.mb-workflow-requests-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin-bottom: 0.35rem;
+}
+.mb-workflow-requests-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-bottom: 0.85rem;
+  line-height: 1.45;
+}
+
+.mb-wf-opp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
 .mb-applied-toast {
   grid-column: 1 / -1;
   margin: 0;
@@ -1753,6 +1817,14 @@
 
 .mb-applicant-name {
   font-weight: 700;
+}
+
+.mb-applicant-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.65rem;
+  margin-bottom: 0.35rem;
 }
 
 .mb-badge {

@@ -15,14 +15,16 @@ A marketplace for focused, affordable web tools built for local service business
 | Buyer selection | **My Requests & Applicants** — applicant cards + **Message creator** links to **`/messages`**; **Select** finalizes lineage on **`buyer_requests`** + **`orders`**. |
 | Messaging | **`/messages`** + **`src/lib/messages.ts`** + **`src/lib/messageInbox.ts`** — grouped conversations (**order** anchor preferred; application-only before selection), explicit column selects on **`project_messages`**, **`admin_only`** hidden in participant UI. **Signed-out** cannot open inbox; **`account_type === 'admin'`** returns an empty inbox (moderation dashboards later). Refresh-only · no realtime · no uploads. |
 | Admin | **`/admin`** pipeline cards show moderation placeholder text; **Workflow AI overview** surfaces AI-reviewed `published_workflows` with secondary override actions (publish/hide/archive/mark needs improvement). Buyer-selected badge + oversight panels unchanged. Manual assignment remains fallback. Console does **not** expose private **`project_messages`** content in v2. |
-| Future | Stripe, production-scoped policies, realtime messaging. **Future:** notify original workflow publisher when a customization request lands; optional priority apply path for that creator. |
+| Future | Stripe, production-scoped policies, realtime messaging. |
 
-### Buyer workflow customization (v1)
+### Buyer workflow customization + original creator first-right (v1)
 
 - Buyers hit **Request / Customize** on **`/browse`** workflow cards → **`/request?workflowId=`** loads public, AI-eligible workflows only (`fetchPublishedWorkflowForPublicRequest`).
 - Submissions insert **`buyer_requests`** with `source_type = 'workflow'`, `source_workflow_id`, `source_workflow_title`, `source_creator_profile_id`, structured **`customization_notes`**, `requested_from_workflow = true`, plus merged context in `style_notes` for older readers.
-- **Original publisher is not auto-assigned** — marketplace applications + buyer selection rules stay the default; dashboard labels clarify “original workflow creator” for context.
-- **SQL:** apply **`supabase/migrations/workflow-request-linking.sql`** so inserts/selects against the new columns succeed.
+- **First-right-to-build (priority only):** the **original workflow publisher** sees these requests first with clear badges (**Your workflow was requested** on Browse; **Workflow requests from your published workflows** on **Dashboard → Applications**). Other creators still see open customization requests as **Workflow customization request** when visibility allows. **No auto-assignment** — the buyer always chooses the winning applicant; **`selectCreatorForRequest`** + **`orders`** lineage unchanged.
+- **Buyer applicants:** the original publisher’s application row can show an **Original Workflow Creator** badge; buyers may still select any applicant.
+- **Admin:** **`/admin`** buyer-request queue labels workflow-backed rows (**Source: Reusable Workflow**, workflow title, whether the original creator applied, applicant counts, selected creator). Manual override remains escalation, not the default path.
+- **SQL:** apply **`supabase/migrations/workflow-request-linking.sql`** so inserts/selects against the provenance columns succeed (no additional migration required for first-right UI).
 
 ### Project Workspace Polish v2
 

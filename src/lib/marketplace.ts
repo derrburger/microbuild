@@ -74,6 +74,62 @@ export function estimateRequestComplexity(row: Partial<BuyerRequestRow>): string
   return 'Low';
 }
 
+/** Buyer request came from reusable workflow customization (/request?workflowId=). */
+export function isWorkflowCustomizationBuyerRequest(row: BuyerRequestRow | null | undefined): boolean {
+  if (!row) return false;
+  const st = normalizeText(row.source_type ?? '').toLowerCase();
+  return (
+    st === 'workflow'
+    || Boolean(row.requested_from_workflow)
+    || normalizeText(row.source_workflow_title ?? '').length > 0
+  );
+}
+
+/** Logged-in creator matches `buyer_requests.source_creator_profile_id` on a workflow customization request. */
+export function isOriginalWorkflowCreatorForRequest(
+  row: BuyerRequestRow | null | undefined,
+  creatorProfileId: string | null | undefined,
+): boolean {
+  const pid = normalizeText(creatorProfileId ?? '');
+  const src = normalizeText(row?.source_creator_profile_id ?? '');
+  if (!pid || !src || pid !== src) return false;
+  return isWorkflowCustomizationBuyerRequest(row);
+}
+
+function isTerminalWorkflowOpportunityRow(row: BuyerRequestRow): boolean {
+  const legacy = normalizeText(row.status ?? '').toLowerCase().replace(/-/g, '_');
+  if (legacy === 'completed' || legacy === 'rejected') return true;
+  const app = normalizeText(row.application_status ?? 'open').toLowerCase();
+  if (['creator_selected', 'in_progress', 'completed', 'closed'].includes(app)) return true;
+  const vis = normalizeText(row.visibility_status ?? 'open').toLowerCase();
+  if (['closed', 'completed', 'draft'].includes(vis)) return true;
+  return false;
+}
+
+/**
+ * Creator dashboard: workflow customization requests tied to this publisher’s workflows — excludes terminal rows.
+ */
+export async function getWorkflowFirstRightBuyerRequestsForCreator(
+  creatorProfileId: string,
+): Promise<BuyerRequestRow[]> {
+  const pid = normalizeText(creatorProfileId);
+  if (!pid) return [];
+
+  const { data, error } = await supabase
+    .from('buyer_requests')
+    .select('*')
+    .eq('source_creator_profile_id', pid)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[marketplace] getWorkflowFirstRightBuyerRequestsForCreator:', error);
+    return [];
+  }
+
+  const rows = (data as BuyerRequestRow[]) ?? [];
+  return rows.filter((r) => isWorkflowCustomizationBuyerRequest(r) && !isTerminalWorkflowOpportunityRow(r));
+}
+
 // ─── Read paths ─────────────────────────────────────────────────────────────────
 
 /** Creator browse: marketplace-open buyer_requests */
