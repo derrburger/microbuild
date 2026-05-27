@@ -25,6 +25,8 @@ const LOG_TAG = '[messageInbox]';
 /** Buyer / creator / admin string from user_profiles.account_type */
 export type MessagingAccountSide = 'buyer' | 'creator';
 
+export type ConversationFilterChip = 'all' | 'requests' | 'projects' | 'selected' | 'unread';
+
 export interface ParticipantConversation {
   stableId: string;
   /** Preferred anchor when an order exists for this buyer × creator pairing */
@@ -40,6 +42,9 @@ export interface ParticipantConversation {
   applicationStatus: string | null;
   orderPipelineStatus: string | null;
   inboxRibbonLabel: string;
+  budgetLabel: string | null;
+  deadlineLabel: string | null;
+  requestSourceType: string | null;
 }
 
 export interface ConversationListItem extends ParticipantConversation {
@@ -260,7 +265,122 @@ const APP_FIELDS = `
 `.replace(/\s+/g, ' ');
 
 const REQ_INBOX_FIELDS =
-  'id, business_name, industry, build_type, main_goal, applications_count, application_status, visibility_status';
+  'id, business_name, industry, build_type, main_goal, applications_count, application_status, visibility_status, budget, deadline, source_type';
+
+function readableBudget(v: unknown): string | null {
+  const s = normalizeMessageText(v, '').trim();
+  return s.length ? s : null;
+}
+
+function readableDeadline(v: unknown): string | null {
+  const s = normalizeMessageText(v, '').trim();
+  if (!s.length) return null;
+  try {
+    const d = new Date(s);
+    if (Number.isFinite(d.getTime())) {
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+  } catch {
+    /* fall through */
+  }
+  return s;
+}
+
+export function getOtherParticipantRole(side: MessagingAccountSide): 'Buyer' | 'Creator' {
+  return side === 'buyer' ? 'Creator' : 'Buyer';
+}
+
+export function getConversationTypeLabel(
+  conv: ParticipantConversation,
+): 'Application conversation' | 'Project conversation' | 'Workflow customization' {
+  if (conv.anchor === 'order') return 'Project conversation';
+  const st = normalizeMessageText(conv.requestSourceType, '').toLowerCase();
+  if (st === 'workflow') return 'Workflow customization';
+  return 'Application conversation';
+}
+
+export function getConversationContextKind(conv: ParticipantConversation): string {
+  return getConversationTypeLabel(conv);
+}
+
+export function conversationMatchesFilter(
+  conv: ParticipantConversation,
+  filter: ConversationFilterChip,
+  side: MessagingAccountSide,
+): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'unread') return false;
+  if (filter === 'requests') return conv.anchor === 'application';
+  if (filter === 'projects') return conv.anchor === 'order';
+  if (filter === 'selected') {
+    return side === 'buyer' && conv.anchor === 'order';
+  }
+  return true;
+}
+
+export function searchConversation(
+  conv: ConversationListItem,
+  query: string,
+  side: MessagingAccountSide,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q.length) return true;
+  const hay = [
+    getOtherParticipantLabel(conv, side),
+    getConversationTitle(conv),
+    conv.inboxRibbonLabel,
+    conv.preview,
+    getConversationStatusLabel(conv),
+    conv.microbuildLabel,
+    conv.buyerBusinessLabel,
+    conv.creatorNameLabel,
+  ]
+    .map((x) => normalizeMessageText(x, '').toLowerCase())
+    .join(' ');
+  return hay.includes(q);
+}
+
+export interface ConversationHelperContext {
+  agreementPhase?: string | null;
+  deliveryStatus?: string | null;
+}
+
+/** Rules-based inbox helper — no external AI */
+export function getConversationHelperHint(
+  conv: ParticipantConversation,
+  ctx: ConversationHelperContext = {},
+): string | null {
+  const agreementPhase = normalizeMessageText(ctx.agreementPhase, '').toLowerCase();
+  const deliveryStatus = normalizeMessageText(ctx.deliveryStatus, '').toLowerCase();
+  const appSt = normalizeMessageText(conv.applicationStatus, '').toLowerCase();
+  const orderSt = normalizeMessageText(conv.orderPipelineStatus, '').toLowerCase();
+
+  if (agreementPhase === 'changes_requested') {
+    return 'Discuss requested agreement changes.';
+  }
+  if (conv.anchor === 'order' && agreementPhase && agreementPhase !== 'confirmed' && agreementPhase !== 'none') {
+    return 'Confirm scope before building.';
+  }
+  if (['submitted', 'in_review', 'pending_review', 'revision_needed'].includes(deliveryStatus)) {
+    if (deliveryStatus === 'revision_needed') return 'Address revision feedback or clarify next steps.';
+    return 'Review delivery or request revision.';
+  }
+  if (conv.anchor === 'application') {
+    if (['submitted', 'pending', 'under_review', 'shortlisted'].includes(appSt)) {
+      return 'Clarify fit, timeline, or requirements.';
+    }
+    if (appSt === 'buyer_selected') {
+      return 'Coordinate next steps while the project workspace is set up.';
+    }
+  }
+  if (conv.anchor === 'order' && orderSt === 'in_progress') {
+    return 'Share assets, answer questions, or confirm timeline.';
+  }
+  if (conv.anchor === 'order' && orderSt === 'assigned') {
+    return 'Confirm scope and kick off the build in the project workspace.';
+  }
+  return null;
+}
 
 async function loadBuyerRequestsForViewer(profile: UserProfileRow): Promise<BuyerRequestRow[]> {
   const email = normalizeMessageText(profile.email, '').trim();
@@ -453,6 +573,9 @@ async function buildBuyerConversationRows(profile: UserProfileRow): Promise<Part
       applicationStatus: appSt || null,
       orderPipelineStatus: normalizeMessageText(order.order_status, '').trim(),
       inboxRibbonLabel: 'Selected creator',
+      budgetLabel: readableBudget(br?.budget),
+      deadlineLabel: readableDeadline(br?.deadline),
+      requestSourceType: normalizeMessageText(br?.source_type, '').trim() || null,
     });
   }
 
@@ -504,6 +627,9 @@ async function buildBuyerConversationRows(profile: UserProfileRow): Promise<Part
       applicationStatus: normalizeMessageText(typeof row.application_status === 'string' ? row.application_status : null),
       orderPipelineStatus: null,
       inboxRibbonLabel: 'Applicant',
+      budgetLabel: readableBudget(br.budget),
+      deadlineLabel: readableDeadline(br.deadline),
+      requestSourceType: normalizeMessageText(br.source_type, '').trim() || null,
     });
   }
 
@@ -681,6 +807,9 @@ async function buildCreatorConversationRows(
       applicationStatus: appStatus ?? null,
       orderPipelineStatus: normalizeMessageText(order.order_status, '').trim(),
       inboxRibbonLabel: 'Project',
+      budgetLabel: readableBudget(br?.budget),
+      deadlineLabel: readableDeadline(br?.deadline),
+      requestSourceType: normalizeMessageText(br?.source_type, '').trim() || null,
     });
   }
 
@@ -740,6 +869,9 @@ async function buildCreatorConversationRows(
         normalizeMessageText(typeof raw.application_status === 'string' ? raw.application_status : null, '').trim() || null,
       orderPipelineStatus: null,
       inboxRibbonLabel: 'Application',
+      budgetLabel: readableBudget(br.budget),
+      deadlineLabel: readableDeadline(br.deadline),
+      requestSourceType: normalizeMessageText(br.source_type, '').trim() || null,
     });
   }
 

@@ -3992,7 +3992,7 @@ export default function Admin() {
     supabase
       .from('request_applications')
       .select(
-        'id,buyer_request_id,creator_profile_id,application_status,proposal_message,fit_reason,estimated_timeline,proposed_price,created_at',
+        'id,buyer_request_id,creator_profile_id,application_status,proposal_message,fit_reason,estimated_timeline,proposed_price,order_id,created_at',
       )
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
@@ -4012,6 +4012,7 @@ export default function Admin() {
                 typeof r.proposed_price === 'number' && Number.isFinite(r.proposed_price)
                   ? r.proposed_price
                   : null,
+              order_id: r.order_id != null ? safeText(r.order_id) : null,
               created_at: r.created_at != null ? safeText(r.created_at) : null,
             })),
           );
@@ -4077,7 +4078,7 @@ export default function Admin() {
     supabase
       .from('request_applications')
       .select(
-        'id,buyer_request_id,creator_profile_id,application_status,proposal_message,fit_reason,estimated_timeline,proposed_price,created_at',
+        'id,buyer_request_id,creator_profile_id,application_status,proposal_message,fit_reason,estimated_timeline,proposed_price,order_id,created_at',
       )
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
@@ -4094,6 +4095,7 @@ export default function Admin() {
               estimated_timeline: r.estimated_timeline != null ? safeText(r.estimated_timeline) : null,
               proposed_price:
                 typeof r.proposed_price === 'number' && Number.isFinite(r.proposed_price) ? r.proposed_price : null,
+              order_id: r.order_id != null ? safeText(r.order_id) : null,
               created_at: r.created_at != null ? safeText(r.created_at) : null,
             })),
           );

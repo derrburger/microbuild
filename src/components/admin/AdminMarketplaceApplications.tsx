@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { createOrUpdateOrderFromSelectedApplication } from '../../lib/marketplace';
+import { buildMessagesHref } from '../../lib/messages';
 import type { BuyerRequestRow } from '../../types/database';
 import {
   formatBuyerMarketplaceStatus,
@@ -17,6 +18,7 @@ export type MarketplaceAppAdminRow = {
   fit_reason: string | null;
   estimated_timeline: string | null;
   proposed_price: number | null;
+  order_id: string | null;
   created_at: string | null;
 };
 
@@ -274,7 +276,11 @@ function MarketplaceAppCard({
         </button>
         <Link
           className="wf-action-btn"
-          to={`/messages?buyerRequestId=${encodeURIComponent(app.buyer_request_id)}&creatorProfileId=${encodeURIComponent(app.creator_profile_id)}`}
+          to={buildMessagesHref({
+            buyerRequestId: app.buyer_request_id,
+            creatorProfileId: app.creator_profile_id,
+            orderId: app.order_id,
+          })}
         >
           Message
         </Link>

@@ -94,7 +94,7 @@ export function filterRequestPhaseMessages(
   );
 }
 
-/** Latest-first preview line */
+/** Latest-first preview line for inbox list cards */
 export function getMessageThreadPreview(messages: ProjectMessageRow[]): string {
   const list = [...(messages ?? [])].sort((a, b) => {
     const ta = Date.parse(normalizeMessageText(a.created_at));
@@ -102,12 +102,17 @@ export function getMessageThreadPreview(messages: ProjectMessageRow[]): string {
     return tb - ta;
   });
   const last = list[0];
-  if (!last) return 'No messages yet — refresh after sending (realtime deferred).';
+  if (!last) return '';
 
-  const who = formatMessageSender(last, undefined);
-  const excerpt = normalizeMessageText(last.message_body).slice(0, 140);
-  const safeExcerpt = excerpt || '…';
-  return `Latest (${who}): ${safeExcerpt}${excerpt.length >= 140 ? '…' : ''}`;
+  const mt = normalizeMessageText(last.message_type, '').toLowerCase();
+  if (mt === 'system_update') {
+    const body = normalizeMessageText(last.message_body).slice(0, 120);
+    return body ? `System: ${body}${body.length >= 120 ? '…' : ''}` : 'System update';
+  }
+
+  const excerpt = normalizeMessageText(last.message_body).slice(0, 120);
+  if (!excerpt) return '…';
+  return `${excerpt}${excerpt.length >= 120 ? '…' : ''}`;
 }
 
 /** v1 stub — unread counts require read receipts (future) */
@@ -348,16 +353,23 @@ export type {
 
 export {
   buildMessagesHref,
+  conversationMatchesFilter,
   createProjectConversationMessage,
   createRequestConversationMessage,
   fetchMessagePool,
-  getConversationContext,
+  getConversationContextKind,
+  getConversationHelperHint,
   getConversationMessages,
   getConversationStatusLabel,
   getConversationTitle,
+  getConversationTypeLabel,
   getOtherParticipantLabel,
+  getOtherParticipantRole,
   getUserConversations,
   mergeMessagesForConversation,
+  searchConversation,
   sendConversationMessage,
   sliceMessagesForConversation,
 } from './messageInbox';
+
+export type { ConversationFilterChip, ConversationHelperContext } from './messageInbox';

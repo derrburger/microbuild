@@ -194,17 +194,19 @@ Legacy admin assignment retains `selection_method = 'admin_assigned'`.
 
 ---
 
-## Messaging v2 (refresh-based inbox)
+## Messaging v2 polish (central inbox)
 
-- **Libraries:** `src/lib/messages.ts` (explicit selects, **`sendRequestMessage`** / **`sendProjectMessage`**, filtering) + **`src/lib/messageInbox.ts`** (**`getUserConversations`**, **`sendConversationMessage`**, **`mergeMessagesForConversation`**, **`buildMessagesHref`**, **`fetchMessagePool`**). Re-exports for convenience mirror `messages.ts`.
-- **Route:** **`/messages`** (+ signed-out redirect to **`/signin`**, onboarding guard when profile missing).
-- **Surfaces:** Applicant/application cards (**Message creator** / **Message buyer** → query-string deep links); buyer active request (**Message creator**); creator pipeline (**Message buyer**); workspace (**Open project chat**).
-- **Grouping logic:** Prefer **`orders.id`** conversations when **`request_id`** + **`creator_id`** overlap an application; suppress duplicate application stubs in that scenario. Threads merge **pair-scoped** request rows (**`order_id` IS NULL**) with order rows for the participant pair.
-- **Admin:** moderation consoles stay future work — **`account_type === 'admin'` resolves to an intentionally empty inbox** (no voyeur tooling).
-- **Still missing:** realtime, uploads, truthful unread badges, hardened RLS (**TEMP DEV permissive inserts/selects remain unsafe for prod**).
+- **Route:** **`/messages`** — two-panel inbox (conversation list + thread). Deep links: **`/messages?orderId=…`**, **`/messages?buyerRequestId=…&creatorProfileId=…`** (prefer `orderId` after creator selection).
+- **Libraries:** `src/lib/messages.ts` + `src/lib/messageInbox.ts` — grouping, filtering, send, rules-based **Conversation helper**.
+- **Conversation types:** **Application conversation** (pre-selection), **Project conversation** (order anchor), **Workflow customization** (workflow-backed requests).
+- **Grouping:** One sidebar row per buyer×creator pair. When an **`orders`** row exists, the application stub is absorbed; request-phase messages merge into the project thread.
+- **Surfaces:** Applicant cards, application cards, buyer dashboard selected creator, project workspace **Message buyer/creator**, creator projects panel — all via **`CentralMessageLauncher`** / **`buildMessagesHref`**.
+- **Role visibility:** Buyers see request/applicant + project threads; creators see application + project threads; **admin inbox intentionally empty** (moderation later).
+- **Not yet:** realtime/WebSockets, file uploads, truthful unread badges. **TEMP DEV RLS** on `project_messages` remains — replace before production.
 
+**Manual tests:** (1) creator inbox (2) buyer inbox (3) project message button opens correct thread (4) applicant message button opens correct thread (5) send message (6) empty message blocked (7) context card (8) no duplicate conversations after selection.
 
-## Next build phases
+---
 
 1. Harden Row Level Security (replace TEMP DEV marketplace policies).
 2. Move workflow AI scoring server-side (**Supabase Edge Functions**) + optional real models; keep browser thin.
