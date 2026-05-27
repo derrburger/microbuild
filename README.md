@@ -16,6 +16,16 @@ A marketplace for focused, affordable web tools built for local service business
 - **Order integration:** Buyer **approve** sets **`proposal_status = buyer_approved`**, **`buyer_approval_status = approved`**, syncs **`orders`**, keeps **`payment_status` unpaid**, may advance **`assigned` → `in_progress`** — **no Stripe charge**.
 - **Future:** Stripe checkout, escrow / handoff security, production RLS, creator payout protection policies.
 
+### Project Agreement v2 (buyer ↔ creator on project workspace)
+
+- **Where:** `/dashboard/projects/:orderId` — **Project Agreement** panel (primary scope UI; replaces admin-first proposal flow on participant pages).
+- **Sections:** Project title, scope, included/not included, timeline, revisions, price placeholder, buyer/creator responsibilities, delivery requirements, change notes, AI readiness.
+- **Edit:** Before both parties confirm, buyer/creator can **Edit Agreement** or **Request Changes** (note required). Admin has **Edit Agreement (override)** on pipeline cards. Saving resets confirmations to pending.
+- **Confirm:** Buyer and creator each **Confirm Agreement** independently. Both confirmed → `agreement_status = confirmed`, `locked_at` set — **no Stripe / no payment**.
+- **Copy:** Full agreement, buyer summary, creator scope, delivery requirements, change request.
+- **Admin:** Oversight strip + optional **View agreement** panel — status, confirmations, missing/risk counts, change note; no default generate/send controls.
+- **Data:** Reuses `project_proposals` + optional columns from `supabase/migrations/project-agreement-fields.sql`.
+
 ### Project Agreement v1 (buyer ↔ creator on project workspace)
 
 - **Where:** `/dashboard/projects/:orderId` — **Project Agreement** panel (replaces admin-first proposal UX on the project page).
@@ -47,6 +57,19 @@ End-to-end path: **buyer request** → **creator apply** → **buyer review/sele
 - **Buyer applicants:** the original publisher’s application row can show an **Original Workflow Creator** badge; buyers may still select any applicant.
 - **Admin:** **`/admin`** buyer-request queue labels workflow-backed rows (**Source: Reusable Workflow**, workflow title, whether the original creator applied, applicant counts, selected creator). Manual override remains escalation, not the default path.
 - **SQL:** apply **`supabase/migrations/workflow-request-linking.sql`** so inserts/selects against the provenance columns succeed (no additional migration required for first-right UI).
+
+### Project Workspace Polish v3
+
+| Area | Behavior |
+|------|----------|
+| Route | **`/dashboard/projects/:orderId`** — official project workspace for assigned **creator** or owning **buyer** |
+| Header | Project title, buyer/creator context, project + agreement + deliverable badges, **Message** shortcut, delivery anchor when applicable |
+| Status timeline | Six plain-English steps (request → creator → agreement → build → delivery → completed) with dates only when stored |
+| Layout | Two-column: **left** — overview, Project Agreement, deliverables · **right** — next best action, messages, activity, build checklist (creator) · **full-width** creator brief |
+| Project Agreement | Primary scope UI on the project page — buyer/creator confirm, request changes, regenerate, copy helpers; **no Stripe** |
+| Deliverables | Lightweight MVP — creator submit/update URLs; buyer sees links after internal approval; empty states when none yet |
+| Build checklist | Grouped operational checklist for creators (rules-based, no external AI) |
+| Deferred | Stripe, payment holding, proposal enforcement UI, external AI APIs |
 
 ### Project Workspace Polish v2
 

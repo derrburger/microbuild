@@ -22,7 +22,7 @@ function num(v: unknown): number | null {
   return null;
 }
 
-export type AgreementCompleteness = 'needs_work' | 'almost_ready' | 'ready_to_confirm';
+export type AgreementCompleteness = 'needs_work' | 'almost_ready' | 'ready_to_confirm' | 'confirmed';
 
 export interface ProjectAgreementDraft {
   project_title: string;
@@ -53,6 +53,7 @@ export interface AgreementAnalysisInput {
   order?: OrderPipelineRow | null;
   application?: RequestApplicationRow | null;
   deliverable?: DeliverablePlaceholder | null;
+  proposal?: ProjectProposalRow | null;
 }
 
 export function generateProjectAgreementDraft(params: {
@@ -88,19 +89,24 @@ export function generateProjectAgreementDraft(params: {
 
   const sections = Array.isArray(bp?.suggested_page_sections) ? bp!.suggested_page_sections!.filter(Boolean) : [];
   const included = [
-    `• ${buildType} delivered to agreed scope`,
-    sections.length ? `• Sections/modules: ${sections.slice(0, 8).join(', ')}` : `• Standard layout for ${buildType}`,
-    `• Preview link + delivery handoff per revision policy`,
+    `• One ${buildType} build delivered to the agreed scope below`,
+    sections.length
+      ? `• Page/workflow sections: ${sections.slice(0, 8).join(', ')}`
+      : `• Standard ${buildType} layout with primary conversion path`,
+    `• Mobile-friendly layout with readable tap targets`,
+    `• Preview link for review before final delivery handoff`,
+    `• One round of fixes within the revision limit unless otherwise noted`,
     wfCtx && wfTitle ? `• Customization based on workflow “${wfTitle}”` : null,
   ]
     .filter(Boolean)
     .join('\n');
 
   const notIncluded = [
-    '• Ongoing hosting, domain, or ad spend (unless explicitly added in Messages)',
+    '• Domain registration, hosting bills, or ad spend',
     '• Unlimited revision rounds beyond the stated limit',
-    '• Net-new features outside this scope without a follow-up agreement',
-    '• Payment processing or escrow (not active in MVP)',
+    '• Major new features or integrations outside this scope',
+    '• Ongoing maintenance after delivery handoff',
+    '• Payment processing or escrow (deferred — price is indicative only)',
   ].join('\n');
 
   const timelinePieces = [
@@ -118,34 +124,39 @@ export function generateProjectAgreementDraft(params: {
     wfCtx && wfTitle ? `Project Agreement — ${biz} × ${creatorName} (${wfTitle})` : `Project Agreement — ${biz} × ${creatorName}`;
 
   const scopeParts = [
-    `Agreement between buyer and creator for ${buildType}.`,
+    `What is being built: a ${buildType} for ${biz}.`,
     `Buyer goal: ${goal}`,
-    problem ? `Current challenge: ${problem}` : null,
+    problem ? `Problem to solve: ${problem}` : null,
+    bp?.creator_instructions ? `Build instructions: ${norm(bp.creator_instructions).slice(0, 400)}` : null,
     wfCtx && wfTitle ?
-      `Based on reusable workflow “${wfTitle}”. Customization:\n${customization || '—'}`
+      `Workflow base: “${wfTitle}”. Customization notes:\n${customization || 'See buyer request for details.'}`
     : customization ?
       `Buyer notes:\n${customization}`
     : null,
-    app?.proposal_message ? `Creator application summary:\n${norm(app.proposal_message).slice(0, 800)}` : null,
-    bp?.business_summary ? `Build context: ${norm(bp.business_summary).slice(0, 500)}` : null,
+    app?.proposal_message ?
+      `Creator application summary:\n${norm(app.proposal_message).slice(0, 600)}`
+    : null,
   ].filter(Boolean);
 
   const deliveryReq = [
-    'Creator provides a preview URL before final delivery when possible.',
-    'Final delivery includes live/deployed link or documented handoff instructions.',
-    'Buyer reviews within a reasonable window and requests revisions inside the agreed limit.',
+    'Creator provides a working preview URL before final delivery when possible.',
+    'Final delivery includes a live/deployed link or documented handoff instructions.',
+    'Creator notes what was built, how to test forms/links, and any credentials in the deliverable submission.',
+    'Buyer reviews within a reasonable window and requests revisions only inside the agreed limit.',
   ].join('\n');
 
   const buyerResp = [
-    'Provide timely feedback, brand assets, and access needed to build.',
-    'Confirm agreement only when scope, timeline, and price placeholder are clear.',
-    'Use Messages for clarifications — not side channels that bypass the project record.',
+    'Provide logo, brand colors, copy, and any logins needed to complete the build.',
+    'Respond to creator questions in Messages within a reasonable time.',
+    'Confirm this agreement only when scope, timeline, and price placeholder match your expectations.',
+    'Payment is not active yet — this confirms scope only.',
   ].join('\n');
 
   const creatorResp = [
-    'Deliver work matching this agreement and the linked buyer request.',
-    'Flag scope gaps early in Messages before expanding build effort.',
-    'Confirm only when timeline, revisions, and delivery requirements are realistic.',
+    'Build exactly what is described in scope and included deliverables.',
+    'Flag missing assets or unclear requirements in Messages before expanding effort.',
+    'Submit preview and delivery URLs through the project workspace when ready.',
+    'Confirm only when timeline, revisions, and delivery requirements are realistic for you.',
   ].join('\n');
 
   const nextStep = 'Both parties confirm this agreement, then proceed in the project workspace and Messages.';
@@ -200,30 +211,50 @@ export function analyzeAgreementCompleteness(input: AgreementAnalysisInput): {
   riskFlags: string[];
   recommendedNextStep: string;
 } {
-  const { draft, buyerRequest: br, application: app } = input;
+  const { draft, buyerRequest: br, application: app, order } = input;
   const missing = getAgreementMissingItems(input);
   const risks = getAgreementRiskFlags(input);
-  let score = 72;
-  score -= missing.length * 8;
-  score -= risks.length * 6;
-  if (!draft.proposed_price) score -= 10;
-  if (!norm(br.deadline)) score -= 5;
+
+  const agreementConfirmed =
+    norm(order?.agreement_status).toLowerCase() === 'confirmed' ||
+    Boolean(input.proposal?.locked_at && norm(input.proposal?.agreement_status).toLowerCase() === 'confirmed');
+
+  if (agreementConfirmed) {
+    return {
+      readiness: 'confirmed',
+      readinessLabel: 'Confirmed',
+      score: 100,
+      summary: 'Agreement confirmed by both parties — ready to build.',
+      missingItems: [],
+      riskFlags: [],
+      recommendedNextStep: 'Proceed with build and delivery in the project workspace.',
+    };
+  }
+
+  let score = 76;
+  score -= missing.length * 9;
+  score -= risks.length * 7;
+  if (!draft.proposed_price) score -= 12;
+  if (!norm(br.deadline) && !norm(draft.timeline)) score -= 8;
+  if (norm(draft.scope_summary).length < 80) score -= 10;
+  if (!norm(draft.delivery_requirements)) score -= 6;
+  if (!norm(draft.buyer_responsibilities)) score -= 4;
   score = Math.max(0, Math.min(100, score));
 
   const readiness: AgreementCompleteness =
-    score >= 78 && missing.length === 0 ? 'ready_to_confirm'
-    : score >= 55 ? 'almost_ready'
+    score >= 80 && missing.length === 0 && risks.length <= 1 ? 'ready_to_confirm'
+    : score >= 52 ? 'almost_ready'
     : 'needs_work';
 
   const readinessLabel =
     readiness === 'ready_to_confirm' ? 'Ready to confirm'
     : readiness === 'almost_ready' ? 'Almost ready'
-    : 'Needs more detail';
+    : 'Needs details';
 
   const summary = [
-    `Rules-based check: ${readinessLabel} (${score}/100).`,
-    app?.fit_reason ? `Creator fit note on file.` : 'Confirm creator fit in Messages if unclear.',
-    'Payment is not active — this agreement is scope alignment only.',
+    `${readinessLabel} (${score}/100).`,
+    app?.fit_reason ? 'Creator fit note on file.' : 'Confirm creator fit in Messages if needed.',
+    'Price is indicative only — payment comes in a later phase.',
   ].join(' ');
 
   return {
@@ -240,23 +271,40 @@ export function analyzeAgreementCompleteness(input: AgreementAnalysisInput): {
 export function getAgreementMissingItems(input: AgreementAnalysisInput): string[] {
   const { draft, buyerRequest: br } = input;
   const out: string[] = [];
-  if (!norm(br.budget) && draft.proposed_price == null) out.push('Price placeholder not set — align on indicative total in Messages.');
-  if (!norm(br.deadline)) out.push('Buyer deadline not specified on the request.');
-  if (!norm(draft.scope_summary)) out.push('Scope summary is empty.');
-  if (!norm(draft.included_deliverables)) out.push('Included deliverables list is empty.');
-  if (!norm(draft.timeline)) out.push('Timeline section needs a target date or range.');
+  const scope = norm(draft.scope_summary);
+  if (!scope) out.push('Scope summary is missing.');
+  else if (scope.length < 60) out.push('Scope summary is vague — add clearer build details.');
+  if (!norm(draft.included_deliverables)) out.push('Included deliverables are not listed.');
+  if (!draft.proposed_price) out.push('Price is not set — agree on an indicative total in Messages.');
+  if (!norm(br.deadline) && !norm(draft.timeline)) out.push('Timeline is not confirmed yet.');
+  else if (!norm(draft.timeline)) out.push('Timeline should be added to the agreement.');
+  if (typeof draft.revision_limit !== 'number' || draft.revision_limit < 0) {
+    out.push('Revision limit is not set.');
+  }
+  if (!norm(draft.delivery_requirements)) out.push('Final delivery requirements are unclear.');
+  if (!norm(draft.buyer_responsibilities)) out.push('Buyer responsibilities are not listed.');
+  if (!norm(draft.creator_responsibilities)) out.push('Creator responsibilities are not listed.');
+  if (!norm(draft.not_included)) out.push('Not-included items should be listed to avoid scope creep.');
   return out;
 }
 
 export function getAgreementRiskFlags(input: AgreementAnalysisInput): string[] {
-  const { buyerRequest: br, application: app } = input;
+  const { draft, buyerRequest: br, application: app } = input;
   const out: string[] = [];
   if (workflowBackedRequest(br) && !norm(br.customization_notes)) {
     out.push('Workflow customization request without detailed customization notes.');
   }
-  if (!app?.estimated_timeline) out.push('Creator timeline not stated on the winning application.');
+  if (!app?.estimated_timeline && !norm(draft.timeline)) {
+    out.push('No creator timeline on the winning application or agreement.');
+  }
+  if (!norm(br.style_notes) && !norm(br.website_social)) {
+    out.push('Buyer assets/access may be incomplete — confirm brand links and logins in Messages.');
+  }
+  if (norm(draft.scope_summary).length > 900) {
+    out.push('Scope summary is very long — consider simplifying before confirmation.');
+  }
   if (input.deliverable?.delivery_status === 'revision_needed') {
-    out.push('Deliverable is in revision — confirm whether agreement text still matches current scope.');
+    out.push('Deliverable is in revision — confirm agreement text still matches current scope.');
   }
   return out;
 }
@@ -266,16 +314,19 @@ export function getAgreementRecommendedNextStep(params: {
   risks: string[];
   readiness: AgreementCompleteness;
 }): string {
+  if (params.readiness === 'confirmed') {
+    return 'Agreement is confirmed — proceed with build and delivery.';
+  }
   if (params.readiness === 'ready_to_confirm') {
-    return 'Both parties review the draft, then use Confirm Agreement when scope and timeline are clear.';
+    return 'Both parties review the draft, then confirm when scope, timeline, and price placeholder are clear.';
   }
   if (params.missing.length) {
-    return `Resolve: ${params.missing[0]}`;
+    return `Fill in missing details: ${params.missing[0]}`;
   }
   if (params.risks.length) {
-    return `Discuss risk: ${params.risks[0]}`;
+    return `Discuss before confirming: ${params.risks[0]}`;
   }
-  return 'Generate or regenerate the AI draft, then confirm in Messages before locking scope.';
+  return 'Generate or regenerate the agreement draft, then confirm in Messages before locking scope.';
 }
 
 export function formatAgreementForBuyer(proposal: ProjectProposalRow, creatorName: string): string {

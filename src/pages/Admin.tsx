@@ -56,6 +56,8 @@ import AdminMessagesPlaceholder from '../components/admin/AdminMessagesPlacehold
 import { fetchProposalByOrderId } from '../lib/proposals';
 import { getAgreementViewState } from '../lib/projectAgreement';
 import { displayAgreementStatus } from '../lib/projectAgreementAI';
+import ProjectAgreementPanel from '../components/ProjectAgreementPanel';
+import type { ProjectProposalRow } from '../types/database';
 import AdminDeferredProposals from '../components/admin/AdminDeferredProposals';
 import AdminMetricsStrip from '../components/admin/AdminMetricsStrip';
 
@@ -1731,13 +1733,18 @@ function OrderCard({
     creatorOk: boolean;
     missing: number;
     risks: number;
+    changeNote: string | null;
   } | null>(null);
+  const [agreementProposal, setAgreementProposal] = useState<ProjectProposalRow | null>(null);
+  const [agreementBuyerRequest, setAgreementBuyerRequest] = useState<DatabaseBuyerRequestRow | null>(null);
+  const [showAgreementPanel, setShowAgreementPanel] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       const row = await fetchProposalByOrderId(order.id);
       if (cancelled) return;
+      setAgreementProposal(row);
       if (!row) {
         setAgreementSnap(null);
         return;
@@ -1749,12 +1756,32 @@ function OrderCard({
         creatorOk: view.creatorConfirmed,
         missing: row.ai_missing_scope_items?.length ?? 0,
         risks: row.ai_risk_flags?.length ?? 0,
+        changeNote: row.buyer_feedback?.trim() || null,
       });
     })();
     return () => {
       cancelled = true;
     };
   }, [order.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!order.request_id?.trim()) {
+      setAgreementBuyerRequest(null);
+      return;
+    }
+    void supabase
+      .from('buyer_requests')
+      .select('*')
+      .eq('id', order.request_id.trim())
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setAgreementBuyerRequest(data ? (data as DatabaseBuyerRequestRow) : null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [order.request_id]);
 
   const statusColor = ORDER_STATUS_COLORS[order.order_status] ?? '#8a94a6';
   const assignedCreator = activeCreators.find((c) => c.id === order.creator_id);
@@ -1869,12 +1896,55 @@ function OrderCard({
               {(agreementSnap.missing > 0 || agreementSnap.risks > 0) ?
                 ` · ${agreementSnap.missing} missing · ${agreementSnap.risks} risks`
               : ''}
+              {agreementSnap.changeNote ?
+                ` · Change note: ${agreementSnap.changeNote.slice(0, 80)}${agreementSnap.changeNote.length > 80 ? '…' : ''}`
+              : ''}
             </span>
           )
         : (
           <span className="order-buyer-val subtle">Not drafted — parties generate on project workspace</span>
         )}
+        <button
+          type="button"
+          className="order-del-copy-btn order-agreement-toggle"
+          onClick={() => setShowAgreementPanel((v) => !v)}
+        >
+          {showAgreementPanel ? 'Hide agreement' : 'View agreement'}
+        </button>
       </div>
+
+      {showAgreementPanel ?
+        (
+          <ProjectAgreementPanel
+            role="admin"
+            order={order}
+            buyerRequest={agreementBuyerRequest}
+            proposal={agreementProposal}
+            creatorProfileId={order.creator_id ?? null}
+            creatorDisplayName={
+              assignedCreator?.display_name ?? assignedCreator?.full_name ?? 'Assigned creator'
+            }
+            buyerBusinessName={buyerBusinessName}
+            compact
+            onProposalUpdated={(row) => {
+              setAgreementProposal(row);
+              if (!row) {
+                setAgreementSnap(null);
+                return;
+              }
+              const view = getAgreementViewState(row);
+              setAgreementSnap({
+                status: displayAgreementStatus(row.agreement_status),
+                buyerOk: view.buyerConfirmed,
+                creatorOk: view.creatorConfirmed,
+                missing: row.ai_missing_scope_items?.length ?? 0,
+                risks: row.ai_risk_flags?.length ?? 0,
+                changeNote: row.buyer_feedback?.trim() || null,
+              });
+            }}
+          />
+        )
+      : null}
 
       <p className="order-msg-mod-placeholder">
         <strong>Message moderation</strong> coming later — buyer/creator threads are not reviewed from this panel in v1.

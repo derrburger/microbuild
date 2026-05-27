@@ -28,6 +28,7 @@ import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
 import Messages from './pages/Messages';
 import NotFound from './pages/NotFound';
+import AdMay28Launch from './pages/ad/AdMay28Launch';
 
 // NOTE: AdminRouteGuard (src/components/AdminRouteGuard.tsx) exists but is
 // intentionally not wired. Admin auth is deferred. See admin-auth-notes.sql.
@@ -37,6 +38,8 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* TikTok ad reel — isolated, no site chrome */}
+          <Route path="/ad/may-28-launch" element={<AdMay28Launch />} />
           <Route path="/" element={<Layout />}>
             {/* ── Public routes ───────────────────────────────────── */}
             <Route index element={<Home />} />

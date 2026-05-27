@@ -20,6 +20,12 @@ import {
   generateProjectAgreementDraft,
   type ProjectAgreementDraft,
 } from './projectAgreementAI';
+import {
+  appendNotIncludedToScope,
+  buildAdminNotesFromAgreementFields,
+  parseAgreementFieldsFromProposal,
+  type AgreementEditableFields,
+} from './agreementFields';
 
 const LOG = '[projectAgreement]';
 
@@ -100,22 +106,22 @@ export function getAgreementViewState(row: ProjectProposalRow | null): Agreement
 }
 
 function rowToDraftShape(row: ProjectProposalRow): ProjectAgreementDraft {
-  const notIncluded = extractNotIncluded(row.scope_summary);
+  const parsed = parseAgreementFieldsFromProposal(row);
   return {
-    project_title: row.proposal_title,
+    project_title: parsed.project_title,
     buyer_goal: '',
     creator_role: '',
-    scope_summary: row.scope_summary,
-    included_deliverables: row.included_deliverables,
-    not_included: notIncluded,
-    timeline: row.timeline,
-    revision_limit: row.revision_limit,
-    proposed_price: typeof row.proposed_price === 'number' ? row.proposed_price : Number(row.proposed_price) || null,
+    scope_summary: appendNotIncludedToScope(parsed.scope_summary, parsed.not_included),
+    included_deliverables: parsed.included_deliverables,
+    not_included: parsed.not_included,
+    timeline: parsed.timeline,
+    revision_limit: parsed.revision_limit,
+    proposed_price: parsed.proposed_price,
     platform_fee: typeof row.platform_fee === 'number' ? row.platform_fee : Number(row.platform_fee) || null,
     creator_payout: typeof row.creator_payout === 'number' ? row.creator_payout : Number(row.creator_payout) || null,
-    delivery_requirements: '',
-    buyer_responsibilities: '',
-    creator_responsibilities: '',
+    delivery_requirements: parsed.delivery_requirements,
+    buyer_responsibilities: parsed.buyer_responsibilities,
+    creator_responsibilities: parsed.creator_responsibilities,
     next_step: row.ai_recommended_next_step ?? '',
     ai_agreement_summary: row.ai_agreement_summary ?? '',
     ai_missing_scope_items: row.ai_missing_scope_items ?? [],
@@ -123,13 +129,6 @@ function rowToDraftShape(row: ProjectProposalRow): ProjectAgreementDraft {
     ai_recommended_next_step: row.ai_recommended_next_step ?? '',
     workflow_context_snapshot: row.workflow_context_snapshot,
   };
-}
-
-function extractNotIncluded(scope: string): string {
-  const marker = '── Not included ──';
-  const s = norm(scope);
-  if (!s.includes(marker)) return '';
-  return s.split(marker)[1]?.trim() ?? '';
 }
 
 function appendNotIncluded(scope: string, notIncluded: string): string {
@@ -376,7 +375,7 @@ export async function creatorConfirmProjectAgreement(params: {
 
 export async function requestProjectAgreementChanges(params: {
   proposalId: string;
-  role: 'buyer' | 'creator';
+  role: 'buyer' | 'creator' | 'admin';
   feedback: string;
   buyerProfile?: UserProfileRow;
   creatorProfileId?: string;
@@ -394,26 +393,127 @@ export async function requestProjectAgreementChanges(params: {
         })
       : false;
     if (!own) return { ok: false, error: 'Only the buyer can request changes.' };
-  } else {
+  } else if (params.role === 'creator') {
     if (norm(row.creator_profile_id) !== norm(params.creatorProfileId)) {
       return { ok: false, error: 'Only the assigned creator can request changes.' };
     }
   }
 
-  const fb = norm(params.feedback) || `${params.role === 'buyer' ? 'Buyer' : 'Creator'} requested agreement changes (see Messages).`;
+  const fb =
+    norm(params.feedback) ||
+    `${params.role === 'buyer' ? 'Buyer' : params.role === 'creator' ? 'Creator' : 'Admin'} requested agreement changes (see Messages).`;
   const patch: Record<string, unknown> = {
     agreement_status: 'changes_requested',
     proposal_status: 'buyer_changes_requested',
     locked_at: null,
     buyer_feedback: fb,
+    buyer_approval_status: 'pending',
+    creator_approval_status: 'pending',
+    buyer_confirmed_at: null,
+    creator_confirmed_at: null,
   };
-  if (params.role === 'buyer') {
-    patch.buyer_approval_status = 'changes_requested';
-    patch.buyer_confirmed_at = null;
-  } else {
-    patch.creator_approval_status = 'changes_requested';
-    patch.creator_confirmed_at = null;
+
+  return patchProposal(row.id, patch, row.order_id);
+}
+
+export async function saveProjectAgreementFields(params: {
+  proposalId: string;
+  role: 'buyer' | 'creator' | 'admin';
+  fields: AgreementEditableFields;
+  buyerProfile?: UserProfileRow;
+  creatorProfileId?: string;
+  buyerRequest?: BuyerRequestRow | null;
+  order?: OrderPipelineRow | null;
+}): Promise<{ ok: boolean; error: string | null; proposal?: ProjectProposalRow | null }> {
+  const { data, error } = await supabase.from('project_proposals').select('*').eq('id', norm(params.proposalId)).maybeSingle();
+  if (error || !data) return { ok: false, error: 'Agreement not found.' };
+  const row = normalizeProposalRow(data as Record<string, unknown>);
+
+  if (row.locked_at && norm(row.agreement_status) === 'confirmed') {
+    return { ok: false, error: 'Agreement is locked. Request changes before editing.' };
   }
+
+  if (params.role === 'buyer') {
+    if (!params.buyerProfile) return { ok: false, error: 'Buyer profile required.' };
+    const rid = norm(row.buyer_request_id);
+    const own = rid
+      ? await verifyBuyerOwnsRequest(rid, params.buyerProfile.email, {
+          authUserId: params.buyerProfile.auth_user_id ?? null,
+        })
+      : false;
+    if (!own) return { ok: false, error: 'Only the buyer can edit this agreement.' };
+  } else if (params.role === 'creator') {
+    if (norm(row.creator_profile_id) !== norm(params.creatorProfileId)) {
+      return { ok: false, error: 'Only the assigned creator can edit this agreement.' };
+    }
+  }
+
+  const f = params.fields;
+  const scopeWithNotIncluded = appendNotIncludedToScope(f.scope_summary, f.not_included);
+  const adminNotes = buildAdminNotesFromAgreementFields({
+    delivery_requirements: f.delivery_requirements,
+    buyer_responsibilities: f.buyer_responsibilities,
+    creator_responsibilities: f.creator_responsibilities,
+  });
+
+  const cleanPrice = f.proposed_price;
+  const platformPct = 0.1;
+  const platformFee = cleanPrice != null ? Math.round(cleanPrice * platformPct * 100) / 100 : null;
+  const creatorPayout =
+    cleanPrice != null && platformFee != null ? Math.round((cleanPrice - platformFee) * 100) / 100 : null;
+
+  const draftShape: ProjectAgreementDraft = {
+    project_title: norm(f.project_title) || row.proposal_title,
+    buyer_goal: '',
+    creator_role: '',
+    scope_summary: scopeWithNotIncluded,
+    included_deliverables: norm(f.included_deliverables),
+    not_included: norm(f.not_included),
+    timeline: norm(f.timeline),
+    revision_limit: Math.max(0, Math.floor(f.revision_limit) || 1),
+    proposed_price: cleanPrice,
+    platform_fee: platformFee,
+    creator_payout: creatorPayout,
+    delivery_requirements: norm(f.delivery_requirements),
+    buyer_responsibilities: norm(f.buyer_responsibilities),
+    creator_responsibilities: norm(f.creator_responsibilities),
+    next_step: '',
+    ai_agreement_summary: '',
+    ai_missing_scope_items: [],
+    ai_risk_flags: [],
+    ai_recommended_next_step: '',
+    workflow_context_snapshot: row.workflow_context_snapshot,
+  };
+
+  const analysis = analyzeAgreementCompleteness({
+    draft: draftShape,
+    buyerRequest: params.buyerRequest ?? ({ id: row.buyer_request_id ?? '', business_name: '', build_type: '' } as BuyerRequestRow),
+    order: params.order ?? null,
+    application: null,
+    proposal: row,
+  });
+
+  const patch: Record<string, unknown> = {
+    proposal_title: norm(f.project_title) || row.proposal_title,
+    scope_summary: scopeWithNotIncluded,
+    included_deliverables: norm(f.included_deliverables),
+    timeline: norm(f.timeline),
+    revision_limit: Math.max(0, Math.floor(f.revision_limit) || 1),
+    proposed_price: cleanPrice,
+    platform_fee: platformFee,
+    creator_payout: creatorPayout,
+    admin_notes: adminNotes,
+    ai_agreement_summary: analysis.summary,
+    ai_missing_scope_items: analysis.missingItems,
+    ai_risk_flags: analysis.riskFlags,
+    ai_recommended_next_step: analysis.recommendedNextStep,
+    agreement_status: 'draft',
+    buyer_approval_status: 'pending',
+    creator_approval_status: 'pending',
+    buyer_confirmed_at: null,
+    creator_confirmed_at: null,
+    locked_at: null,
+  };
 
   return patchProposal(row.id, patch, row.order_id);
 }

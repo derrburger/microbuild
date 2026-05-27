@@ -213,6 +213,42 @@ Legacy admin assignment retains `selection_method = 'admin_assigned'`.
 
 ---
 
+## Project Agreement v2 (buyer ↔ creator)
+
+| Topic | Detail |
+|-------|--------|
+| **Primary UI** | Reusable `ProjectAgreementPanel` on project workspace (buyer + creator) and admin pipeline **View agreement** |
+| **Sections** | Title, scope, included/not included, timeline, revision limit, price placeholder, buyer/creator responsibilities, delivery requirements, change notes |
+| **Draft** | `generateProjectAgreementForOrder()` — rules-based helper (`projectAgreementAI.ts`) |
+| **Edit** | `saveProjectAgreementFields()` — buyer/creator before lock; admin override; resets confirmations |
+| **Changes** | `requestProjectAgreementChanges()` — requires note; sets `changes_requested`; resets both confirmations |
+| **Confirm** | Buyer: `buyerConfirmProjectAgreement` · Creator: `creatorConfirmProjectAgreement` |
+| **Locked** | Both confirmed → `agreement_status = confirmed`, `locked_at`, order mirrored — deliverables not blocked if pending |
+| **Payment** | Price is indicative only; `payment_status` stays `unpaid` |
+| **Admin** | Oversight only — status strip, missing/risk counts, view/edit override; parties own the agreement |
+| **Migration** | No new migration — reuses `project-agreement-fields.sql` columns |
+
+**Manual tests:** (1) generate draft → (2) edit fields → (3) buyer requests changes → (4) creator sees note → (5) both confirm → (6) locked state → (7) admin view only → (8) copy buttons → (9) no payment triggered.
+
+**Later phase:** Stripe checkout, escrow/handoff — out of scope.
+
+---
+
+## Project workspace (polished v3)
+
+| Topic | Detail |
+|-------|--------|
+| **Route** | `/dashboard/projects/:orderId` |
+| **Who** | Assigned creator (full tooling) or buyer who owns the linked request (overview, agreement, deliverables read-only, messages) |
+| **Header** | Title, MicroBuild type, buyer + creator names, status badges, message + delivery shortcuts |
+| **Timeline** | Request submitted → Creator selected → Agreement confirmed → Build in progress → Delivery submitted → Completed |
+| **Agreement** | **Project Agreement** panel is the primary scope path — generate draft, buyer/creator confirm, request changes, copy agreement. Reuses `project_proposals`; payment stays **unpaid** |
+| **Deliverables** | Creator submits preview + delivery URLs; buyer sees approved links when policy allows; revision notes surface in deliverables card |
+| **Checklist & brief** | Creator brief (build packet) + grouped build checklist remain lightweight MVP tools — no external AI on the page |
+| **Deferred** | Stripe checkout, payment holding, admin-first proposal UX, external AI APIs |
+
+---
+
 ## Project Agreement v1 (buyer ↔ creator)
 
 | Topic | Detail |

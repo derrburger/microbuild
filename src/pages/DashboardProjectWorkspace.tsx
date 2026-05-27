@@ -8,11 +8,9 @@ import {
   fetchDeliverableByOrderId,
   submitCreatorDeliverable,
   updateOrderStatus,
-  ORDER_PIPELINE_STAGES,
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
   DELIVERY_STATUS_LABELS,
-  orderTimelineIndex,
   type OrderPipelineRow,
   type BuildPacketWorkspaceRow,
   type DeliverablePlaceholder,
@@ -33,9 +31,17 @@ import {
   buildCreatorFeedbackCopy,
   buildDeliverySummaryCopy,
   buildWorkspaceActivityItems,
-  OPERATIONAL_BUILD_CHECKLIST_ITEMS,
   copyTextToClipboard,
 } from '../lib/workspaceCopy';
+import {
+  getWorkspaceStatusSteps,
+  getWorkspaceStatusActiveIndex,
+  agreementStatusBadgeLabel,
+  deliverableBadgeLabel,
+  formatWorkspaceDate,
+  getWorkspaceNextAction,
+  BUILD_CHECKLIST_GROUPS,
+} from '../lib/workspaceStatus';
 import DashboardNav from '../components/DashboardNav';
 import './DashboardProjectWorkspace.css';
 
@@ -43,13 +49,19 @@ function safeStr(v: unknown, fb = ''): string {
   return typeof v === 'string' ? v : fb;
 }
 
-function fmtDate(iso: string | undefined | null): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return '—';
-  }
+function fmtDate(iso: string | undefined | null): string | null {
+  return formatWorkspaceDate(iso);
+}
+
+function fmtDateOrPlaceholder(iso: string | undefined | null, placeholder = 'Not set'): string {
+  return fmtDate(iso) ?? placeholder;
+}
+
+function moneyDisplay(n: number | string | null | undefined): string | null {
+  if (n == null || n === '') return null;
+  const x = typeof n === 'number' ? n : Number(n);
+  if (!isFinite(x) || x <= 0) return null;
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(x);
 }
 
 type BuyerSnippet = {
@@ -79,25 +91,41 @@ function FormFieldsList({ form_fields }: { form_fields: unknown }) {
   );
 }
 
-function WorkspaceTimeline({ status }: { status: string }) {
-  const idx = orderTimelineIndex(status);
+function WorkspaceStatusTrack({
+  order,
+  buyerRequestCreatedAt,
+  proposal,
+  deliverable,
+}: {
+  order: OrderPipelineRow;
+  buyerRequestCreatedAt?: string | null;
+  proposal: ProjectProposalRow | null;
+  deliverable: DeliverablePlaceholder | null;
+}) {
+  const steps = getWorkspaceStatusSteps({ order, buyerRequestCreatedAt, proposal, deliverable });
+  const activeIdx = getWorkspaceStatusActiveIndex({ order, proposal, deliverable });
+
   return (
-    <div className="dpw-timeline">
-      {ORDER_PIPELINE_STAGES.map((s, i) => {
-        const done = i < idx;
-        const active = i === idx;
-        const color = ORDER_STATUS_COLORS[s.id] ?? '#8a94a6';
-        return (
-          <div key={s.id} className={`dpw-tl-step${active ? ' dpw-tl-step--active' : ''}${done ? ' dpw-tl-step--done' : ''}`}>
+    <section className="dpw-status-track" aria-label="Project status">
+      <h2 className="dpw-status-track-title">Project status</h2>
+      <div className="dpw-status-steps">
+        {steps.map((step, i) => {
+          const done = i < activeIdx;
+          const active = i === activeIdx;
+          const dateLabel = fmtDate(step.dateIso);
+          return (
             <div
-              className="dpw-tl-dot"
-              style={{ borderColor: color, background: done || active ? color : 'transparent' }}
-            />
-            <span className="dpw-tl-label">{s.label}</span>
-          </div>
-        );
-      })}
-    </div>
+              key={step.id}
+              className={`dpw-status-step${active ? ' dpw-status-step--active' : ''}${done ? ' dpw-status-step--done' : ''}`}
+            >
+              <div className="dpw-status-step-dot" />
+              <span className="dpw-status-step-label">{step.label}</span>
+              {dateLabel ? <span className="dpw-status-step-date">{dateLabel}</span> : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -342,39 +370,37 @@ export default function DashboardProjectWorkspace() {
 
   const agreementView = useMemo(() => getAgreementViewState(proposal), [proposal]);
 
-  const guidance = useMemo(() => {
-    if (!order) return '';
-    if (!isCreatorWorkspace) {
-      return deliverable?.delivery_status === 'revision_needed'
-        ? 'The creator is revising delivery based on admin feedback.'
-        : order.order_status === 'completed' || deliverable?.delivery_status === 'approved'
-          ? 'Your delivery path is approved or complete — use the dashboard if you still need artifact links.'
-          : order.order_status === 'delivered'
-            ? 'Delivery is progressing — preview and live URLs appear once approved for buyer handoff.'
-            : ['assigned', 'in_progress', 'in_review'].includes(order.order_status)
-              ? 'Stay in touch via messages below — your creator is progressing on scope.'
-              : 'Track status here and message your creator whenever you need clarity.';
+  const nextAction = useMemo(() => {
+    if (!order || !workspaceRole) {
+      return { title: 'Loading project', detail: 'Please wait while workspace data loads.', tone: 'neutral' as const };
     }
-    if (deliverable?.delivery_status === 'revision_needed') {
-      return 'Update deliverable based on admin feedback.';
-    }
-    switch (order.order_status) {
-      case 'completed':
-        return 'Project delivery is approved.';
-      case 'delivered':
-        return deliverable?.delivery_status === 'approved'
-          ? 'Project delivery is approved.'
-          : 'Deliverable released — buyer handoff in progress.';
-      case 'in_review':
-        return 'Admin is reviewing your delivery.';
-      case 'in_progress':
-        return 'Submit preview when ready.';
-      case 'assigned':
-        return 'Review the brief and begin work.';
-      default:
-        return 'Follow your brief and checklist — contact MicroBuild if anything is unclear.';
-    }
-  }, [deliverable?.delivery_status, isCreatorWorkspace, order]);
+    return getWorkspaceNextAction({
+      role: workspaceRole,
+      order,
+      proposal,
+      deliverable,
+    });
+  }, [order, workspaceRole, proposal, deliverable]);
+
+  const messagesHref =
+    order?.request_id?.trim() && order?.creator_id?.trim()
+      ? buildMessagesHref({
+          buyerRequestId: order.request_id.trim(),
+          orderId: order.id,
+          creatorProfileId: order.creator_id.trim(),
+        })
+      : null;
+
+  const creatorDisplayLabel = isCreatorWorkspace
+    ? creatorSelf?.display_name ?? creatorSelf?.full_name ?? 'You'
+    : creatorAssignee?.display_name ?? creatorAssignee?.full_name ?? 'Assigned creator';
+
+  const proposedPrice = moneyDisplay(proposal?.proposed_price ?? null);
+
+  const buyerCanSeeDeliveryLinks =
+    order &&
+    (order.order_status === 'delivered' || order.order_status === 'completed') &&
+    deliverable?.delivery_status === 'approved';
 
   const activityItems = order
     ? buildWorkspaceActivityItems({
@@ -416,333 +442,527 @@ export default function DashboardProjectWorkspace() {
         </div>
       ) : order ? (
         <>
-          <header className="dpw-header dpw-header--v2">
+          <header className="dpw-header">
             <div className="dpw-header-main">
-              <h1 className="dpw-title">{order.project_title ?? `Project ${order.id.slice(0, 8)}…`}</h1>
+              <div className="dpw-header-top">
+                <Link to="/dashboard" className="dpw-back">
+                  ← Back to dashboard
+                </Link>
+              </div>
+              <h1 className="dpw-title">{order.project_title ?? `Project ${order.id.slice(0, 8)}`}</h1>
               <p className="dpw-sub">
-                {buyer?.business_name ?? 'Unknown request'} · MicroBuild type: {order.project_type ?? '—'}
+                {order.project_type ?? 'MicroBuild'} · {buyer?.business_name ?? 'Buyer'}
               </p>
+              <div className="dpw-header-meta">
+                <span>
+                  Buyer: <strong>{buyer?.business_name ?? 'Unknown business'}</strong>
+                </span>
+                <span>
+                  Creator: <strong>{creatorDisplayLabel}</strong>
+                </span>
+              </div>
             </div>
-            <div className="dpw-header-badges">
-              <span
-                className="dpw-status-badge"
-                style={{
-                  color: statusColor,
-                  borderColor: `${statusColor}44`,
-                  background: `${statusColor}11`,
-                }}
-              >
-                {ORDER_STATUS_LABELS[order.order_status] ?? order.order_status}
-              </span>
-              <span className="dpw-deliverable-badge">
-                Deliverable:{' '}
-                {deliverable
-                  ? DELIVERY_STATUS_LABELS[deliverable.delivery_status] ?? deliverable.delivery_status
-                  : 'none yet'}
-              </span>
+            <div className="dpw-header-actions">
+              <div className="dpw-header-badges">
+                <span
+                  className="dpw-status-badge"
+                  style={{
+                    color: statusColor,
+                    borderColor: `${statusColor}44`,
+                    background: `${statusColor}11`,
+                  }}
+                >
+                  {ORDER_STATUS_LABELS[order.order_status] ?? order.order_status}
+                </span>
+                <span
+                  className={`dpw-badge dpw-badge--agreement${
+                    agreementView.phase === 'confirmed'
+                      ? '-confirmed'
+                      : agreementView.phase === 'changes_requested'
+                        ? '-warn'
+                        : ''
+                  }`}
+                >
+                  {agreementStatusBadgeLabel(proposal)}
+                </span>
+                <span className="dpw-badge dpw-badge--muted">
+                  Deliverable: {deliverableBadgeLabel(order, deliverable)}
+                </span>
+              </div>
+              <div className="dpw-header-btn-row">
+                {messagesHref ?
+                  (
+                    <Link className="btn btn-primary btn-sm" to={messagesHref}>
+                      Message {isCreatorWorkspace ? 'buyer' : 'creator'}
+                    </Link>
+                  )
+                : null}
+                {isCreatorWorkspace && (order.order_status === 'assigned' || order.order_status === 'in_progress') ?
+                  (
+                    <a className="btn btn-ghost btn-sm" href="#deliverables">
+                      Submit delivery
+                    </a>
+                  )
+                : null}
+                {!isCreatorWorkspace && buyerCanSeeDeliveryLinks ?
+                  (
+                    <a className="btn btn-ghost btn-sm" href="#deliverables">
+                      View delivery
+                    </a>
+                  )
+                : null}
+              </div>
             </div>
           </header>
 
-          <section className="dpw-guidance" aria-live="polite">
-            <strong>Status guidance:</strong> {guidance}
-          </section>
+          <WorkspaceStatusTrack
+            order={order}
+            buyerRequestCreatedAt={buyer?.created_at}
+            proposal={proposal}
+            deliverable={deliverable}
+          />
 
-          <section className="dpw-card dpw-meta-card">
-            <h2 className="dpw-card-title">Project overview</h2>
-            <dl className="dpw-meta-grid">
-              <dt>Buyer / business</dt>
-              <dd>{buyer?.business_name ?? 'Unknown request'}</dd>
-              <dt>Goal snapshot</dt>
-              <dd>{buyer?.main_goal?.trim() ? buyer.main_goal : '—'}</dd>
-              <dt>Industry</dt>
-              <dd>{buyer?.industry?.trim() ? buyer.industry : '—'}</dd>
-              <dt>{isCreatorWorkspace ? 'Your assignment' : 'Assigned creator'}</dt>
-              <dd>
-                {isCreatorWorkspace ?
-                  creatorSelf ? `${creatorSelf.display_name ?? creatorSelf.full_name} · Tier ${creatorSelf.tier}` : '—'
-                : creatorAssignee ?
-                  `${creatorAssignee.display_name ?? creatorAssignee.full_name}`
-                : '—'}
-              </dd>
-              <dt>Project agreement</dt>
-              <dd className="dpw-muted">
-                {agreementView.phase === 'confirmed'
-                  ? 'Agreement confirmed — ready to build. Payment is not active yet.'
-                  : agreementView.phase === 'none'
-                    ? 'No agreement drafted yet — generate on the Project Agreement panel below.'
-                    : 'Agreement in progress — both parties should confirm scope. No payment yet.'}
-              </dd>
-              <dt>Deadline</dt>
-              <dd>{buyer?.deadline?.trim() ? buyer.deadline : '—'}</dd>
-              <dt>Request submitted</dt>
-              <dd>{buyer?.created_at ? fmtDate(buyer.created_at) : '—'}</dd>
-            </dl>
-          </section>
-
-                    {workspaceRole && userProfile ?
-            (
-              <ProjectAgreementPanel
-                role={workspaceRole}
-                order={order}
-                buyerRequest={proposalBuyerRequest}
-                proposal={proposal}
-                userProfile={userProfile}
-                creatorProfileId={order.creator_id ?? null}
-                creatorDisplayName={
-                  isCreatorWorkspace
-                    ? creatorSelf?.display_name ?? creatorSelf?.full_name ?? 'You'
-                    : creatorAssignee?.display_name ?? creatorAssignee?.full_name ?? 'Assigned creator'
-                }
-                buyerBusinessName={buyer?.business_name ?? 'Buyer'}
-                onProposalUpdated={setProposal}
-              />
-            )
-          : null}
-<section className="dpw-card dpw-card--activity">
-            <h2 className="dpw-card-title">Activity</h2>
-            <p className="dpw-muted dpw-activity-intro">
-              Known milestones from timestamps already stored in MicroBuild. Steps without dates are shown without guessing times.
-            </p>
-            <ul className="dpw-activity-list">
-              {activityItems.map((ev) => (
-                <li key={ev.id}>
-                  <span className="dpw-activity-title">{ev.title}</span>
-                  {ev.atIso ? (
-                    <span className="dpw-activity-date">{fmtDate(ev.atIso)}</span>
-                  ) : (
-                    <span className="dpw-activity-date dpw-activity-date--na">—</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <WorkspaceTimeline status={order.order_status} />
-
-          {revisionHint ?
-            (
-              <section className="dpw-card dpw-card--warn">
-                <h2 className="dpw-card-title">
-                  {isCreatorWorkspace ? 'Revision requested — action required' : 'Revision in progress'}
-                </h2>
-                <p className="dpw-revision-note">{revisionHint}</p>
-                {!isCreatorWorkspace ?
-                  <p className="dpw-muted">
-                    Your creator applies admin feedback — you will see refreshed links once approved.
-                  </p>
-                : null}
+          <div className="dpw-layout">
+            <div className="dpw-col dpw-col--main">
+              <section className="dpw-card dpw-meta-card">
+                <h2 className="dpw-card-title">Project overview</h2>
+                <dl className="dpw-meta-grid">
+                  <dt>Buyer / business</dt>
+                  <dd>{buyer?.business_name ?? 'Unknown business'}</dd>
+                  <dt>Goal</dt>
+                  <dd>{buyer?.main_goal?.trim() ? buyer.main_goal : 'Not specified'}</dd>
+                  <dt>Industry</dt>
+                  <dd>{buyer?.industry?.trim() ? buyer.industry : 'Not specified'}</dd>
+                  <dt>MicroBuild type</dt>
+                  <dd>{order.project_type ?? buyer?.build_type ?? 'MicroBuild'}</dd>
+                  <dt>Deadline</dt>
+                  <dd>{buyer?.deadline?.trim() ? buyer.deadline : 'Not set'}</dd>
+                  <dt>Budget / price</dt>
+                  <dd>{proposedPrice ?? 'To be agreed in Messages'}</dd>
+                  <dt>{isCreatorWorkspace ? 'Your assignment' : 'Assigned creator'}</dt>
+                  <dd>
+                    {isCreatorWorkspace ?
+                      creatorSelf
+                        ? `${creatorSelf.display_name ?? creatorSelf.full_name} · Tier ${creatorSelf.tier}`
+                      : 'Assigned creator'
+                    : creatorDisplayLabel}
+                  </dd>
+                  <dt>Request submitted</dt>
+                  <dd>{fmtDateOrPlaceholder(buyer?.created_at, 'Date not recorded')}</dd>
+                </dl>
               </section>
-            )
-          : null}
 
-          {/* Build packet */}
-          <section className="dpw-card">
-            <div className="dpw-card-head">
-              <h2 className="dpw-card-title">{isCreatorWorkspace ? 'Creator brief' : 'Build brief / scope context'}</h2>
-              {isCreatorWorkspace ?
+              {workspaceRole && userProfile ?
                 (
-                  <div className="dpw-copy-row">
-                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(briefCopy)}>
-                      Copy Creator Brief
-                    </button>
-                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(checklistCopy)}>
-                      Copy Build Checklist
-                    </button>
-                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(packetLaunchCopy)}>
-                      Copy Packet Launch List
-                    </button>
-                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(buyerUpdateCopy)}>
-                      Copy Buyer Update
-                    </button>
-                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(revisionTemplate)}>
-                      Copy Revision Request
-                    </button>
-                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(completionCopy)}>
-                      Copy Completion Message
-                    </button>
-                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(feedbackCopy)}>
-                      Copy Creator Feedback
-                    </button>
-                    <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(deliverySummaryCopy)}>
-                      Copy Delivery Summary
-                    </button>
-                  </div>
+                  <ProjectAgreementPanel
+                    role={workspaceRole}
+                    order={order}
+                    buyerRequest={proposalBuyerRequest}
+                    proposal={proposal}
+                    userProfile={userProfile}
+                    creatorProfileId={order.creator_id ?? null}
+                    creatorDisplayName={creatorDisplayLabel}
+                    buyerBusinessName={buyer?.business_name ?? 'Buyer'}
+                    onProposalUpdated={setProposal}
+                  />
                 )
-              : (
-                <p className="dpw-muted dpw-card-head-muted">
-                  Read-only overview — clipboard shortcuts appear when you open this project as the assigned creator.
-                </p>
-              )}
-            </div>
+              : null}
 
-            {!packet ? (
-              <p className="dpw-muted">
-                No build packet found yet. Ask MicroBuild admin to save a build packet from the buyer request workflow.
-              </p>
-            ) : (
-              <>
-                {packet.ai_summary && (
-                  <div className="dpw-block">
-                    <div className="dpw-label">Summary</div>
-                    <p>{packet.ai_summary}</p>
-                  </div>
-                )}
-                <div className="dpw-block">
-                  <div className="dpw-label">Business summary</div>
-                  <p>{packet.business_summary || '—'}</p>
-                </div>
-                <div className="dpw-block">
-                  <div className="dpw-label">Customer problem</div>
-                  <p>{packet.customer_problem || '—'}</p>
-                </div>
-                <div className="dpw-block">
-                  <div className="dpw-label">Recommended MicroBuild</div>
-                  <p>{packet.recommended_build || '—'}</p>
-                </div>
-                <div className="dpw-block">
-                  <div className="dpw-label">Creator instructions</div>
-                  <p>{packet.creator_instructions || '—'}</p>
-                </div>
-                <div className="dpw-block">
-                  <div className="dpw-label">Design direction</div>
-                  <p>{packet.design_direction?.trim() ? packet.design_direction : '—'}</p>
-                </div>
-                <div className="dpw-block">
-                  <div className="dpw-label">Suggested CTA</div>
-                  <p>
-                    {packet.suggested_copy &&
-                    typeof packet.suggested_copy === 'object' &&
-                    'cta' in packet.suggested_copy
-                      ? String((packet.suggested_copy as { cta?: unknown }).cta ?? '—')
-                      : '—'}
-                  </p>
-                </div>
-                <div className="dpw-block">
-                  <div className="dpw-label">Suggested form fields</div>
-                  <FormFieldsList form_fields={packet.form_fields} />
-                </div>
-                <div className="dpw-block">
-                  <div className="dpw-label">Automation opportunities</div>
-                  <p>{packet.automation_needs?.trim() ? packet.automation_needs : '—'}</p>
-                </div>
-              </>
-            )}
-          </section>
-
-          {isCreatorWorkspace ?
-            (
-              <section className="dpw-card dpw-card--checklist">
-                <h2 className="dpw-card-title">Build checklist</h2>
-                <p className="dpw-muted">
-                  Operational steps — rules-based checklist for every MicroBuild (no AI). Tick mentally as you go.
-                </p>
-                <ul className="dpw-checklist">
-                  {OPERATIONAL_BUILD_CHECKLIST_ITEMS.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </section>
-            )
-          : null}
-
-          {userProfile?.id ?
-            (
-              <section className="dpw-card dpw-card--msgs">
-                <h2 className="dpw-card-title">Project chat</h2>
-                <p className="dpw-muted">
-                  Messaging now lives in the central <strong>Messages</strong> inbox — order-scoped when a project exists, merging
-                  request-phase replies from the marketplace. Text-only · refresh-based · participant-safe filtering (admin-only rows
-                  never appear).
-                </p>
-                {order.request_id?.trim() && order.creator_id?.trim() ?
+              <section className="dpw-card dpw-card--submit" id="deliverables">
+                <h2 className="dpw-card-title">Deliverables</h2>
+                {!deliverable && !isCreatorWorkspace ?
                   (
-                    <Link
-                      className="btn btn-primary btn-sm dpw-open-chat"
-                      to={buildMessagesHref({
-                        buyerRequestId: order.request_id!.trim(),
-                        orderId: order.id,
-                        creatorProfileId: order.creator_id.trim(),
-                      })}
-                    >
-                      Open project chat →
-                    </Link>
+                    <div className="dpw-empty-state">
+                      <p>No deliverable submitted yet.</p>
+                      <p className="dpw-muted">Waiting for creator delivery.</p>
+                    </div>
+                  )
+                : !deliverable && isCreatorWorkspace ?
+                  (
+                    <>
+                      <div className="dpw-empty-state">
+                        <p>No deliverable submitted yet.</p>
+                        <p className="dpw-muted">Submit preview and delivery URLs when your build is ready.</p>
+                      </div>
+                      <div className="dpw-form-grid" style={{ marginTop: '1rem' }}>
+                        <label className="dpw-field">
+                          <span>Preview URL</span>
+                          <input
+                            type="url"
+                            value={previewUrl}
+                            onChange={(e) => setPreviewUrl(e.target.value)}
+                            placeholder="https://…"
+                            autoComplete="off"
+                          />
+                        </label>
+                        <label className="dpw-field">
+                          <span>Delivery URL</span>
+                          <input
+                            type="url"
+                            value={deliveryUrl}
+                            onChange={(e) => setDeliveryUrl(e.target.value)}
+                            placeholder="https://…"
+                            autoComplete="off"
+                          />
+                        </label>
+                        <label className="dpw-field">
+                          <span>GitHub URL (optional)</span>
+                          <input
+                            type="url"
+                            value={githubUrl}
+                            onChange={(e) => setGithubUrl(e.target.value)}
+                            placeholder="https://github.com/…"
+                            autoComplete="off"
+                          />
+                        </label>
+                        <label className="dpw-field dpw-field--full">
+                          <span>Notes to MicroBuild / buyer-facing context</span>
+                          <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            rows={4}
+                            placeholder="What changed, test credentials, etc."
+                          />
+                        </label>
+                      </div>
+                      <div className="dpw-submit-row">
+                        <button type="button" className="btn btn-primary" disabled={submitting} onClick={handleSubmit}>
+                          {submitting ? 'Saving…' : 'Submit preview / delivery'}
+                        </button>
+                        {submitMsg === 'ok' && <span className="dpw-feedback dpw-feedback--ok">Saved — submitted for review.</span>}
+                        {submitMsg === 'err' && (
+                          <span className="dpw-feedback dpw-feedback--err">Save failed — check the browser console.</span>
+                        )}
+                      </div>
+                    </>
                   )
                 : (
-                  <p className="dpw-muted">Chat requires a buyer request linkage and creator assignment.</p>
+                  <>
+                    <div className="dpw-deliverable-status-row">
+                      <span>
+                        Status:{' '}
+                        <strong>
+                          {deliverable
+                            ? DELIVERY_STATUS_LABELS[deliverable.delivery_status] ?? deliverable.delivery_status
+                            : 'Not submitted'}
+                        </strong>
+                      </span>
+                      {deliverable?.submitted_at ?
+                        <span className="dpw-muted">Submitted {fmtDate(deliverable.submitted_at)}</span>
+                      : null}
+                    </div>
+                    {revisionHint ?
+                      <div className="dpw-revision-note">{revisionHint}</div>
+                    : null}
+                    <div className="dpw-deliverable-grid">
+                      <div className="dpw-deliverable-field">
+                        <span>Preview URL</span>
+                        {isCreatorWorkspace || (buyerCanSeeDeliveryLinks && deliverable?.preview_url?.trim()) ?
+                          deliverable?.preview_url?.trim() ?
+                            (
+                              <a href={deliverable.preview_url} target="_blank" rel="noopener noreferrer">
+                                {deliverable.preview_url}
+                              </a>
+                            )
+                          : <p className="dpw-muted">Not provided yet</p>
+                        : <p className="dpw-muted">Available after internal approval</p>}
+                      </div>
+                      <div className="dpw-deliverable-field">
+                        <span>Delivery URL</span>
+                        {isCreatorWorkspace || (buyerCanSeeDeliveryLinks && deliverable?.live_url?.trim()) ?
+                          deliverable?.live_url?.trim() ?
+                            (
+                              <a href={deliverable.live_url} target="_blank" rel="noopener noreferrer">
+                                {deliverable.live_url}
+                              </a>
+                            )
+                          : <p className="dpw-muted">Not provided yet</p>
+                        : <p className="dpw-muted">Available after internal approval</p>}
+                      </div>
+                    </div>
+                    {isCreatorWorkspace ?
+                      (
+                        <>
+                          <div className="dpw-form-grid" style={{ marginTop: '0.75rem' }}>
+                            <label className="dpw-field">
+                              <span>Preview URL</span>
+                              <input
+                                type="url"
+                                value={previewUrl}
+                                onChange={(e) => setPreviewUrl(e.target.value)}
+                                placeholder="https://…"
+                                autoComplete="off"
+                              />
+                            </label>
+                            <label className="dpw-field">
+                              <span>Delivery URL</span>
+                              <input
+                                type="url"
+                                value={deliveryUrl}
+                                onChange={(e) => setDeliveryUrl(e.target.value)}
+                                placeholder="https://…"
+                                autoComplete="off"
+                              />
+                            </label>
+                            <label className="dpw-field">
+                              <span>GitHub URL (optional)</span>
+                              <input
+                                type="url"
+                                value={githubUrl}
+                                onChange={(e) => setGithubUrl(e.target.value)}
+                                placeholder="https://github.com/…"
+                                autoComplete="off"
+                              />
+                            </label>
+                            <label className="dpw-field dpw-field--full">
+                              <span>Notes to MicroBuild / buyer-facing context</span>
+                              <textarea
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                rows={4}
+                                placeholder="What changed, test credentials, etc."
+                              />
+                            </label>
+                          </div>
+                          <div className="dpw-submit-row">
+                            <button type="button" className="btn btn-primary" disabled={submitting} onClick={handleSubmit}>
+                              {submitting ? 'Saving…' : 'Update deliverable'}
+                            </button>
+                            {submitMsg === 'ok' && (
+                              <span className="dpw-feedback dpw-feedback--ok">Saved — submitted for review.</span>
+                            )}
+                            {submitMsg === 'err' && (
+                              <span className="dpw-feedback dpw-feedback--err">Save failed — check the browser console.</span>
+                            )}
+                          </div>
+                        </>
+                      )
+                    : deliverable?.delivery_status === 'approved' && buyerCanSeeDeliveryLinks ?
+                      (
+                        <p className="dpw-muted">
+                          Review your delivery links above. Message your creator if you need adjustments.
+                        </p>
+                      )
+                    : (
+                      <p className="dpw-muted">Waiting for creator delivery or internal review.</p>
+                    )}
+                  </>
                 )}
               </section>
-            )
-          : null}
+            </div>
 
-          {isCreatorWorkspace ?
-            (
-              <section className="dpw-card dpw-card--submit">
-            <h2 className="dpw-card-title">Deliverable submission</h2>
-            <div className="dpw-submit-status">
-              <span>
-                Current status:{' '}
-                <strong>
-                  {deliverable
-                    ? DELIVERY_STATUS_LABELS[deliverable.delivery_status] ?? deliverable.delivery_status
-                    : 'none — first save creates your row'}
-                </strong>
-              </span>
-              {deliverable?.submitted_at ? (
-                <span className="dpw-muted">Last submission stamp: {fmtDate(deliverable.submitted_at)}</span>
-              ) : null}
-            </div>
-            <p className="dpw-muted">
-              Submit or update URLs anytime. Saving marks the deliverable as <strong>Submitted</strong> and moves the project to{' '}
-              <strong>In Review</strong> when it was Assigned or In Progress.
-            </p>
-            <div className="dpw-form-grid">
-              <label className="dpw-field">
-                <span>Preview URL</span>
-                <input
-                  type="url"
-                  value={previewUrl}
-                  onChange={(e) => setPreviewUrl(e.target.value)}
-                  placeholder="https://…"
-                  autoComplete="off"
-                />
-              </label>
-              <label className="dpw-field">
-                <span>Delivery URL</span>
-                <input
-                  type="url"
-                  value={deliveryUrl}
-                  onChange={(e) => setDeliveryUrl(e.target.value)}
-                  placeholder="https://…"
-                  autoComplete="off"
-                />
-              </label>
-              <label className="dpw-field">
-                <span>GitHub URL (optional)</span>
-                <input
-                  type="url"
-                  value={githubUrl}
-                  onChange={(e) => setGithubUrl(e.target.value)}
-                  placeholder="https://github.com/…"
-                  autoComplete="off"
-                />
-              </label>
-              <label className="dpw-field dpw-field--full">
-                <span>Notes to MicroBuild / buyer-facing context</span>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="What changed, test credentials, etc." />
-              </label>
-            </div>
-            <div className="dpw-submit-row">
-              <button type="button" className="btn btn-primary" disabled={submitting} onClick={handleSubmit}>
-                {submitting ? 'Saving…' : 'Submit deliverable'}
-              </button>
-              {submitMsg === 'ok' && <span className="dpw-feedback dpw-feedback--ok">Saved — submitted for review.</span>}
-              {submitMsg === 'err' && (
-                <span className="dpw-feedback dpw-feedback--err">Save failed — check the browser console.</span>
-              )}
-            </div>
+            <div className="dpw-col dpw-col--sidebar">
+              <section
+                className={`dpw-card dpw-card--next${
+                  nextAction.tone === 'warn'
+                    ? '-warn'
+                    : nextAction.tone === 'success'
+                      ? '-success'
+                      : ''
+                }`}
+              >
+                <h2 className="dpw-card-title">Next best action</h2>
+                <p className="dpw-next-title">{nextAction.title}</p>
+                <p className="dpw-next-detail">{nextAction.detail}</p>
               </section>
-            )
-          : null}
+
+              {userProfile?.id ?
+                (
+                  <section className="dpw-card dpw-card--msgs">
+                    <h2 className="dpw-card-title">Messages</h2>
+                    <div className="dpw-msg-shortcut">
+                      <p className="dpw-muted">
+                        Project chat lives in the central Messages inbox — order-scoped after creator selection.
+                      </p>
+                      {messagesHref ?
+                        (
+                          <Link className="btn btn-primary btn-sm dpw-open-chat" to={messagesHref}>
+                            Open project chat →
+                          </Link>
+                        )
+                      : (
+                        <p className="dpw-muted">Chat requires a buyer request linkage and creator assignment.</p>
+                      )}
+                    </div>
+                  </section>
+                )
+              : null}
+
+              <section className="dpw-card dpw-card--activity">
+                <h2 className="dpw-card-title">Activity</h2>
+                <p className="dpw-muted dpw-activity-intro">Recent milestones from stored project timestamps.</p>
+                <ul className="dpw-activity-list">
+                  {activityItems.map((ev) => {
+                    const dateLabel = fmtDate(ev.atIso);
+                    return (
+                      <li key={ev.id}>
+                        <span className="dpw-activity-dot" aria-hidden />
+                        <div className="dpw-activity-body">
+                          <span className="dpw-activity-title">{ev.title}</span>
+                          {dateLabel ?
+                            (
+                              <>
+                                <span className="dpw-activity-sep">—</span>
+                                <span className="dpw-activity-date">{dateLabel}</span>
+                              </>
+                            )
+                          : (
+                            <span className="dpw-activity-pending">pending date</span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+
+              {isCreatorWorkspace ?
+                (
+                  <section className="dpw-card dpw-card--checklist">
+                    <h2 className="dpw-card-title">Build checklist</h2>
+                    <p className="dpw-muted dpw-card-subtitle">Operational steps for every MicroBuild project.</p>
+                    <div className="dpw-checklist-groups">
+                      {BUILD_CHECKLIST_GROUPS.map((group) => (
+                        <div key={group.title}>
+                          <h3 className="dpw-checklist-group-title">{group.title}</h3>
+                          <ul className="dpw-checklist">
+                            {group.items.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )
+              : null}
+            </div>
+          </div>
+
+          <section className="dpw-card dpw-full-width">
+            <div className="dpw-card-head">
+              <div>
+                <h2 className="dpw-card-title">{isCreatorWorkspace ? 'Creator brief' : 'Build brief'}</h2>
+                <p className="dpw-muted dpw-card-subtitle">
+                  {isCreatorWorkspace ? 'Your working brief for this build.' : 'Read-only scope context from the buyer request.'}
+                </p>
+              </div>
+              {isCreatorWorkspace ?
+                (
+                  <div>
+                    <div className="dpw-copy-group">
+                      <div className="dpw-copy-group-label">Brief &amp; updates</div>
+                      <div className="dpw-copy-row">
+                        <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(briefCopy)}>
+                          Copy Creator Brief
+                        </button>
+                        <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(buyerUpdateCopy)}>
+                          Copy Buyer Update
+                        </button>
+                        <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(completionCopy)}>
+                          Copy Completion Message
+                        </button>
+                      </div>
+                    </div>
+                    <div className="dpw-copy-group">
+                      <div className="dpw-copy-group-label">Build &amp; delivery</div>
+                      <div className="dpw-copy-row">
+                        <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(checklistCopy)}>
+                          Copy Build Checklist
+                        </button>
+                        <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(packetLaunchCopy)}>
+                          Copy Launch List
+                        </button>
+                        <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(deliverySummaryCopy)}>
+                          Copy Delivery Summary
+                        </button>
+                        <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(revisionTemplate)}>
+                          Copy Revision Request
+                        </button>
+                        <button type="button" className="dpw-copy-btn" onClick={() => handleCopy(feedbackCopy)}>
+                          Copy Feedback Summary
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              : null}
+            </div>
+
+            {!packet ?
+              (
+                <div className="dpw-empty-state">
+                  <p>No build packet saved yet.</p>
+                  <p className="dpw-muted">Generate or save a build packet from the buyer request workflow.</p>
+                </div>
+              )
+            : (
+                <div className="dpw-brief-grid">
+                  {packet.ai_summary ?
+                    (
+                      <div className="dpw-brief-section dpw-brief-section--wide">
+                        <h3>Brief summary</h3>
+                        <p>{packet.ai_summary}</p>
+                      </div>
+                    )
+                  : null}
+                  <div className="dpw-brief-section">
+                    <h3>Buyer goal</h3>
+                    <p>{packet.customer_problem?.trim() || buyer?.main_goal?.trim() || 'Not specified'}</p>
+                  </div>
+                  <div className="dpw-brief-section">
+                    <h3>Business summary</h3>
+                    <p>{packet.business_summary?.trim() || 'Not specified'}</p>
+                  </div>
+                  <div className="dpw-brief-section">
+                    <h3>Recommended MicroBuild</h3>
+                    <p>{packet.recommended_build?.trim() || 'Not specified'}</p>
+                  </div>
+                  <div className="dpw-brief-section">
+                    <h3>Tone / design direction</h3>
+                    <p>{packet.design_direction?.trim() || 'Not specified'}</p>
+                  </div>
+                  <div className="dpw-brief-section">
+                    <h3>Creator instructions</h3>
+                    <p>{packet.creator_instructions?.trim() || 'Not specified'}</p>
+                  </div>
+                  <div className="dpw-brief-section">
+                    <h3>Suggested CTA</h3>
+                    <p>
+                      {packet.suggested_copy &&
+                      typeof packet.suggested_copy === 'object' &&
+                      'cta' in packet.suggested_copy
+                        ? String((packet.suggested_copy as { cta?: unknown }).cta ?? 'Not specified')
+                        : 'Not specified'}
+                    </p>
+                  </div>
+                  <div className="dpw-brief-section">
+                    <h3>Required form fields</h3>
+                    <FormFieldsList form_fields={packet.form_fields} />
+                  </div>
+                  {packet.automation_needs?.trim() ?
+                    (
+                      <div className="dpw-brief-section">
+                        <h3>Automation / integrations</h3>
+                        <p>{packet.automation_needs}</p>
+                      </div>
+                    )
+                  : null}
+                  {(packet.suggested_page_sections as string[] | null)?.length ?
+                    (
+                      <div className="dpw-brief-section dpw-brief-section--wide">
+                        <h3>Required sections / features</h3>
+                        <ul className="dpw-bullet-list">
+                          {(packet.suggested_page_sections as string[]).map((s) => (
+                            <li key={s}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )
+                  : null}
+                </div>
+              )}
+          </section>
         </>
       ) : (
         <div className="dpw-access-denied">

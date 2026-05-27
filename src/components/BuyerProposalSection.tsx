@@ -135,9 +135,9 @@ export default function BuyerProposalSection({
   return (
     <section className="buyer-section mb-buyer-proposals" id="buyer-proposals-pricing">
       <div className="buyer-section-header">
-        <h3 className="buyer-section-title">Project agreements (legacy list)</h3>
+        <h3 className="buyer-section-title">Project agreements</h3>
         <span className="subtle buyer-muted-hint">
-          Confirm scope on your <strong>project workspace</strong> — payments are not active yet.
+          Confirm scope on your <strong>project workspace</strong> — price is indicative only; payment comes later.
         </span>
       </div>
       {toast ? <div className="mb-form-alert mb-form-alert--muted">{toast}</div> : null}
@@ -165,7 +165,7 @@ export default function BuyerProposalSection({
                 <h4>{p.proposal_title?.trim() || 'Proposal'}</h4>
                 <span className="mb-buyer-proposal-pills">
                   <span className="mb-badge">{displayProposalLifecycle(p.proposal_status)}</span>
-                  <span className="mb-badge">Buyer: {displayBuyerApproval(p.buyer_approval_status)}</span>
+                  <span className="mb-badge">Buyer confirmation: {displayBuyerApproval(p.buyer_approval_status)}</span>
                   {orderHref ?
                     (
                       <Link className="btn btn-primary btn-sm" to={orderHref}>
@@ -223,8 +223,8 @@ export default function BuyerProposalSection({
                 )
               : null}
               <p className="mb-buyer-proposal-payment-note">
-                Payments are not active yet. This approval only confirms project scope for MVP testing. Checkout and
-                protected handoff come in a later phase.
+                Payment is not active yet. Agreement confirmation locks scope for MVP testing. Checkout and protected
+                handoff come in a later phase.
               </p>
               {orderHref ?
                 <p className="subtle">
