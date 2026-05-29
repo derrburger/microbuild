@@ -833,6 +833,97 @@ export async function publishCreatorWorkflowAfterAIApproval(params: {
   return { ok: true, error: null };
 }
 
+/** Creator hides a published workflow from buyer Browse (keeps row for re-publish). */
+export async function hideCreatorWorkflow(params: {
+  workflowId: string;
+  creatorProfileId: string;
+}): Promise<{ ok: boolean; error: string | null }> {
+  const row = await fetchPublishedWorkflowForCreator(params.workflowId, params.creatorProfileId);
+  if (!row) return { ok: false, error: 'Workflow not found.' };
+  if (normalizeText(row.workflow_status) !== 'published') {
+    return { ok: false, error: 'Only published workflows can be hidden.' };
+  }
+
+  const { error } = await supabase
+    .from('published_workflows')
+    .update({
+      workflow_status: 'hidden',
+      visibility_status: 'hidden',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.workflowId)
+    .eq('creator_profile_id', params.creatorProfileId);
+
+  if (error) {
+    console.error('[marketplace] hideCreatorWorkflow:', error);
+    return { ok: false, error: error.message || 'Could not hide workflow.' };
+  }
+  return { ok: true, error: null };
+}
+
+/** Creator archives a workflow (hidden from Browse and creator active list emphasis). */
+export async function archiveCreatorWorkflow(params: {
+  workflowId: string;
+  creatorProfileId: string;
+}): Promise<{ ok: boolean; error: string | null }> {
+  const row = await fetchPublishedWorkflowForCreator(params.workflowId, params.creatorProfileId);
+  if (!row) return { ok: false, error: 'Workflow not found.' };
+
+  const { error } = await supabase
+    .from('published_workflows')
+    .update({
+      workflow_status: 'archived',
+      visibility_status: 'hidden',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.workflowId)
+    .eq('creator_profile_id', params.creatorProfileId);
+
+  if (error) {
+    console.error('[marketplace] archiveCreatorWorkflow:', error);
+    return { ok: false, error: error.message || 'Could not archive workflow.' };
+  }
+  return { ok: true, error: null };
+}
+
+export type WorkflowBuyerRequestRow = {
+  id: string;
+  business_name: string | null;
+  build_type: string | null;
+  status: string | null;
+  application_status: string | null;
+  created_at: string | null;
+};
+
+/** Buyer requests spawned from a published workflow (source_workflow_id). */
+export async function fetchBuyerRequestsForWorkflow(
+  workflowId: string,
+): Promise<WorkflowBuyerRequestRow[]> {
+  const id = normalizeText(workflowId);
+  if (!id) return [];
+
+  const { data, error } = await supabase
+    .from('buyer_requests')
+    .select('id, business_name, build_type, status, application_status, created_at')
+    .eq('source_workflow_id', id)
+    .order('created_at', { ascending: false })
+    .limit(12);
+
+  if (error) {
+    console.error('[marketplace] fetchBuyerRequestsForWorkflow:', error);
+    return [];
+  }
+
+  return ((data ?? []) as WorkflowBuyerRequestRow[]).map((r) => ({
+    id: normalizeText(r.id),
+    business_name: r.business_name ?? null,
+    build_type: r.build_type ?? null,
+    status: r.status ?? null,
+    application_status: r.application_status ?? null,
+    created_at: r.created_at ?? null,
+  }));
+}
+
 // ─── Rules-based “AI” summaries ────────────────────────────────────────────────
 
 /** One short sentence for applicant cards before stored summary exists */

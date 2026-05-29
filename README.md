@@ -2,7 +2,19 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Marketplace **Central Messaging Polish v2** — two-panel `/messages` inbox with search/filter chips, request/project context cards, rules-based conversation helper, improved thread/composer UX, and deep-link fixes from workspace/applicant/application cards. Prior: **Core Flow QA + Polish v1** — end-to-end buyer request → creator apply → buyer select → project workspace → deliverables → central messages, with role-based app shell (`src/lib/appNav.ts`), plain-English statuses (`src/lib/statusLabels.ts`), inbox deep-link fixes, and empty-state CTAs. Proposal/payment/agreement UI remains **deferred** (no Stripe). **TEMP DEV RLS remains unsafe** until production policies ship.
+**Status:** Marketplace **Creator Workflows v2** — professional `/dashboard/workflows` management dashboard with stats, filters, search/sort, scannable cards, sectioned editor, plain-English AI review panel, buyer preview, and workflow request tracking via `buyer_requests.source_workflow_id`. Prior: **Central Messaging Polish v2**. Proposal/payment remains **deferred** (no Stripe). **TEMP DEV RLS remains unsafe** until production policies ship.
+
+### Creator Workflows v2
+
+| Area | Behavior |
+|------|----------|
+| Route | **`/dashboard/workflows`** — list + **`/dashboard/workflows/:id/edit`** — sectioned editor |
+| Stats & filters | Total, published, needs improvement, drafts, buyer request counts; chips + search + sort |
+| Cards | Title, category, industry, status/visibility/AI badges, score, missing/risk counts, request count, role-safe actions (Edit, AI review, Preview, Publish, Hide, Archive) |
+| AI review | Rules-based panel (`workflowAI.ts`) — plain-English readiness, missing items, risks, suggested improvements, auto-publish eligibility |
+| Buyer preview | `WorkflowBuyerPreview` — mirrors buyer Browse card; Request button preview-only |
+| Request tracking | Counts + recent rows from **`buyer_requests.source_workflow_id`** — no new migration |
+| Browse compatibility | **`getPublishedWorkflowsForBuyers`** unchanged — published + public + safe AI + no risks |
 
 
 ### Proposal / pricing workflow (v1 — scope approval, no payments)

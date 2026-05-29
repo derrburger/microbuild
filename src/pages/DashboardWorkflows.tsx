@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
+  archiveCreatorWorkflow,
   getCreatorPublishedWorkflows,
+  hideCreatorWorkflow,
   insertCreatorWorkflowDraft,
   publishCreatorWorkflowAfterAIApproval,
   resolveCreatorProfileForMarketplace,
@@ -11,79 +13,86 @@ import {
   submitStoredWorkflowForAIReview,
 } from '../lib/marketplace';
 import { creatorEligibleForWorkflowAuthoring } from '../lib/marketplaceEligibility';
+import {
+  fmtWorkflowDate,
+  fmtWorkflowMoney,
+  formatWorkflowAiReviewLabel,
+  formatWorkflowReadinessPlain,
+  formatWorkflowStatusLabel,
+  formatWorkflowVisibilityLabel,
+  getWorkflowCardActions,
+  getWorkflowListFilter,
+  sortWorkflows,
+  workflowMatchesSearch,
+  type WorkflowListFilter,
+  type WorkflowSortKey,
+} from '../lib/workflowLabels';
+import WorkflowBuyerPreview from '../components/creator/WorkflowBuyerPreview';
 import DashboardNav from '../components/DashboardNav';
 import type { CreatorProfileRow, PublishedWorkflowRow, UserProfileRow } from '../types/database';
 import './Dashboard.css';
+import './DashboardWorkflows.css';
 
 function safeStr(v: unknown, fb = ''): string {
   return typeof v === 'string' ? v : fb;
 }
 
-function norm(s: unknown): string {
-  return safeStr(s).trim().toLowerCase();
+function excerpt(text: string, max: number): string {
+  const t = safeStr(text).trim();
+  if (!t.length) return '';
+  return t.length <= max ? t : `${t.slice(0, max).trim()}…`;
 }
 
-type WorkflowBucket = 'draft' | 'needs' | 'approved' | 'published' | 'archive';
+const FILTER_CHIPS: { id: WorkflowListFilter | 'all'; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'draft', label: 'Draft' },
+  { id: 'needs', label: 'Needs Improvement' },
+  { id: 'approved', label: 'AI Approved' },
+  { id: 'published', label: 'Published' },
+  { id: 'archive', label: 'Hidden / Archived' },
+];
 
-function workflowBucket(w: PublishedWorkflowRow): WorkflowBucket {
-  const ws = norm(w.workflow_status);
-  const vis = norm(w.visibility_status);
-  const ai = norm(w.ai_review_status ?? 'not_reviewed');
-
-  if (ws === 'archived' || ws === 'rejected') return 'archive';
-  if (ai === 'risk_flagged') return 'archive';
-  if (ws === 'hidden') return 'archive';
-  if (ws === 'published' && vis === 'public') return 'published';
-  if (ws === 'published' && vis !== 'public') return 'archive';
-  if (ai === 'ai_approved' || ws === 'submitted_for_review') return 'approved';
-  if (ai === 'needs_improvement') return 'needs';
-  return 'draft';
-}
-
-function fmtMoney(v: unknown): string {
-  if (v == null || v === '') return '—';
-  const n = Number(v);
-  return Number.isFinite(n) ? `$${n}` : '—';
-}
-
-function WorkflowDashCard({
+function WorkflowCard({
   row,
   creatorProfile,
-  customizationRequestCount,
+  creatorDisplayName,
+  requestCount,
   onDidMutate,
 }: {
   row: PublishedWorkflowRow;
   creatorProfile: CreatorProfileRow | null;
-  /** buyer_requests with source_workflow_id = this workflow (v1 dashboard telemetry) */
-  customizationRequestCount?: number;
+  creatorDisplayName: string;
+  requestCount: number;
   onDidMutate: () => void;
 }) {
-  const ws = safeStr(row.workflow_status, 'draft');
-  const vis = safeStr(row.visibility_status, 'hidden');
-  const aiSt = safeStr(row.ai_review_status ?? 'not_reviewed');
+  const actions = getWorkflowCardActions(row);
+  const bucket = getWorkflowListFilter(row);
+  const missing = Array.isArray(row.ai_missing_items) ? row.ai_missing_items.length : 0;
+  const risks = Array.isArray(row.ai_risk_flags) ? row.ai_risk_flags.length : 0;
   const score =
     typeof row.ai_quality_score === 'number' && Number.isFinite(row.ai_quality_score)
       ? row.ai_quality_score
-      : 0;
-  const readiness = safeStr(row.ai_publish_readiness ?? 'not_ready').replace(/_/g, ' ');
-  const summary = safeStr(row.ai_review_summary, 'No AI summary yet — save your draft and run review.');
-  const missing = Array.isArray(row.ai_missing_items) ? row.ai_missing_items : [];
-  const risks = Array.isArray(row.ai_risk_flags) ? row.ai_risk_flags : [];
-
-  const canPublish =
-    aiSt === 'ai_approved'
-    && ws !== 'published'
-    && risks.length === 0;
+      : null;
+  const readiness = formatWorkflowReadinessPlain(row.ai_publish_readiness, {
+    score: score ?? 0,
+    missingCount: missing,
+  });
 
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
-  async function run(action: 'ai' | 'submit' | 'publish') {
+  async function run(
+    action: 'ai' | 'submit' | 'publish' | 'hide' | 'archive',
+  ) {
     if (!creatorProfile?.id || busy) return;
+    if (action === 'hide' && !window.confirm('Hide this workflow from buyer Browse?')) return;
+    if (action === 'archive' && !window.confirm('Archive this workflow? It will stay hidden from buyers.')) return;
+
     setBusy(action);
     setNotice(null);
-    let okMsg: string | null = null;
     let errMsg: string | null = null;
+    let okMsg: string | null = null;
 
     if (action === 'ai') {
       const res = await runStoredWorkflowAIReviewOnly({
@@ -101,13 +110,27 @@ function WorkflowDashCard({
       });
       errMsg = res.ok ? null : (res.error ?? 'Submit failed.');
       okMsg = res.ok ? 'Submitted for AI review.' : null;
-    } else {
+    } else if (action === 'publish') {
       const res = await publishCreatorWorkflowAfterAIApproval({
         workflowId: row.id,
         creatorProfileId: creatorProfile.id,
       });
       errMsg = res.ok ? null : (res.error ?? 'Publish failed.');
-      okMsg = res.ok ? 'Published.' : null;
+      okMsg = res.ok ? 'Published — visible on buyer Browse when public.' : null;
+    } else if (action === 'hide') {
+      const res = await hideCreatorWorkflow({
+        workflowId: row.id,
+        creatorProfileId: creatorProfile.id,
+      });
+      errMsg = res.ok ? null : (res.error ?? 'Could not hide workflow.');
+      okMsg = res.ok ? 'Workflow hidden from buyers.' : null;
+    } else {
+      const res = await archiveCreatorWorkflow({
+        workflowId: row.id,
+        creatorProfileId: creatorProfile.id,
+      });
+      errMsg = res.ok ? null : (res.error ?? 'Could not archive workflow.');
+      okMsg = res.ok ? 'Workflow archived.' : null;
     }
 
     setBusy(null);
@@ -116,91 +139,97 @@ function WorkflowDashCard({
     onDidMutate();
   }
 
+  const desc = excerpt(safeStr(row.description), 140);
+  const visLabel = formatWorkflowVisibilityLabel(row.visibility_status);
+  const isPublic = bucket === 'published';
+
   return (
-    <article className="wf-dash-card">
-      <div className="wf-dash-card-head">
-        <h3 className="wf-dash-card-title">{safeStr(row.title, 'Untitled workflow')}</h3>
-        <div className="wf-dash-card-meta">
-          <span>{safeStr(row.category, '—')}</span>
-          <span>{safeStr(row.target_industry, '—')}</span>
-        </div>
+    <article className="wf-v2-card">
+      <div className="wf-v2-card-head">
+        <h3 className="wf-v2-card-title">{safeStr(row.title, 'Untitled workflow')}</h3>
+        <span className="wf-v2-card-date" title="Last updated">
+          {fmtWorkflowDate(row.updated_at)}
+        </span>
       </div>
-      <dl className="wf-dash-dl">
+
+      <div className="wf-v2-card-meta">
+        {row.category ? <span>{row.category}</span> : null}
+        {row.target_industry ? <span>{row.target_industry}</span> : null}
+      </div>
+
+      <div className="wf-v2-badges">
+        <span className="wf-v2-badge wf-v2-badge--status">{formatWorkflowStatusLabel(row.workflow_status)}</span>
+        <span className={`wf-v2-badge${isPublic ? ' wf-v2-badge--public' : ' wf-v2-badge--hidden'}`}>
+          {visLabel}
+        </span>
+        <span className="wf-v2-badge wf-v2-badge--ai">{formatWorkflowAiReviewLabel(row.ai_review_status)}</span>
+        {score != null ? <span className="wf-v2-badge wf-v2-badge--score">AI {score}/100</span> : null}
+        <span className="wf-v2-badge wf-v2-badge--warn">{readiness}</span>
+        {missing > 0 ? <span className="wf-v2-badge wf-v2-badge--warn">{missing} missing</span> : null}
+        {risks > 0 ? <span className="wf-v2-badge wf-v2-badge--risk">{risks} risks</span> : null}
+      </div>
+
+      {desc ? <p className="wf-v2-desc">{desc}</p> : null}
+
+      <dl className="wf-v2-metrics">
         <div>
-          <dt>Starting price</dt>
-          <dd>{fmtMoney(row.starting_price)}</dd>
+          <dt>Price</dt>
+          <dd>{fmtWorkflowMoney(row.starting_price)}</dd>
         </div>
         <div>
           <dt>Turnaround</dt>
-          <dd>{safeStr(row.estimated_turnaround, '—')}</dd>
+          <dd>{safeStr(row.estimated_turnaround) || '—'}</dd>
         </div>
         <div>
-          <dt>Workflow status</dt>
-          <dd>{ws}</dd>
-        </div>
-        <div>
-          <dt>Visibility</dt>
-          <dd>{vis}</dd>
-        </div>
-        <div>
-          <dt>AI score</dt>
-          <dd>{score}/100</dd>
-        </div>
-        <div>
-          <dt>AI readiness</dt>
-          <dd>{readiness}</dd>
-        </div>
-        <div>
-          <dt>Buyer customization requests</dt>
-          <dd>
-            {typeof customizationRequestCount === 'number' ?
-              customizationRequestCount
-            : '—'}
-          </dd>
+          <dt>Requests</dt>
+          <dd>{requestCount}</dd>
         </div>
       </dl>
-      <p className="wf-dash-summary subtle">{summary}</p>
-      {missing.length > 0 && (
-        <div className="wf-dash-list-block">
-          <strong>Missing</strong>
-          <ul className="wf-dash-ul">
-            {missing.slice(0, 6).map((m) => (
-              <li key={m}>{safeStr(m)}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {risks.length > 0 && (
-        <div className="wf-dash-list-block wf-dash-list-block--risk">
-          <strong>Risk flags</strong>
-          <ul className="wf-dash-ul">
-            {risks.map((r) => (
-              <li key={r}>{safeStr(r)}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <div className="wf-dash-actions">
-        <Link to={`/dashboard/workflows/${row.id}/edit`} className="btn btn-primary btn-sm">
-          Edit
-        </Link>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          disabled={busy !== null}
-          onClick={() => void run('ai')}
-        >
-          {busy === 'ai' ? 'Running…' : 'Run AI review'}
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          disabled={busy !== null}
-          onClick={() => void run('submit')}
-        >
-          {busy === 'submit' ? 'Submitting…' : 'Submit for AI review'}
-        </button>
-        {canPublish ?
+
+      <div className="wf-v2-actions">
+        {actions.edit ?
+          (
+            <Link to={`/dashboard/workflows/${row.id}/edit`} className="btn btn-primary btn-sm">
+              Edit
+            </Link>
+          )
+        : null}
+        {actions.runAi ?
+          (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={busy !== null}
+              onClick={() => void run('ai')}
+            >
+              {busy === 'ai' ? 'Running…' : 'Run AI Review'}
+            </button>
+          )
+        : null}
+        {actions.submitAi ?
+          (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={busy !== null}
+              onClick={() => void run('submit')}
+            >
+              {busy === 'submit' ? 'Submitting…' : 'Submit for AI Review'}
+            </button>
+          )
+        : null}
+        {actions.preview ?
+          (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setPreviewOpen((v) => !v)}
+            >
+              {previewOpen ? 'Hide preview' : 'Preview as Buyer'}
+            </button>
+          )
+        : null}
+        {actions.publish ?
           (
             <button
               type="button"
@@ -212,20 +241,47 @@ function WorkflowDashCard({
             </button>
           )
         : null}
+        {actions.hide ?
+          (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={busy !== null}
+              onClick={() => void run('hide')}
+            >
+              {busy === 'hide' ? 'Hiding…' : 'Hide'}
+            </button>
+          )
+        : null}
+        {actions.archive ?
+          (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={busy !== null}
+              onClick={() => void run('archive')}
+            >
+              {busy === 'archive' ? 'Archiving…' : 'Archive'}
+            </button>
+          )
+        : null}
       </div>
-      {notice ?
-        <p
-          className={`wf-dash-inline-msg${notice.kind === 'err' ? ' wf-dash-inline-msg--err' : ''}`}
-        >
-          {notice.text}
-        </p>
+
+      {previewOpen ?
+        (
+          <WorkflowBuyerPreview
+            workflow={row}
+            creatorDisplayName={creatorDisplayName}
+            previewMode
+          />
+        )
       : null}
-      {canPublish && (
-        <p className="wf-dash-hint subtle">
-          AI approved — open the editor to publish when you are ready (instant publish ran if your score cleared the
-          auto threshold).
-        </p>
-      )}
+
+      {notice ?
+        (
+          <p className={`wf-v2-notice wf-v2-notice--${notice.kind}`}>{notice.text}</p>
+        )
+      : null}
     </article>
   );
 }
@@ -237,8 +293,12 @@ export default function DashboardWorkflows() {
   const [rows, setRows] = useState<PublishedWorkflowRow[]>([]);
   const [workflowCustomizationCounts, setWorkflowCustomizationCounts] = useState<Record<string, number>>({});
   const [creatorProfile, setCreatorProfile] = useState<CreatorProfileRow | null>(null);
+  const [creatorDisplayName, setCreatorDisplayName] = useState('You');
   const [gateMsg, setGateMsg] = useState<string | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
+  const [filter, setFilter] = useState<WorkflowListFilter | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortKey, setSortKey] = useState<WorkflowSortKey>('updated');
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/signin', { replace: true });
@@ -265,6 +325,9 @@ export default function DashboardWorkflows() {
 
     const cp = await resolveCreatorProfileForMarketplace(authUid, prof);
     setCreatorProfile(cp);
+    setCreatorDisplayName(
+      safeStr(cp?.display_name) || safeStr(cp?.full_name) || 'You',
+    );
 
     const gate = creatorEligibleForWorkflowAuthoring(cp);
     setGateMsg(gate.ok ? null : gate.message);
@@ -309,34 +372,21 @@ export default function DashboardWorkflows() {
     };
   }, [user, authLoading, reload]);
 
-  const buckets = useMemo(() => {
-    const draft: PublishedWorkflowRow[] = [];
-    const needs: PublishedWorkflowRow[] = [];
-    const approved: PublishedWorkflowRow[] = [];
-    const published: PublishedWorkflowRow[] = [];
-    const archive: PublishedWorkflowRow[] = [];
+  const stats = useMemo(() => {
+    const published = rows.filter((w) => getWorkflowListFilter(w) === 'published').length;
+    const needs = rows.filter((w) => getWorkflowListFilter(w) === 'needs').length;
+    const draft = rows.filter((w) => getWorkflowListFilter(w) === 'draft').length;
+    const requests = Object.values(workflowCustomizationCounts).reduce((a, b) => a + b, 0);
+    return { total: rows.length, published, needs, draft, requests };
+  }, [rows, workflowCustomizationCounts]);
 
-    for (const w of rows) {
-      switch (workflowBucket(w)) {
-        case 'draft':
-          draft.push(w);
-          break;
-        case 'needs':
-          needs.push(w);
-          break;
-        case 'approved':
-          approved.push(w);
-          break;
-        case 'published':
-          published.push(w);
-          break;
-        default:
-          archive.push(w);
-      }
+  const filteredRows = useMemo(() => {
+    let list = rows.filter((w) => workflowMatchesSearch(w, searchQuery));
+    if (filter !== 'all') {
+      list = list.filter((w) => getWorkflowListFilter(w) === filter);
     }
-
-    return { draft, needs, approved, published, archive };
-  }, [rows]);
+    return sortWorkflows(list, sortKey);
+  }, [rows, searchQuery, filter, sortKey]);
 
   async function handleNewWorkflow() {
     if (!creatorProfile?.id || createBusy || gateMsg) return;
@@ -354,7 +404,7 @@ export default function DashboardWorkflows() {
       <div className="dashboard-page">
         <div className="container dashboard-body">
           <DashboardNav />
-          <div className="dash-loading">Loading…</div>
+          <div className="dash-loading">Loading workflows…</div>
         </div>
       </div>
     );
@@ -363,12 +413,31 @@ export default function DashboardWorkflows() {
   return (
     <div className="dashboard-page">
       <div className="dashboard-header">
-        <div className="container">
-          <div className="dashboard-eyebrow">Marketplace · Workflows</div>
-          <h1 className="dashboard-title">Published workflows</h1>
-          <p className="dashboard-sub mb-browse-intro">
-            Reusable storefront listings use rules-based AI review first — admins stay available for overrides only.
-          </p>
+        <div className="container wf-v2-header">
+          <div>
+            <div className="dashboard-eyebrow">Marketplace · Workflows</div>
+            <h1 className="dashboard-title">My Workflows</h1>
+            <p className="dashboard-sub mb-browse-intro">
+              Create reusable MicroBuild workflows buyers can request and customize.
+            </p>
+          </div>
+          <div className="wf-v2-header-actions">
+            {!gateMsg ?
+              (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={createBusy || !creatorProfile?.id}
+                  onClick={() => void handleNewWorkflow()}
+                >
+                  {createBusy ? 'Creating…' : 'Create Workflow'}
+                </button>
+              )
+            : null}
+            <Link to="/browse" className="btn btn-ghost btn-sm">
+              View buyer Browse
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -381,134 +450,125 @@ export default function DashboardWorkflows() {
               <p>{gateMsg}</p>
             </section>
           )
-        : rows.length === 0 ?
-          (
-            <section className="dash-empty">
-              <p>You have not published a workflow yet.</p>
-              <p className="subtle">
-                Create your first workflow, run rules-based AI review, then publish to the buyer storefront.
-              </p>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                disabled={createBusy || !creatorProfile?.id}
-                onClick={() => void handleNewWorkflow()}
-              >
-                {createBusy ? 'Creating…' : 'Create your first workflow'}
-              </button>
-            </section>
-          )
-        :
-          (
+        : (
             <>
-              <div className="wf-dash-toolbar">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  disabled={createBusy}
-                  onClick={() => void handleNewWorkflow()}
-                >
-                  {createBusy ? 'Creating…' : 'New workflow'}
-                </button>
-                <Link to="/browse" className="btn btn-ghost btn-sm">
-                  View buyer Browse
-                </Link>
-              </div>
-
-              <section className="wf-dash-section">
-                <h2 className="wf-dash-section-title">Draft</h2>
-                {buckets.draft.length === 0 ?
-                  <p className="subtle">No drafts.</p>
-                : (
-                  <div className="wf-dash-grid">
-                    {buckets.draft.map((w) => (
-                      <WorkflowDashCard
-                        key={w.id}
-                        row={w}
-                        creatorProfile={creatorProfile}
-                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
-                        onDidMutate={() => void reload()}
-                      />
-                    ))}
+              {rows.length > 0 ?
+                (
+                  <div className="wf-v2-stats" aria-label="Workflow statistics">
+                    <div className="wf-v2-stat">
+                      <span className="wf-v2-stat-value">{stats.total}</span>
+                      <span className="wf-v2-stat-label">Total workflows</span>
+                    </div>
+                    <div className="wf-v2-stat">
+                      <span className="wf-v2-stat-value">{stats.published}</span>
+                      <span className="wf-v2-stat-label">Published</span>
+                    </div>
+                    <div className="wf-v2-stat">
+                      <span className="wf-v2-stat-value">{stats.needs}</span>
+                      <span className="wf-v2-stat-label">Needs improvement</span>
+                    </div>
+                    <div className="wf-v2-stat">
+                      <span className="wf-v2-stat-value">{stats.draft}</span>
+                      <span className="wf-v2-stat-label">Drafts</span>
+                    </div>
+                    <div className="wf-v2-stat">
+                      <span className="wf-v2-stat-value">{stats.requests}</span>
+                      <span className="wf-v2-stat-label">Buyer requests</span>
+                    </div>
                   </div>
-                )}
-              </section>
+                )
+              : null}
 
-              <section className="wf-dash-section">
-                <h2 className="wf-dash-section-title">Needs improvement</h2>
-                {buckets.needs.length === 0 ?
-                  <p className="subtle">Nothing flagged for improvements.</p>
-                : (
-                  <div className="wf-dash-grid">
-                    {buckets.needs.map((w) => (
-                      <WorkflowDashCard
-                        key={w.id}
-                        row={w}
-                        creatorProfile={creatorProfile}
-                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
-                        onDidMutate={() => void reload()}
+              {rows.length === 0 ?
+                (
+                  <section className="wf-v2-empty">
+                    <h2 className="wf-v2-card-title">Create your first reusable workflow</h2>
+                    <p className="subtle">
+                      Package a MicroBuild you deliver often so buyers can request and customize it from Browse.
+                    </p>
+                    <div className="wf-v2-empty-examples" aria-hidden>
+                      <span className="wf-v2-example-pill">Quote funnel</span>
+                      <span className="wf-v2-example-pill">Booking page</span>
+                      <span className="wf-v2-example-pill">Review booster</span>
+                      <span className="wf-v2-example-pill">Before/after trust page</span>
+                    </div>
+                    <p style={{ marginTop: '1rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={createBusy || !creatorProfile?.id}
+                        onClick={() => void handleNewWorkflow()}
+                      >
+                        {createBusy ? 'Creating…' : 'Create Workflow'}
+                      </button>
+                    </p>
+                  </section>
+                )
+              : (
+                  <>
+                    <div className="wf-v2-toolbar">
+                      <input
+                        type="search"
+                        className="wf-v2-search"
+                        placeholder="Search title, category, industry…"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        aria-label="Search workflows"
                       />
-                    ))}
-                  </div>
-                )}
-              </section>
+                      <select
+                        className="wf-v2-sort"
+                        value={sortKey}
+                        onChange={(e) => setSortKey(e.target.value as WorkflowSortKey)}
+                        aria-label="Sort workflows"
+                      >
+                        <option value="updated">Recently updated</option>
+                        <option value="score">Highest AI score</option>
+                        <option value="published">Published first</option>
+                      </select>
+                      <div className="wf-v2-filters" role="tablist" aria-label="Filter workflows">
+                        {FILTER_CHIPS.map((chip) => (
+                          <button
+                            key={chip.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={filter === chip.id}
+                            className={`wf-v2-filter-chip${filter === chip.id ? ' is-active' : ''}`}
+                            onClick={() => setFilter(chip.id)}
+                          >
+                            {chip.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-              <section className="wf-dash-section">
-                <h2 className="wf-dash-section-title">AI approved</h2>
-                {buckets.approved.length === 0 ?
-                  <p className="subtle">Run AI review on a draft to land approved workflows here.</p>
-                : (
-                  <div className="wf-dash-grid">
-                    {buckets.approved.map((w) => (
-                      <WorkflowDashCard
-                        key={w.id}
-                        row={w}
-                        creatorProfile={creatorProfile}
-                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
-                        onDidMutate={() => void reload()}
-                      />
-                    ))}
-                  </div>
+                    {filteredRows.length === 0 ?
+                      (
+                        <section className="wf-v2-empty">
+                          <p className="subtle">
+                            {filter === 'published' && stats.published === 0
+                              ? 'Run AI review and publish your strongest workflow.'
+                              : filter === 'needs' && stats.needs === 0
+                                ? 'No workflow needs fixes right now.'
+                                : 'No workflows match this filter. Try All or clear your search.'}
+                          </p>
+                        </section>
+                      )
+                    : (
+                        <div className="wf-v2-grid">
+                          {filteredRows.map((w) => (
+                            <WorkflowCard
+                              key={w.id}
+                              row={w}
+                              creatorProfile={creatorProfile}
+                              creatorDisplayName={creatorDisplayName}
+                              requestCount={workflowCustomizationCounts[w.id] ?? 0}
+                              onDidMutate={() => void reload()}
+                            />
+                          ))}
+                        </div>
+                      )}
+                  </>
                 )}
-              </section>
-
-              <section className="wf-dash-section">
-                <h2 className="wf-dash-section-title">Published</h2>
-                {buckets.published.length === 0 ?
-                  <p className="subtle">Published storefront rows appear here.</p>
-                : (
-                  <div className="wf-dash-grid">
-                    {buckets.published.map((w) => (
-                      <WorkflowDashCard
-                        key={w.id}
-                        row={w}
-                        creatorProfile={creatorProfile}
-                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
-                        onDidMutate={() => void reload()}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section className="wf-dash-section">
-                <h2 className="wf-dash-section-title">Hidden / archived</h2>
-                {buckets.archive.length === 0 ?
-                  <p className="subtle">No hidden workflows.</p>
-                : (
-                  <div className="wf-dash-grid">
-                    {buckets.archive.map((w) => (
-                      <WorkflowDashCard
-                        key={w.id}
-                        row={w}
-                        creatorProfile={creatorProfile}
-                        customizationRequestCount={workflowCustomizationCounts[w.id] ?? 0}
-                        onDidMutate={() => void reload()}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
             </>
           )}
       </div>

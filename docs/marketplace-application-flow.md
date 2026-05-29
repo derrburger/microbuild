@@ -128,6 +128,20 @@ Legacy admin proposal tooling (still available under **Later: Proposal & Payment
 
 ---
 
+## Creator Workflows v2 (dashboard polish)
+
+- **Route:** **`/dashboard/workflows`** — creator workflow management dashboard; **`/dashboard/workflows/:id/edit`** — sectioned editor.
+- **Libraries:** `src/lib/workflowLabels.ts` (human-readable statuses, filters, card actions), `src/lib/workflowAI.ts` (rules-based review), `src/lib/marketplace.ts` (CRUD + hide/archive + request tracking).
+- **List page:** stats row (total, published, needs improvement, drafts, buyer requests), filter chips (All / Draft / Needs Improvement / AI Approved / Published / Hidden / Archived), search + sort, scannable workflow cards with role-safe actions.
+- **Card actions:** Draft → Edit + Run AI Review; Needs improvement → Edit + Run AI Review; AI approved → Publish + Preview; Published → Preview + Hide + Archive; Hidden → Publish (if still approved) + Archive.
+- **Editor:** sections (Basics, Description, Deliverables, Requirements, Pricing, Proof), form completion meter, **WorkflowAIPanel** (plain-English readiness), **WorkflowBuyerPreview**, buyer request list via **`buyer_requests.source_workflow_id`**.
+- **Buyer Browse compatibility:** unchanged — only `workflow_status = published`, `visibility_status = public`, safe AI status, no risk flags (`getPublishedWorkflowsForBuyers`).
+- **No Stripe / no new migration** — reuses `published_workflows` + `workflow-ai-review-fields.sql` + `workflow-request-linking.sql`.
+
+**Manual tests:** (1) create draft (2) edit + save (3) AI review (4) needs-improvement suggestions (5) publish (6) buyer Browse filter (7) Request/Customize (8) hide/archive removes from Browse.
+
+---
+
 ## Admin flow
 
 - `/admin` includes a **Marketplace foundation oversight** panel with counts pulled from Supabase (open requests accepting bids, applications awaiting buyer/admin attention, **workflows live on Browse**, **risk-flagged workflows**, buyer-selected pipeline rows).
