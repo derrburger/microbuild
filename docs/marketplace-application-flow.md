@@ -4,7 +4,7 @@
 
 | Role | Nav priority | Dashboard focus |
 |------|----------------|-----------------|
-| **Buyer** | Browse Workflows, My Requests, Messages, Dashboard, Settings | My Requests overview counts (waiting → review → selected → in progress → completed), **My Requests & Applicants** panel, message/select CTAs |
+| **Buyer** | Browse Workflows, My Requests, Messages, Dashboard, Settings | **`/dashboard/requests` — My Requests v2** (summary cards, filters, searchable request cards, applicant review, selected creator, project timeline, rules-based **AI Request Monitor**), message/select CTAs |
 | **Creator** | Buyer Requests, Applications, Projects, Workflows, Messages, Profile | Marketplace summary cards, **My Applications** with source type + selection label, project workspace when selected |
 | **Admin** | AI Command Center, Messages (oversight tabs inside `/admin`) | Tabbed command center — not the default buyer selector |
 
@@ -68,8 +68,13 @@ Legacy admin proposal tooling (still available under **Later: Proposal & Payment
 
 1. Submits `/request` (existing form). Request rows gain marketplace columns (`visibility_status`, `application_status`, `applications_count`, selection pointers).
 2. Open requests accept **creator voluntary applications** via `request_applications`.
-3. Buyer reviews applicants in **Dashboard → My Requests & Applicants** (`#buyer-my-requests-applicants`): each request card summarizes **source type** (custom vs workflow customization), workflow title when relevant, budget/deadline, legacy request status, marketplace status, visibility, applicant counts, selected creator, linked **project / order** status, and a **suggested next step** (waiting → review → select → message assigned creator → track delivery → approve delivery).
-4. Expanding a request loads applicants (ownership verified server-side). Applicant cards include creator identity, **tier + verified** styling, optional **Original Workflow Creator** badge, profile strength, proposal/fit/questions/timeline/price, application status + submitted timestamp, and **`buyerApplicantReviewAI` rules-only insights** (fit score, strengths, concerns, proposal clarity, timeline confidence, recommended decision, workflow-publisher advantage text when applicable).
+3. Buyer manages requests on **`/dashboard/requests` (My Requests v2)** — `BuyerMyRequestsPanel` (`#buyer-my-requests-applicants`). **Not** creator open-request browse (that is **`/browse`** for creators only).
+   - **Header:** title, subtitle, **New Request**, **Browse Workflows**.
+   - **Summary cards (real counts):** Total · Waiting for Applicants · Applicants to Review · Creator Selected · In Progress · Delivery / Review — from `buyer_requests`, `request_applications` count, and linked `orders` / deliverables (zeros when empty).
+   - **Filters:** All · Waiting for Creators · Review Applicants · Creator Selected · In Progress · Delivered · Completed · Needs Action — plus simple search (business, workflow title, MicroBuild type, industry).
+   - **Request cards:** source badge (Custom vs Workflow Customization), plain-English status, created date, goal/budget/deadline, workflow provenance banner, status row (applicants, selected creator, project, agreement, delivery), **next action**, CTAs (View Details, Review Applicants, Message Creator, Open Project, Review Delivery, Browse Similar Workflows).
+   - **Expanded details:** full goal/problem, parsed `style_notes` business context, AI request summary (`buyerAI`), missing-info checklist, **AI Request Monitor** (`buyerRequestMonitor.ts` — rules-based, no external API), marketplace **project timeline** (dates only when stored), **selected creator** card when assigned.
+4. **Applicant review** (expand request): loads `request_applications` after ownership check. Collapsible applicant rows — creator name, tier, verified, **Original Workflow Creator**, profile strength, proposal, fit, timeline, price, status; **Shortlist / Reject / Select creator / Message / View profile**. After selection, applicants hide behind **View applicant history** unless expanded. Empty states: no requests, no applicants, selected-but-no-project yet.
 5. Buyer actions per applicant:
    - **Shortlist** → `request_applications.application_status = shortlisted` (buyer ownership re-checked before update).
    - **Reject applicant** → `rejected` for that cycle.
@@ -104,7 +109,7 @@ Legacy admin proposal tooling (still available under **Later: Proposal & Payment
 - **Not auto-selected.** The buyer still picks the creator via **Select creator**; **`selectCreatorForRequest`** rejects sibling active applications, updates **`buyer_requests`** (`creator_selected`, pointers), and **`createOrUpdateOrderFromSelectedApplication`** syncs **`orders`** (`selection_method = buyer_selected`, `selected_by_buyer`, `order_status = assigned`) as before.
 - **Creator Browse (`/browse` — Buyer Requests):** workflow-backed rows sort with **original publisher opportunities first**. Badge **Your workflow was requested** when `buyer_requests.source_creator_profile_id` matches the signed-in creator; others see **Workflow customization request** when the request is otherwise open. Apply CTA copy emphasizes workflow requests; optional default **`fit_reason`**: *Original creator of the requested workflow* (still a normal `request_applications` row; duplicates blocked by the existing partial unique index).
 - **Creator Dashboard → Applications:** section **Workflow requests from your published workflows** lists open workflow-backed scopes for that creator (excludes terminal marketplace rows such as **creator_selected** / closed analogues).
-- **Buyer Dashboard → applicants:** applicant cards can show **Original Workflow Creator** when the applicant’s profile id matches **`buyer_requests.source_creator_profile_id`**.
+- **Buyer My Requests v2:** workflow-backed cards show **Requested from reusable workflow**, title, original creator when resolvable; fallback **Workflow source unavailable** if title missing. Applicant cards can show **Original Workflow Creator** when the applicant’s profile id matches **`buyer_requests.source_creator_profile_id`**.
 - **Admin queue:** workflow-backed cards show provenance (reusable workflow source, title, original creator application status, applicant count, selected creator). Admin override remains available but is not the default selector.
 
 **Future notifications + monetization:** see `docs/workflow-customization-notifications.md`.
@@ -310,10 +315,10 @@ Manual pass with three test accounts (buyer, creator, admin). No Stripe, GitHub 
 | 1 | Submit **New Request** (`/request`) or **Workflow Request/Customize** (`/request?workflowId=`) | — | — |
 | 2 | — | **Buyer Requests** (`/browse`) lists open requests; **Apply to Build** works; duplicate apply blocked; card shows **Applied** | Buyer Requests queue shows new row |
 | 3 | — | **My Applications** lists row; summary **Waiting for buyer** increments | Marketplace Applications tab |
-| 4 | **My Requests** shows request; applicant count matches | — | — |
-| 5 | Expand applicants; cards show creator info; **Message creator** opens `/messages?buyerRequestId&creatorProfileId` | — | — |
-| 6 | **Select creator** (confirm); selected creator shown on request | **Selected** badge; project in **Projects** | Pipeline shows buyer-selected project |
-| 7 | Project status on dashboard; **Message creator** prefers `orderId` when assigned | **Project workspace** opens; **Message buyer** → Messages | Deliverables tab when submitted |
+| 4 | **My Requests v2** — summary counts, filters, request card, applicant count matches `request_applications` | — | — |
+| 5 | Expand details; applicant cards; **Message creator** → `/messages?buyerRequestId&creatorProfileId`; **AI Request Monitor** shows rules-based insight | — | — |
+| 6 | **Select creator** (confirm); **selected creator** card; applicants behind history toggle | **Selected** badge; project in **Projects** | Pipeline shows buyer-selected project |
+| 7 | Project timeline + status; **Message creator** prefers `orderId` when assigned | **Project workspace** opens; **Message buyer** → Messages | Deliverables tab when submitted |
 | 8 | Track journey / delivery status | Submit deliverable (preview + delivery URLs) | Review / approve / revision |
 | 9 | Approve delivery when offered | Revision note surfaces if migration applied | — |
 | 10 | Central **Messages** — one thread per buyer×creator pair (order anchor after selection) | Same | Inbox empty by design |

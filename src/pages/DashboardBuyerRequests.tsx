@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { UserProfileRow } from '../types/database';
@@ -57,7 +57,17 @@ export default function DashboardBuyerRequests() {
       <AppPageHeader
         eyebrow="Buyer workspace"
         title="My Requests"
-        subtitle="Review applicants, compare proposals, and track project delivery."
+        subtitle="Track your MicroBuild requests, review creators, and manage project progress."
+        actions={
+          <>
+            <Link to="/request" className="btn btn-primary btn-sm">
+              New Request
+            </Link>
+            <Link to="/browse" className="btn btn-ghost btn-sm">
+              Browse Workflows
+            </Link>
+          </>
+        }
       />
       <div className="container dashboard-body">
         <BuyerDashboard userProfile={userProfile} mode="requests" />
