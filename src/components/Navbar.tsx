@@ -144,7 +144,7 @@ export default function Navbar() {
                             Profile
                           </Link>
                         )}
-                        {isCreator && (
+                        {(isCreator || isBuyer) && (
                           <Link to="/dashboard/analytics" className="navbar-dropdown-item" onClick={close}>
                             Analytics
                           </Link>

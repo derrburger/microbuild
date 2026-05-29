@@ -14,6 +14,20 @@
 
 ---
 
+## Real Analytics + AI Monitor v1
+
+- **Route:** `/dashboard/analytics` (account dropdown — creators and buyers; admins see platform summary + link to Command Center).
+- **Helpers:** `src/lib/analytics.ts` (metrics), `src/lib/analyticsAI.ts` (rules-based insights).
+- **Real metrics (v1):** counts and breakdowns from `request_applications`, `orders`, `published_workflows`, `project_proposals`, `deliverables`, `project_messages`, `buyer_requests`, and creator profile strength (`profileAI.ts`).
+- **Empty states:** sections show **“Not enough data yet”** when no rows exist — never fabricated numbers.
+- **Future placeholders (labelled):** earnings/spend (Stripe), profile views, conversion rate, lead/booking metrics — require payment integration or `analytics_events` tracking (optional migration not added in v1).
+- **AI Monitor checks (rules-based):**
+  - **Creator:** profile visibility/strength, portfolio/avatar gaps, application performance, stalled projects, agreement/delivery risks, workflow publish opportunities, messages needing reply.
+  - **Buyer:** no applicants, applicants awaiting review, agreement not confirmed, deliverable review pending, thin workflow customization notes, messages needing reply.
+  - **Admin:** open requests, pending creator onboarding, deliverables to review, stalled projects (summary in analytics page; full queues in `/admin`).
+
+---
+
 ## Primary product direction (v1 foundation)
 
 MicroBuild is shifting from admin-only assignment to an **optional marketplace**: buyers post **open requests**, creators **apply**, buyers **pick** a creator, and the system **instantiates / updates** the pipeline `orders` row. Admin still **observes**, can **fallback-assign**, **override**, and provides **AI oversight** on published workflows — but **workflow publishing is AI-first**, not an admin approval queue.

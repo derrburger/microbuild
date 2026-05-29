@@ -2,7 +2,20 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Marketplace **Creator Workflows v2** — professional `/dashboard/workflows` management dashboard with stats, filters, search/sort, scannable cards, sectioned editor, plain-English AI review panel, buyer preview, and workflow request tracking via `buyer_requests.source_workflow_id`. Prior: **Central Messaging Polish v2**. Proposal/payment remains **deferred** (no Stripe). **TEMP DEV RLS remains unsafe** until production policies ship.
+**Status:** Marketplace **Real Analytics + AI Monitor v1** — `/dashboard/analytics` shows live Supabase metrics (applications, projects, workflows, agreements, deliverables, messages) and rules-based AI Monitor insights. Prior: **Creator Workflows v2**. Proposal/payment remains **deferred** (no Stripe). **TEMP DEV RLS remains unsafe** until production policies ship.
+
+### Real Analytics + AI Monitor v1
+
+| Area | Behavior |
+|------|----------|
+| Route | **`/dashboard/analytics`** — role-aware (creator, buyer, admin summary) |
+| Data | **`src/lib/analytics.ts`** — explicit column selects from existing tables; no fake numbers |
+| AI Monitor | **`src/lib/analyticsAI.ts`** — rules-based insights only (no external AI API) |
+| Creator metrics | Applications (`request_applications`), projects (`orders`), workflows (`published_workflows` + `buyer_requests.source_workflow_id`), agreements (`project_proposals`), deliverables, messages |
+| Buyer metrics | Requests, applicants, projects, deliverables awaiting review, workflow vs custom requests |
+| Admin | Summary counts + link to **`/admin`** Command Center — full admin analytics stay in admin shell |
+| Future placeholders | **Earnings** (needs Stripe), **profile views** / **conversion rate** (needs event tracking) — clearly labelled, not `$0` fake charts |
+| Migration | **Not required** for v1 — uses existing rows only |
 
 ### Creator Workflows v2
 
