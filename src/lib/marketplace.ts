@@ -444,26 +444,195 @@ export async function syncBuyerRequestApplicationCount(requestId: string): Promi
   return finalCount;
 }
 
-/** Buyers browse workflows (published storefront slice — AI-visible only). */
-export async function getPublishedWorkflowsForBuyers(): Promise<PublishedWorkflowRow[]> {
+/** Explicit columns for buyer Browse storefront (no SELECT *). */
+export const BUYER_BROWSE_WORKFLOW_COLUMNS = `
+  id,
+  creator_profile_id,
+  title,
+  slug,
+  category,
+  target_industry,
+  description,
+  included_features,
+  setup_requirements,
+  starting_price,
+  estimated_turnaround,
+  preview_url,
+  cover_image_url,
+  workflow_status,
+  visibility_status,
+  ai_review_status,
+  ai_quality_score,
+  ai_publish_readiness,
+  ai_review_summary,
+  ai_missing_items,
+  ai_risk_flags,
+  created_at,
+  updated_at
+`.replace(/\s+/g, ' ').trim();
+
+export interface BuyerBrowseCreatorMeta {
+  displayName: string;
+  tier: string;
+  verificationStatus: string;
+  profilePhotoUrl: string | null;
+  slug: string | null;
+}
+
+const CREATOR_BROWSE_META_COLUMNS =
+  'id, display_name, full_name, tier, verification_status, profile_photo_url, slug';
+
+function isBuyerSafePublishedWorkflow(row: PublishedWorkflowRow): boolean {
+  const ws = normalizeText(row.workflow_status).toLowerCase();
+  const vis = normalizeText(row.visibility_status).toLowerCase();
+  const ai = normalizeText(row.ai_review_status).toLowerCase();
+  if (ws !== 'published' || vis !== 'public') return false;
+  if (!['published', 'ai_approved'].includes(ai)) return false;
+  const risks = row.ai_risk_flags;
+  return !Array.isArray(risks) || risks.length === 0;
+}
+
+/** Batch-load public creator labels for buyer workflow cards. */
+export async function fetchCreatorMetaForBuyerBrowse(
+  creatorProfileIds: string[],
+): Promise<Record<string, BuyerBrowseCreatorMeta>> {
+  const ids = [...new Set(creatorProfileIds.map((id) => normalizeText(id)).filter(Boolean))];
+  const map: Record<string, BuyerBrowseCreatorMeta> = {};
+  if (ids.length === 0) return map;
+
+  const { data, error } = await supabase
+    .from('creator_profiles')
+    .select(CREATOR_BROWSE_META_COLUMNS)
+    .in('id', ids);
+
+  if (error) {
+    console.error('[marketplace] fetchCreatorMetaForBuyerBrowse:', error);
+    return map;
+  }
+
+  for (const c of (data ?? []) as {
+    id?: string;
+    display_name?: string | null;
+    full_name?: string | null;
+    tier?: string | null;
+    verification_status?: string | null;
+    profile_photo_url?: string | null;
+    slug?: string | null;
+  }[]) {
+    const id = normalizeText(c.id);
+    if (!id) continue;
+    const label = normalizeText(c.display_name) || normalizeText(c.full_name);
+    map[id] = {
+      displayName: label || 'MicroBuild Creator',
+      tier: normalizeText(c.tier, 'free'),
+      verificationStatus: normalizeText(c.verification_status, 'unverified'),
+      profilePhotoUrl: normalizeText(c.profile_photo_url) || null,
+      slug: normalizeText(c.slug) || null,
+    };
+  }
+
+  return map;
+}
+
+export type BuyerBrowseSortKey =
+  | 'recommended'
+  | 'score'
+  | 'price_asc'
+  | 'turnaround'
+  | 'newest';
+
+export function sortBuyerBrowseWorkflows(
+  rows: PublishedWorkflowRow[],
+  sortKey: BuyerBrowseSortKey,
+): PublishedWorkflowRow[] {
+  const copy = [...rows];
+  copy.sort((a, b) => {
+    if (sortKey === 'score') {
+      const sa = typeof a.ai_quality_score === 'number' ? a.ai_quality_score : -1;
+      const sb = typeof b.ai_quality_score === 'number' ? b.ai_quality_score : -1;
+      return sb - sa;
+    }
+    if (sortKey === 'price_asc') {
+      const pa = parseWorkflowPrice(a.starting_price) ?? Number.MAX_SAFE_INTEGER;
+      const pb = parseWorkflowPrice(b.starting_price) ?? Number.MAX_SAFE_INTEGER;
+      return pa - pb;
+    }
+    if (sortKey === 'turnaround') {
+      const ta = turnaroundSortWeight(a.estimated_turnaround);
+      const tb = turnaroundSortWeight(b.estimated_turnaround);
+      return ta - tb;
+    }
+    if (sortKey === 'newest') {
+      const ca = Date.parse(normalizeText(a.created_at));
+      const cb = Date.parse(normalizeText(b.created_at));
+      return (Number.isFinite(cb) ? cb : 0) - (Number.isFinite(ca) ? ca : 0);
+    }
+    // recommended: blend score + recency
+    const scoreA = (typeof a.ai_quality_score === 'number' ? a.ai_quality_score : 50) * 2;
+    const scoreB = (typeof b.ai_quality_score === 'number' ? b.ai_quality_score : 50) * 2;
+    const recA = scoreA + Math.min(30, Date.parse(normalizeText(a.created_at)) / 1e11);
+    const recB = scoreB + Math.min(30, Date.parse(normalizeText(b.created_at)) / 1e11);
+    return recB - recA;
+  });
+  return copy;
+}
+
+function turnaroundSortWeight(raw: unknown): number {
+  const t = normalizeText(raw).toLowerCase();
+  if (!t) return 999;
+  const dayMatch = t.match(/(\d+)\s*[-–]?\s*(\d+)?\s*day/);
+  if (dayMatch) return Number(dayMatch[1]) || 7;
+  const weekMatch = t.match(/(\d+)\s*[-–]?\s*(\d+)?\s*week/);
+  if (weekMatch) return (Number(weekMatch[1]) || 1) * 7;
+  if (t.includes('asap') || t.includes('rush')) return 3;
+  return 30;
+}
+
+export function parseBuyerBrowsePriceFilter(
+  row: PublishedWorkflowRow,
+  filter: 'any' | 'under200' | '200_400' | '400plus',
+): boolean {
+  if (filter === 'any') return true;
+  const price = parseWorkflowPrice(row.starting_price);
+  if (price == null) return false;
+  if (filter === 'under200') return price < 200;
+  if (filter === '200_400') return price >= 200 && price <= 400;
+  return price > 400;
+}
+
+/** Workflows + creator meta for buyer/guest Browse page. */
+export async function loadBuyerBrowseMarketplace(): Promise<{
+  workflows: PublishedWorkflowRow[];
+  creatorMeta: Record<string, BuyerBrowseCreatorMeta>;
+  error: string | null;
+}> {
   const { data, error } = await supabase
     .from('published_workflows')
-    .select('*')
+    .select(BUYER_BROWSE_WORKFLOW_COLUMNS)
     .eq('workflow_status', 'published')
     .eq('visibility_status', 'public')
     .in('ai_review_status', ['published', 'ai_approved'])
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('[marketplace] getPublishedWorkflowsForBuyers:', error);
-    return [];
+    console.error('[marketplace] loadBuyerBrowseMarketplace:', error);
+    return { workflows: [], creatorMeta: {}, error: error.message ?? 'Could not load workflows.' };
   }
 
-  const rows = (data as PublishedWorkflowRow[]) ?? [];
-  return rows.filter((r) => {
-    const risks = r.ai_risk_flags;
-    return !Array.isArray(risks) || risks.length === 0;
-  });
+  const dedup = new Map<string, PublishedWorkflowRow>();
+  for (const row of ((data ?? []) as unknown as PublishedWorkflowRow[])) {
+    if (!row?.id || !isBuyerSafePublishedWorkflow(row)) continue;
+    dedup.set(row.id, row);
+  }
+  const workflows = [...dedup.values()];
+  const creatorMeta = await fetchCreatorMetaForBuyerBrowse(workflows.map((w) => w.creator_profile_id));
+  return { workflows, creatorMeta, error: null };
+}
+
+/** Buyers browse workflows (published storefront slice — AI-visible only). */
+export async function getPublishedWorkflowsForBuyers(): Promise<PublishedWorkflowRow[]> {
+  const { workflows } = await loadBuyerBrowseMarketplace();
+  return workflows;
 }
 
 /** Published workflow visible for customization requests (anon-safe SELECT must succeed under RLS). */

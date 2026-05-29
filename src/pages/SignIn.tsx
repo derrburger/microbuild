@@ -23,12 +23,20 @@ export default function SignIn() {
   const { user, loading, signInWithEmail, signUpWithEmail } = useAuth();
   const navigate = useNavigate();
 
-  // Already signed in → go to dashboard
+  const redirectTo = searchParams.get('redirect');
+  const redirectReason = searchParams.get('reason');
+
+  const postAuthPath = (() => {
+    if (!redirectTo || !redirectTo.startsWith('/')) return '/dashboard';
+    return redirectTo;
+  })();
+
+  // Already signed in → go to redirect or dashboard
   useEffect(() => {
     if (!loading && user) {
-      navigate('/dashboard', { replace: true });
+      navigate(postAuthPath, { replace: true });
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, postAuthPath]);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -65,7 +73,7 @@ export default function SignIn() {
       } else {
         // Email confirmation disabled (local dev) — immediately signed in
         // Dashboard will redirect to /onboarding if no profile exists yet
-        navigate('/dashboard', { replace: true });
+        navigate(postAuthPath, { replace: true });
       }
     } else {
       const { error: err } = await signInWithEmail(email.trim(), password);
@@ -77,7 +85,7 @@ export default function SignIn() {
         setUiState('idle');
         return;
       }
-      navigate('/dashboard', { replace: true });
+      navigate(postAuthPath, { replace: true });
     }
   }
 
@@ -138,9 +146,11 @@ export default function SignIn() {
         </div>
 
         <p className="signin-sub">
-          {mode === 'signin'
-            ? 'Sign in to access your dashboard, profile, and requests.'
-            : 'Create a free account to get started as a buyer or creator.'}
+          {redirectReason === 'workflow' ?
+            'Create an account or sign in to request and customize this workflow.'
+          : mode === 'signin' ?
+            'Sign in to access your dashboard, profile, and requests.'
+          : 'Create a free account to get started as a buyer or creator.'}
         </p>
 
         {/* ── Form ──────────────────────────────────────────────────── */}

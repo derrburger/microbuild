@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import CreatorBuyerRequestsBrowse from '../components/marketplace/CreatorBuyerRequestsBrowse';
 import BuyerWorkflowsPublicBrowse from '../components/marketplace/BuyerWorkflowsPublicBrowse';
 import { fetchTemplates } from '../lib/templates';
@@ -7,49 +7,26 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
   getOpenBuyerRequests,
-  getPublishedWorkflowsForBuyers,
   getActiveAppliedBuyerRequestIds,
+  loadBuyerBrowseMarketplace,
   resolveCreatorProfileForMarketplace,
 } from '../lib/marketplace';
 import { creatorEligibleForApplying } from '../lib/marketplaceEligibility';
 import type {
   BuyerRequestRow,
   CreatorProfileRow,
-  PublishedWorkflowRow,
   UserProfileRow,
 } from '../types/database';
-import type { MicroBuildListing, MicroBuildCategory } from '../types';
+import type { MicroBuildListing } from '../types';
 import './Browse.css';
 import './Dashboard.css';
-
-const allCategories: MicroBuildCategory[] = [
-  'Quote Funnel',
-  'Package Selector',
-  'Review Booster',
-  'Trust Page',
-  'Booking Page',
-];
 
 function safeStr(v: unknown, fb = ''): string {
   return typeof v === 'string' ? v : fb;
 }
 
 export default function Browse() {
-  const [searchParams] = useSearchParams();
-  const categoryParam = searchParams.get('category');
   const { user, loading: authLoading } = useAuth();
-
-  const initialCategory: MicroBuildCategory | 'All' =
-    categoryParam && (allCategories as string[]).includes(categoryParam)
-      ? (categoryParam as MicroBuildCategory)
-      : 'All';
-
-  const [activeCategory, setActiveCategory] =
-    useState<MicroBuildCategory | 'All'>(initialCategory);
-  const [search, setSearch] = useState('');
-  const [publicListings, setPublicListings] = useState<MicroBuildListing[]>([]);
-  const [publicLoading, setPublicLoading] = useState(false);
-  const [publicMock, setPublicMock] = useState(false);
 
   const [accountPhase, setAccountPhase] = useState<
     'loading' | 'guest' | 'creator' | 'buyer' | 'admin' | 'incomplete'
@@ -62,21 +39,16 @@ export default function Browse() {
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
 
   const [buyerWorkflowsLoading, setBuyerWorkflowsLoading] = useState(false);
-  const [workflows, setWorkflows] = useState<PublishedWorkflowRow[]>([]);
+  const [workflowLoadError, setWorkflowLoadError] = useState<string | null>(null);
+  const [workflows, setWorkflows] = useState<Awaited<ReturnType<typeof loadBuyerBrowseMarketplace>>['workflows']>([]);
   const [workflowCreatorMeta, setWorkflowCreatorMeta] = useState<
-    Record<string, { displayName: string; tier: string; verification_status: string }>
+    Awaited<ReturnType<typeof loadBuyerBrowseMarketplace>>['creatorMeta']
   >({});
 
-  // Sync category filter with URL params (public browse only uses this prominently)
-  useEffect(() => {
-    if (categoryParam && (allCategories as string[]).includes(categoryParam)) {
-      setActiveCategory(categoryParam as MicroBuildCategory);
-    } else {
-      setActiveCategory('All');
-    }
-  }, [categoryParam]);
+  const [publicListings, setPublicListings] = useState<MicroBuildListing[]>([]);
+  const [publicLoading, setPublicLoading] = useState(false);
+  const [publicMock, setPublicMock] = useState(false);
 
-  // Resolve account type once auth is stable
   useEffect(() => {
     if (authLoading) return;
 
@@ -91,7 +63,7 @@ export default function Browse() {
     async function fetchProfile() {
       const { data: upRaw, error } = await supabase
         .from('user_profiles')
-        .select('*')
+        .select('id, account_type, email, auth_user_id, creator_profile_id')
         .eq('auth_user_id', user!.id)
         .maybeSingle();
 
@@ -115,7 +87,6 @@ export default function Browse() {
     };
   }, [user, authLoading]);
 
-  // MicroBuild starter templates — guest/browse + buyer-role lower section (skipped for creators)
   useEffect(() => {
     if (authLoading || accountPhase === 'loading') return;
     if (accountPhase === 'creator') {
@@ -145,7 +116,6 @@ export default function Browse() {
     };
   }, [authLoading, accountPhase]);
 
-  // Creator: open requests + eligibility context
   useEffect(() => {
     if (!user || accountPhase !== 'creator') return;
 
@@ -180,7 +150,6 @@ export default function Browse() {
     };
   }, [user, accountPhase, userProfileRow]);
 
-  // Buyer / Admin / Guest: published storefront workflows (+ starter templates from fetchTemplates)
   useEffect(() => {
     if (authLoading || accountPhase === 'loading') return;
     if (accountPhase !== 'guest' && accountPhase !== 'buyer' && accountPhase !== 'admin') return;
@@ -189,37 +158,14 @@ export default function Browse() {
 
     async function load() {
       setBuyerWorkflowsLoading(true);
+      setWorkflowLoadError(null);
 
-      const w = await getPublishedWorkflowsForBuyers();
-      if (cancelled) return;
+      const { workflows: w, creatorMeta, error } = await loadBuyerBrowseMarketplace();
 
-      setWorkflows(w);
-      const ids = [...new Set(w.map((x) => x.creator_profile_id))];
-      let map: Record<string, { displayName: string; tier: string; verification_status: string }> = {};
-      if (ids.length > 0) {
-        const { data: cps } = await supabase
-          .from('creator_profiles')
-          .select('id, display_name, full_name, tier, verification_status')
-          .in('id', ids);
-        map = {};
-        for (const c of (cps ?? []) as {
-          id?: string;
-          display_name?: string | null;
-          full_name?: string | null;
-          tier?: string | null;
-          verification_status?: string | null;
-        }[]) {
-          const id = safeStr(c.id);
-          const label = `${safeStr(c.display_name)}`.trim() || safeStr(c.full_name, 'Creator').trim();
-          map[id] = {
-            displayName: label || 'Creator',
-            tier: safeStr(c.tier, 'free'),
-            verification_status: safeStr(c.verification_status, 'unverified'),
-          };
-        }
-      }
       if (!cancelled) {
-        setWorkflowCreatorMeta(map);
+        setWorkflows(w);
+        setWorkflowCreatorMeta(creatorMeta);
+        setWorkflowLoadError(error);
         setBuyerWorkflowsLoading(false);
       }
     }
@@ -231,169 +177,93 @@ export default function Browse() {
     };
   }, [authLoading, accountPhase]);
 
-  const filteredPublic = useMemo(() => {
-    return publicListings.filter((l) => {
-      const matchesCategory = activeCategory === 'All' || l.category === activeCategory;
-      const q = search.toLowerCase();
-      const matchesSearch =
-        q === '' ||
-        l.title.toLowerCase().includes(q) ||
-        l.targetIndustry.toLowerCase().includes(q) ||
-        l.description.toLowerCase().includes(q);
-      return matchesCategory && matchesSearch;
-    });
-  }, [publicListings, activeCategory, search]);
+  const isBuyerSide =
+    accountPhase === 'guest' || accountPhase === 'buyer' || accountPhase === 'admin';
 
-  const headline = useMemo(() => {
-    if (accountPhase === 'creator') return 'Browse Buyer Requests';
-    if (accountPhase === 'buyer' || accountPhase === 'admin' || accountPhase === 'guest') {
-      return 'Browse Workflows';
-    }
-    return 'Browse MicroBuilds';
-  }, [accountPhase]);
+  const headline = accountPhase === 'creator' ? 'Browse Buyer Requests' : 'Browse Workflows';
 
-  const subhero = useMemo(() => {
-    if (accountPhase === 'creator') {
-      return (
-        <>
-          Open buyer scopes listed here accept voluntary applications until a buyer picks a creator. Admin assignment
-          remains available as fallback.
-          <span className="browse-sub-dash-link">
-            {' '}
-            Track your pitches under{' '}
-            <Link to="/dashboard/applications">Dashboard · Applications</Link>.
-          </span>
-        </>
-      );
-    }
-    if (accountPhase === 'buyer' || accountPhase === 'admin') {
-      return (
-        <>
-          Reusable workflows published by creators, plus curated platform starter listings for inspiration — your live
-          request intake still lives under the dashboard.
-        </>
-      );
-    }
-    if (accountPhase === 'guest') {
-      return (
-        <>
-          Explore reusable creator workflows when available, plus labelled platform starter examples for inspiration.
-          Sign in as a buyer to track requests from your dashboard.
-        </>
-      );
-    }
-    return <>Focused revenue tools for local service businesses. Filter by type or search by trade.</>;
-  }, [accountPhase]);
+  const subhero =
+    accountPhase === 'creator' ? (
+      <>
+        Open buyer scopes accept voluntary applications until a buyer picks a creator. Track your pitches under{' '}
+        <Link to="/dashboard/applications">Dashboard · Applications</Link>.
+      </>
+    ) : (
+      'Find reusable MicroBuild workflows created by approved creators.'
+    );
 
-  const eligibility = useMemo(
-    () => creatorEligibleForApplying(creatorProfile),
-    [creatorProfile],
-  );
+  const eligibility = creatorEligibleForApplying(creatorProfile);
 
   const identityBusy = authLoading || (user !== null && accountPhase === 'loading');
   const creatorBusy = accountPhase === 'creator' && creatorRequestsLoading;
-  const workflowBrowseBusy =
-    (accountPhase === 'guest' || accountPhase === 'buyer' || accountPhase === 'admin') && buyerWorkflowsLoading;
-  const templateBusy =
-    accountPhase === 'guest' || accountPhase === 'incomplete' || accountPhase === 'buyer' || accountPhase === 'admin'
-      ? publicLoading
-      : false;
-
+  const workflowBrowseBusy = isBuyerSide && buyerWorkflowsLoading;
+  const templateBusy = isBuyerSide && publicLoading;
   const showSkeleton = identityBusy || creatorBusy || workflowBrowseBusy || templateBusy;
 
   return (
     <div className="browse-page">
       <div className="browse-hero">
-        <div className="container">
-          <h1 className="browse-title">{headline}</h1>
-          <p className="browse-sub">{subhero}</p>
+        <div className="container browse-hero-inner">
+          <div className="browse-hero-copy">
+            <h1 className="browse-title">{headline}</h1>
+            <p className="browse-sub">{subhero}</p>
+          </div>
+          {isBuyerSide && (
+            <div className="browse-hero-cta">
+              <Link to="/request" className="btn btn-primary">
+                Request Custom MicroBuild
+              </Link>
+              {!user && (
+                <Link to="/signin" className="btn btn-ghost btn-sm browse-hero-signin">
+                  Sign in
+                </Link>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="container browse-body">
-        {showSkeleton ?
-          (
-            <div className="browse-loading">
-              <div className="cards-grid">
-                {[1, 2, 3].map((n) => (
-                  <div key={n} className="card-skeleton" />
-                ))}
-              </div>
+        {publicMock && isBuyerSide && !publicLoading && (
+          <div className="browse-mock-notice">
+            Platform starter examples may be sample data — creator workflows load from Supabase when published.
+          </div>
+        )}
+
+        {showSkeleton ? (
+          <div className="browse-loading">
+            <div className="cards-grid">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="card-skeleton" />
+              ))}
             </div>
-          )
-        : accountPhase === 'incomplete' ?
-          (
-            <section className="dash-empty browse-onboarding-prompt">
-              <p>Complete onboarding so we know whether you are buying builds or fulfilling them.</p>
-              <Link to="/onboarding" className="btn btn-primary btn-sm">
-                Continue onboarding →
-              </Link>
-            </section>
-          )
-        : accountPhase === 'creator' ?
-          (
-            <CreatorBuyerRequestsBrowse
-              requests={openRequests}
-              creatorProfileId={creatorProfile?.id}
-              creatorUserProfileId={userProfileRow?.id ?? null}
-              eligibility={eligibility}
-              initialAppliedRequestIds={appliedIds}
-            />
-          )
-        : accountPhase === 'buyer' || accountPhase === 'admin' ?
-          (
-            <BuyerWorkflowsPublicBrowse
-              workflows={workflows}
-              creatorMeta={workflowCreatorMeta}
-              platformTemplates={publicListings}
-              platformLoading={publicLoading}
-              platformNotice="Sample storefront templates — illustrative until more creators publish live workflows."
-            />
-          )
-        : accountPhase === 'guest' ?
-          (
-            <>
-              {publicMock && !publicLoading && (
-                <div className="browse-mock-notice">
-                  Showing sample listings — live data unavailable. Check your Supabase connection and RLS policies.
-                </div>
-              )}
-              <div className="browse-controls">
-                <div className="browse-filters">
-                  <button
-                    className={`filter-btn${activeCategory === 'All' ? ' active' : ''}`}
-                    onClick={() => setActiveCategory('All')}
-                  >
-                    All Builds
-                  </button>
-                  {allCategories.map((cat) => (
-                    <button
-                      key={cat}
-                      className={`filter-btn${activeCategory === cat ? ' active' : ''}`}
-                      onClick={() => setActiveCategory(cat)}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  className="browse-search"
-                  type="text"
-                  placeholder="Search starter examples…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <BuyerWorkflowsPublicBrowse
-                workflows={workflows}
-                creatorMeta={workflowCreatorMeta}
-                platformTemplates={filteredPublic}
-                platformLoading={publicLoading}
-                platformNotice="Platform starter examples — not tied to a live creator storefront yet."
-              />
-            </>
-          )
-        : (
+          </div>
+        ) : accountPhase === 'incomplete' ? (
+          <section className="dash-empty browse-onboarding-prompt">
+            <p>Complete onboarding so we know whether you are buying builds or fulfilling them.</p>
+            <Link to="/onboarding" className="btn btn-primary btn-sm">
+              Continue onboarding →
+            </Link>
+          </section>
+        ) : accountPhase === 'creator' ? (
+          <CreatorBuyerRequestsBrowse
+            requests={openRequests}
+            creatorProfileId={creatorProfile?.id}
+            creatorUserProfileId={userProfileRow?.id ?? null}
+            eligibility={eligibility}
+            initialAppliedRequestIds={appliedIds}
+          />
+        ) : isBuyerSide ? (
+          <BuyerWorkflowsPublicBrowse
+            workflows={workflows}
+            creatorMeta={workflowCreatorMeta}
+            platformTemplates={publicListings}
+            platformLoading={publicLoading}
+            platformNotice="Illustrative platform templates — not live creator-published storefront listings."
+            loadError={workflowLoadError}
+            isLoggedIn={Boolean(user)}
+          />
+        ) : (
           <p className="browse-empty subtle">Browse is unavailable for this account state.</p>
         )}
       </div>

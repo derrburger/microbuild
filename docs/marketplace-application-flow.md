@@ -76,13 +76,17 @@ Legacy admin proposal tooling (still available under **Later: Proposal & Payment
    - **Select creator** → confirmation modal explaining project assignment → **`selectCreatorForRequest`** rejects sibling `submitted|shortlisted` rows, sets winner `buyer_selected`, updates **`buyer_requests`** (`creator_selected`, pointers, `visibility_status = creator_selected`), **creates or updates** the **`orders`** row (`selection_method = buyer_selected`, `selected_by_buyer`, `order_status = assigned`, `request_application_id`, deduped by `request_id`).
    - **Message creator** → central **`/messages`** deep link; prefers `orderId` once mirrored on the application/order.
    - **View public profile** → `/creator/:id` when `public_profile_status = public`.
-6. **Buyer Browse** (**`/browse`**) lists **`published_workflows`** that meet **all** of:
+6. **Buyer Browse Workflows (v1 — `/browse`)** — **`loadBuyerBrowseMarketplace()`** loads real **`published_workflows`** with explicit columns. Visible only when:
    - `workflow_status = published`
    - `visibility_status = public`
    - `ai_review_status` in **`published`** or **`ai_approved`**
-   - **no** `ai_risk_flags` (client-side defense in list loader)
+   - **no** `ai_risk_flags` (client-side defense + dedupe by id)
    
-   When no rows qualify, buyers see **“Reusable creator workflows are coming soon.”** Under that, **Platform starter examples** (curated template cards) stay clearly labelled as platform content.
+   **UI:** stats row (published count, categories, AI-reviewed, customization available), search + category/industry/price/turnaround filters, sort (recommended, AI score, price, turnaround, newest), professional workflow cards (creator name/tier/verified, AI readiness badge, features/setup preview), **View details** panel, prominent **Request / Customize** → **`/request?workflowId=`**. Logged-out users route through **`/signin?redirect=…`** first.
+   
+   When no rows qualify: **“Creator workflows are coming soon.”** Below that, **Platform starter examples** (curated templates) are clearly labelled — never presented as creator-published storefront listings.
+   
+   **Creator Browse is different:** signed-in creators on `/browse` see **open buyer requests** only (`CreatorBuyerRequestsBrowse`) — not this workflow marketplace.
 
 ## Buyer workflow customization requests (v1)
 
@@ -189,8 +193,8 @@ Partial unique index enforces single **active** application per `(buyer_request_
 | Account | Primary Browse surface | Creator discovery vs history |
 |---------|-----------------------|------------------------------|
 | Creator signed-in | `/browse` title **Browse Buyer Requests** · open scopes + Apply | **`/dashboard/applications`** (applications) · **`/dashboard/workflows`** (published workflows) |
-| Buyer / Admin signed-in | `/browse` title **Browse Workflows** · AI-visible `published_workflows` + **Platform starter examples** | Own requests/applicants stay on Dashboard |
-| Logged-out | `/browse` **Browse Workflows** — same public workflow slice when available + starter examples (filters apply to starter grid); sign-in still required for dashboard flows |
+| Buyer / Admin signed-in | `/browse` title **Browse Workflows** · stats + filters + **`loadBuyerBrowseMarketplace()`** cards + detail panel + secondary **Platform starter examples** | Own requests/applicants stay on Dashboard |
+| Logged-out | `/browse` **Browse Workflows** — same public workflow marketplace when available + labelled starter examples; **Request / Customize** prompts sign-in then continues to `/request?workflowId=` |
 
 Legacy **`/dashboard/browse`** now redirects: creators ⇒ `/dashboard/applications`, buyers/admin ⇒ `/browse`.
 

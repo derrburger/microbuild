@@ -2,7 +2,7 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Marketplace **Real Analytics + AI Monitor v1** — `/dashboard/analytics` shows live Supabase metrics (applications, projects, workflows, agreements, deliverables, messages) and rules-based AI Monitor insights. Prior: **Creator Workflows v2**. Proposal/payment remains **deferred** (no Stripe). **TEMP DEV RLS remains unsafe** until production policies ship.
+**Status:** Marketplace **Buyer Browse Workflows v1** — professional `/browse` storefront for AI-reviewed creator workflows with search, filters, detail panel, and Request/Customize. Prior: **Real Analytics + AI Monitor v1**. Proposal/payment remains **deferred** (no Stripe). **TEMP DEV RLS remains unsafe** until production policies ship.
 
 ### Real Analytics + AI Monitor v1
 
@@ -16,6 +16,18 @@ A marketplace for focused, affordable web tools built for local service business
 | Admin | Summary counts + link to **`/admin`** Command Center — full admin analytics stay in admin shell |
 | Future placeholders | **Earnings** (needs Stripe), **profile views** / **conversion rate** (needs event tracking) — clearly labelled, not `$0` fake charts |
 | Migration | **Not required** for v1 — uses existing rows only |
+
+### Buyer Browse Workflows v1
+
+| Area | Behavior |
+|------|----------|
+| Route | **`/browse`** — buyer, guest, and admin see **creator-published workflows**; creators see **open buyer requests** (never the workflow marketplace) |
+| Query | **`loadBuyerBrowseMarketplace()`** — explicit columns; `published` + `public` + AI-safe (`published` / `ai_approved`, no risk flags); deduped by id |
+| Layout | Stats row, search/filters/sort, professional workflow cards, detail panel, secondary **Platform starter examples** |
+| Cards | Creator name/tier/verified, AI quality badge, features/setup preview, preview link, **View details**, **Request / Customize** |
+| Request flow | **`/request?workflowId=`** — logged-out users sign in first (`/signin?redirect=…`); request page shows customization context unchanged |
+| Empty state | **“Creator workflows are coming soon.”** + labelled starter examples (never fake creator listings) |
+| Role safety | Creator nav **Buyer Requests** → same `/browse` route, different content (`CreatorBuyerRequestsBrowse`) |
 
 ### Creator Workflows v2
 
