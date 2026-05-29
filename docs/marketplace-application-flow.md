@@ -68,12 +68,14 @@ Legacy admin proposal tooling (still available under **Later: Proposal & Payment
 
 1. Submits `/request` (existing form). Request rows gain marketplace columns (`visibility_status`, `application_status`, `applications_count`, selection pointers).
 2. Open requests accept **creator voluntary applications** via `request_applications`.
-3. Buyer manages requests on **`/dashboard/requests` (My Requests v2)** — `BuyerMyRequestsPanel` (`#buyer-my-requests-applicants`). **Not** creator open-request browse (that is **`/browse`** for creators only).
+3. Buyer manages requests on **`/dashboard/requests` (My Requests v2)** — `BuyerMyRequestsPanel` + **`BuyerRequestsAIOverview`** (`#buyer-my-requests-applicants`). **Not** creator open-request browse (that is **`/browse`** for creators only).
+   - **AI Request Overview** (top, `src/lib/buyerRequestAI.ts`): rules-based counts — Needs Review · Waiting for Creators · Ready to Select · Active Projects · Delivery Waiting · Missing Info — plus **Next Best Action** and insight cards with severity + CTA. **No external AI APIs.**
    - **Header:** title, subtitle, **New Request**, **Browse Workflows**.
-   - **Summary cards (real counts):** Total · Waiting for Applicants · Applicants to Review · Creator Selected · In Progress · Delivery / Review — from `buyer_requests`, `request_applications` count, and linked `orders` / deliverables (zeros when empty).
-   - **Filters:** All · Waiting for Creators · Review Applicants · Creator Selected · In Progress · Delivered · Completed · Needs Action — plus simple search (business, workflow title, MicroBuild type, industry).
-   - **Request cards:** source badge (Custom vs Workflow Customization), plain-English status, created date, goal/budget/deadline, workflow provenance banner, status row (applicants, selected creator, project, agreement, delivery), **next action**, CTAs (View Details, Review Applicants, Message Creator, Open Project, Review Delivery, Browse Similar Workflows).
-   - **Expanded details:** full goal/problem, parsed `style_notes` business context, AI request summary (`buyerAI`), missing-info checklist, **AI Request Monitor** (`buyerRequestMonitor.ts` — rules-based, no external API), marketplace **project timeline** (dates only when stored), **selected creator** card when assigned.
+   - **Summary cards (real counts):** Total · Waiting for Applicants · Applicants to Review · Creator Selected · In Progress · Delivery / Review.
+   - **Filters:** **Active** (default) · All · Needs Action · Waiting · Review · Selected · In Progress · Delivered · Completed · **Canceled** · **Archived** + search.
+   - **Request cards:** source badge, status, goal/budget/deadline, workflow provenance, status row, next action, CTAs, **Manage** menu (cancel / archive / safe delete).
+   - **Safe request management** (`src/lib/buyerRequestManagement.ts`): **Delete** only when no applicants, messages, orders, proposals, or deliverables; otherwise **Cancel** (stops creator activity) or **Archive** (hide from active list). Requires **`buyer-request-management-fields.sql`** for `archived_at`, `canceled_at`, `request_visibility`, etc.
+   - **Expanded details:** full goal/problem, parsed `style_notes`, AI summary, missing-info checklist, per-request **AI Request Monitor**, project timeline, selected creator card.
 4. **Applicant review** (expand request): loads `request_applications` after ownership check. Collapsible applicant rows — creator name, tier, verified, **Original Workflow Creator**, profile strength, proposal, fit, timeline, price, status; **Shortlist / Reject / Select creator / Message / View profile**. After selection, applicants hide behind **View applicant history** unless expanded. Empty states: no requests, no applicants, selected-but-no-project yet.
 5. Buyer actions per applicant:
    - **Shortlist** → `request_applications.application_status = shortlisted` (buyer ownership re-checked before update).

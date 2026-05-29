@@ -91,8 +91,11 @@ End-to-end path: **buyer request** → **creator apply** → **buyer review/sele
 | Area | Behavior |
 |------|----------|
 | Route | **`/dashboard/requests`** — buyer-only; manages **submitted requests + project status** (not creator open-request browse on `/browse`) |
-| Components | **`BuyerMyRequestsPanel`**, **`src/lib/buyerRequestMonitor.ts`** (filters, summary counts, timeline, rules-based **AI Request Monitor**) |
+| Components | **`BuyerMyRequestsPanel`**, **`BuyerRequestsAIOverview`**, **`src/lib/buyerRequestAI.ts`** (page-level AI overview), **`src/lib/buyerRequestMonitor.ts`**, **`src/lib/buyerRequestManagement.ts`** (cancel / archive / safe delete) |
 | Data | `buyer_requests` (incl. workflow provenance + `style_notes`), `request_applications`, linked `orders` + `deliverables` — real counts, zeros when empty |
+| AI Overview | Rules-based **AI Request Overview** at top — Needs Review, Waiting, Ready to Select, Active Projects, Delivery Waiting, Missing Info + next best action + insight cards (**no external AI**) |
+| Request management | **Manage** menu per card — **Delete** only when no applicants/messages/project/agreement/deliverables; otherwise **Cancel** or **Archive**. Default filter hides archived/canceled. |
+| SQL (optional) | Run **`supabase/migrations/buyer-request-management-fields.sql`** for `archived_at`, `canceled_at`, `deleted_at`, `cancellation_reason`, `request_visibility` |
 | Request status flow | Waiting for creators → Review applicants → Creator selected → Agreement (project workspace) → Build in progress → Delivery review → Completed |
 | Deferred | Stripe, external AI APIs, payment/proposal expansion on this page (legacy **Project agreements** list remains below cards) |
 

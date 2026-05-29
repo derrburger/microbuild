@@ -262,6 +262,11 @@ export interface BuyerRequestRow {
   source_creator_profile_id?: string | null;
   customization_notes?: string | null;
   requested_from_workflow?: boolean | null;
+  archived_at?: string | null;
+  canceled_at?: string | null;
+  deleted_at?: string | null;
+  cancellation_reason?: string | null;
+  request_visibility?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -701,6 +706,11 @@ export interface BuyerRequestInsert {
   source_creator_profile_id?: string | null;
   customization_notes?: string | null;
   requested_from_workflow?: boolean | null;
+  archived_at?: string | null;
+  canceled_at?: string | null;
+  deleted_at?: string | null;
+  cancellation_reason?: string | null;
+  request_visibility?: string | null;
   created_at?: string;
   updated_at?: string;
 }

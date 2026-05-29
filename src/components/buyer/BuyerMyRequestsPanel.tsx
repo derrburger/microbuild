@@ -37,17 +37,29 @@ import {
   type BuyerRequestFilterId,
   type BuyerRequestSnap,
 } from '../../lib/buyerRequestMonitor';
+import { generateBuyerRequestsOverview } from '../../lib/buyerRequestAI';
+import {
+  fetchBuyerRequestActivityMap,
+  assessBuyerRequestActivityFromRow,
+  requestLifecycleLabel,
+  type BuyerRequestActivitySummary,
+} from '../../lib/buyerRequestManagement';
+import BuyerRequestsAIOverview from './BuyerRequestsAIOverview';
+import BuyerRequestManageMenu from './BuyerRequestManageMenu';
 import './BuyerMyRequestsPanel.css';
 
 const FILTER_OPTIONS: { id: BuyerRequestFilterId; label: string }[] = [
+  { id: 'active', label: 'Active' },
   { id: 'all', label: 'All' },
+  { id: 'needs_action', label: 'Needs Action' },
   { id: 'waiting_for_creators', label: 'Waiting for Creators' },
   { id: 'review_applicants', label: 'Review Applicants' },
   { id: 'creator_selected', label: 'Creator Selected' },
   { id: 'in_progress', label: 'In Progress' },
   { id: 'delivered', label: 'Delivered' },
   { id: 'completed', label: 'Completed' },
-  { id: 'needs_action', label: 'Needs Action' },
+  { id: 'canceled', label: 'Canceled' },
+  { id: 'archived', label: 'Archived' },
 ];
 
 export type { BuyerRequestSnap };
@@ -122,7 +134,7 @@ export default function BuyerMyRequestsPanel({
   loading = false,
   onRefresh,
 }: Props) {
-  const [filter, setFilter] = useState<BuyerRequestFilterId>('all');
+  const [filter, setFilter] = useState<BuyerRequestFilterId>('active');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [applicantMap, setApplicantMap] = useState<Record<string, BuyerApplicantResolved[]>>({});
@@ -131,6 +143,7 @@ export default function BuyerMyRequestsPanel({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [extraLabels, setExtraLabels] = useState<Record<string, string>>({});
+  const [activityMap, setActivityMap] = useState<Record<string, BuyerRequestActivitySummary>>({});
 
   useEffect(() => {
     if (!toast) return;
@@ -142,6 +155,35 @@ export default function BuyerMyRequestsPanel({
     () => computeBuyerRequestsSummary(requests, ordersByRequestId, deliverablesByOrderId),
     [requests, ordersByRequestId, deliverablesByOrderId],
   );
+
+  const aiOverview = useMemo(
+    () =>
+      generateBuyerRequestsOverview({
+        requests,
+        ordersByRequestId,
+        deliverablesByOrderId,
+      }),
+    [requests, ordersByRequestId, deliverablesByOrderId],
+  );
+
+  useEffect(() => {
+    if (requests.length === 0) {
+      setActivityMap({});
+      return;
+    }
+    let cancelled = false;
+    void fetchBuyerRequestActivityMap(
+      requests.map((r) => r.id),
+      ordersByRequestId,
+      deliverablesByOrderId,
+      requests,
+    ).then((map) => {
+      if (!cancelled) setActivityMap(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [requests, ordersByRequestId, deliverablesByOrderId]);
 
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
@@ -216,6 +258,14 @@ export default function BuyerMyRequestsPanel({
     if (!applicantMap[requestId]) await loadApplicants(requestId);
   }
 
+  function handleInsightAnchor(anchor: string) {
+    const id = anchor.replace('#mb-buyer-applicants-', '');
+    if (id) void toggleExpand(id);
+    window.setTimeout(() => {
+      document.querySelector(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+  }
+
   if (loading) {
     return <div className="dash-loading bmr-root">Loading your requests…</div>;
   }
@@ -244,6 +294,8 @@ export default function BuyerMyRequestsPanel({
 
   return (
     <div className="bmr-root" id="buyer-my-requests-applicants">
+      <BuyerRequestsAIOverview overview={aiOverview} onInsightAnchor={handleInsightAnchor} />
+
       <div className="bmr-summary-grid" aria-label="Request summary">
         <SummaryCard label="Total Requests" value={summary.total} />
         <SummaryCard label="Waiting for Applicants" value={summary.waitingForApplicants} tone="warn" />
@@ -300,6 +352,7 @@ export default function BuyerMyRequestsPanel({
                 ordersByRequestId[r.id]?.id ? deliverablesByOrderId[ordersByRequestId[r.id]!.id] ?? null : null
               }
               creatorLabels={allLabels}
+              activity={activityMap[r.id]}
               expanded={expandedId === r.id}
               applicants={applicantMap[r.id] ?? []}
               loadingApplicants={loadingReq === r.id}
@@ -313,6 +366,7 @@ export default function BuyerMyRequestsPanel({
                 await loadApplicants(r.id);
                 await refreshAll();
               }}
+              onRefresh={refreshAll}
             />
           ))}
         </div>
@@ -349,6 +403,7 @@ function RequestCard({
   order,
   deliverable,
   creatorLabels,
+  activity,
   expanded,
   applicants,
   loadingApplicants,
@@ -359,12 +414,14 @@ function RequestCard({
   onBusy,
   onToast,
   onReloadApplicants,
+  onRefresh,
 }: {
   request: BuyerRequestSnap;
   buyerProfile: UserProfileRow;
   order?: OrderPipelineRow;
   deliverable: DeliverablePlaceholder | null | undefined;
   creatorLabels: Record<string, string>;
+  activity?: BuyerRequestActivitySummary;
   expanded: boolean;
   applicants: BuyerApplicantResolved[];
   loadingApplicants: boolean;
@@ -375,7 +432,13 @@ function RequestCard({
   onBusy: (id: string | null) => void;
   onToast: (t: { type: 'ok' | 'err'; msg: string }) => void;
   onReloadApplicants: () => Promise<void>;
+  onRefresh: () => void | Promise<void>;
 }) {
+  const activitySummary =
+    activity ??
+    assessBuyerRequestActivityFromRow(r, order, deliverable ?? null);
+  const lifecycle = requestLifecycleLabel(r);
+  const mutedCard = Boolean(lifecycle);
   const wf = isWorkflowBackedRequest(r);
   const headline = buyerRequestStatusHeadline(r, order, deliverable ?? null);
   const next = computeBuyerRequestNextAction(r, order, deliverable ?? null);
@@ -435,7 +498,7 @@ function RequestCard({
   const wfTitle = safeStr(r.source_workflow_title).trim();
 
   return (
-    <article className="bmr-card" id={`mb-buyer-applicants-${r.id}`}>
+    <article className={`bmr-card${mutedCard ? ' bmr-card--muted' : ''}`} id={`mb-buyer-applicants-${r.id}`}>
       <header className="bmr-card-head">
         <div className="bmr-card-title-block">
           <h3 className="bmr-card-title">{requestDisplayTitle(r)}</h3>
@@ -443,6 +506,9 @@ function RequestCard({
             <span className={`bmr-source-badge${wf ? ' bmr-source-badge--wf' : ''}`}>
               {wf ? 'Workflow Customization' : 'Custom Request'}
             </span>
+            {lifecycle ?
+              <span className="bmr-lifecycle-badge">{lifecycle}</span>
+            : null}
             <StatusBadge display={headline} />
             {wf ?
               <span className="subtle" style={{ fontSize: '0.72rem' }}>
@@ -452,6 +518,14 @@ function RequestCard({
           </div>
         </div>
         <span className="bmr-card-date">Submitted {fmtDate(r.created_at)}</span>
+        <BuyerRequestManageMenu
+          request={r}
+          buyerProfile={buyerProfile}
+          activity={activitySummary}
+          onRefresh={onRefresh}
+          onToast={onToast}
+          onExpandDetails={onToggleExpand}
+        />
       </header>
 
       <div className="bmr-card-body">

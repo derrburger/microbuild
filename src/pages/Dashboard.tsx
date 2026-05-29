@@ -588,6 +588,11 @@ interface BuyerRequest {
   source_creator_profile_id?: string | null;
   customization_notes?: string | null;
   requested_from_workflow?: boolean | null;
+  archived_at?: string | null;
+  canceled_at?: string | null;
+  deleted_at?: string | null;
+  cancellation_reason?: string | null;
+  request_visibility?: string | null;
 }
 
 // ─── Buyer status overview cards ───────────────────────────────────────────────
@@ -723,7 +728,7 @@ export function BuyerDashboard({
     let q = supabase
       .from('buyer_requests')
       .select(
-        'id, business_name, build_type, status, visibility_status, created_at, budget, deadline, main_goal, current_problem, industry, website_social, style_notes, applications_count, application_status, selected_creator_profile_id, selected_request_application_id, user_id, source_type, source_workflow_id, source_workflow_title, source_creator_profile_id, customization_notes, requested_from_workflow',
+        'id, business_name, build_type, status, visibility_status, created_at, budget, deadline, main_goal, current_problem, industry, website_social, style_notes, applications_count, application_status, selected_creator_profile_id, selected_request_application_id, user_id, source_type, source_workflow_id, source_workflow_title, source_creator_profile_id, customization_notes, requested_from_workflow, archived_at, canceled_at, deleted_at, cancellation_reason, request_visibility',
       )
       .order('created_at', { ascending: false })
       .limit(20);

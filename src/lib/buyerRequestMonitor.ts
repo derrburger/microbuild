@@ -17,13 +17,16 @@ import { displayAgreementStatus } from './projectAgreementAI';
 
 export type BuyerRequestFilterId =
   | 'all'
+  | 'active'
   | 'waiting_for_creators'
   | 'review_applicants'
   | 'creator_selected'
   | 'in_progress'
   | 'delivered'
   | 'completed'
-  | 'needs_action';
+  | 'needs_action'
+  | 'canceled'
+  | 'archived';
 
 export type MonitorSeverity = 'info' | 'needs_action' | 'ready';
 
@@ -94,6 +97,11 @@ export interface BuyerRequestSnap {
   source_creator_profile_id?: string | null;
   customization_notes?: string | null;
   requested_from_workflow?: boolean | null;
+  archived_at?: string | null;
+  canceled_at?: string | null;
+  deleted_at?: string | null;
+  cancellation_reason?: string | null;
+  request_visibility?: string | null;
 }
 
 function norm(s: unknown): string {
@@ -151,6 +159,22 @@ export function parseStyleNotesFromBuyerRequest(styleNotes: string | null | unde
   return out;
 }
 
+export function isBuyerRequestArchived(r: BuyerRequestSnap): boolean {
+  return Boolean(r.archived_at?.trim()) || norm(r.request_visibility) === 'archived';
+}
+
+export function isBuyerRequestCanceled(r: BuyerRequestSnap): boolean {
+  return Boolean(r.canceled_at?.trim()) || norm(r.request_visibility) === 'canceled';
+}
+
+export function isBuyerRequestDeleted(r: BuyerRequestSnap): boolean {
+  return Boolean(r.deleted_at?.trim()) || norm(r.request_visibility) === 'deleted';
+}
+
+export function isBuyerRequestActiveList(r: BuyerRequestSnap): boolean {
+  return !isBuyerRequestArchived(r) && !isBuyerRequestCanceled(r) && !isBuyerRequestDeleted(r);
+}
+
 export function requestDisplayTitle(r: BuyerRequestSnap): string {
   const biz = safeStr(r.business_name).trim();
   if (biz) return biz;
@@ -178,6 +202,7 @@ export function computeBuyerRequestsSummary(
   };
 
   for (const r of requests) {
+    if (!isBuyerRequestActiveList(r)) continue;
     const ord = ordersByRequestId[r.id];
     const del = ord?.id ? deliverablesByOrderId[ord.id] : null;
     const bucket = classifyBuyerRequestPrimaryFilter(r, ord, del ?? null);
@@ -226,7 +251,19 @@ export function requestMatchesFilter(
   order?: OrderPipelineRow | null,
   deliverable?: DeliverablePlaceholder | null,
 ): boolean {
+  if (isBuyerRequestDeleted(r)) return filter === 'all';
+
+  if (filter === 'archived') return isBuyerRequestArchived(r);
+  if (filter === 'canceled') return isBuyerRequestCanceled(r);
+
+  if (filter === 'active') {
+    return isBuyerRequestActiveList(r);
+  }
+
+  if (filter !== 'all' && !isBuyerRequestActiveList(r)) return false;
+
   if (filter === 'all') return true;
+
   const primary = classifyBuyerRequestPrimaryFilter(r, order, deliverable);
   if (filter === 'needs_action') {
     return analyzeBuyerRequestMonitor(r, order, deliverable).severity === 'needs_action';
