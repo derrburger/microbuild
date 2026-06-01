@@ -9,7 +9,7 @@ A marketplace for focused, affordable web tools built for local service business
 | Area | Behavior |
 |------|----------|
 | Config | **`src/lib/pricingPlans.ts`** — centralized buyer project pricing + creator subscription plans |
-| Public pricing | **`/pricing`** — tabs: **For Buyers** (default) / **For Creators**; buyer Starter $99, Growth $299, Pro Custom |
+| Public pricing | **`/pricing`** — neutral page: **Get a MicroBuild** + **Build on MicroBuild** (no role tabs); signed-in banner → `/dashboard/billing` |
 | Creator plans | Free $0/mo, Professional $15/mo, Verified $25/mo — limits shown as UI labels only (not enforced yet) |
 | Signed-in billing | **`/dashboard/billing`** — role-aware: creator plan status, comparison table, upgrade placeholders; buyer pay-per-build info |
 | Stripe | **`src/lib/billing.ts`** — `STRIPE_STATUS = not_connected`; `startCreatorCheckout` / `openBillingPortal` show “coming soon” — **no fake payments** |

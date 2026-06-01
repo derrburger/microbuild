@@ -44,7 +44,10 @@ export interface CreatorPricingPlan {
 }
 
 export const BUYER_PRICING_NOTE =
-  'Project scope and final price are confirmed in the Project Agreement before work begins.';
+  'Final scope and price are confirmed in the Project Agreement before work begins.';
+
+export const CREATOR_PRICING_NOTE =
+  'Creator subscriptions are for marketplace access, workflow publishing, analytics, and trust signals. Verified requires admin approval.';
 
 export const buyerPricingPlans: BuyerPricingPlan[] = [
   {

@@ -17,7 +17,7 @@
 ## Pricing + Billing Visibility v1
 
 - **Config:** `src/lib/pricingPlans.ts` — single source for buyer project pricing and creator subscription plans.
-- **Public `/pricing`:** Tabs **For Buyers** (default when logged out) and **For Creators**. Buyer tab: Starter $99, Growth $299, Pro Custom — CTA **Request a MicroBuild**. Creator tab: Free / Professional / Verified with monthly prices — CTA **Apply as Creator** or **Sign in to upgrade** / **View Plans** when signed in. Note: scope confirmed in Project Agreement; no payment on this page.
+- **Public `/pricing`:** Single neutral page — **Get a MicroBuild** (Starter $99, Growth $299, Pro Custom) and **Build on MicroBuild** (Free / Professional / Verified) on one page — no buyer/creator tabs. Signed-in users see a banner linking to **`/dashboard/billing`**. Role-tailored billing lives on the dashboard, not on public tabs.
 - **Signed-in `/dashboard/billing`:** Creators see current plan, payment/approval/visibility status, upgrade cards, plan comparison table (applications/month, workflows, analytics, AI monitor, verified badge — **display only**, not enforced). Buyers see free account + pay-per-MicroBuild + links to `/pricing` and `/request`. Admins see a small billing overview placeholder.
 - **Stripe:** `src/lib/billing.ts` — `STRIPE_STATUS` is `not_connected`. Buttons call `startCreatorCheckout(planId)` or `openBillingPortal()` and show **Checkout coming soon** / **Stripe not connected yet** — no charges, no secret keys.
 - **Navigation:** Profile dropdown **Billing & Plans** → `/dashboard/billing`; creator dashboard **View Plans** on billing strip; Settings **Billing** card with View Plans / Manage Billing (placeholder) / upgrade links.

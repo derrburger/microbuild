@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { getCreatorPaymentStatusLabel } from '../lib/billing';
+import { CREATOR_TIER_LABELS } from '../lib/pricingPlans';
+import type { CreatorTier } from '../types';
 import type { UserProfileRow } from '../types/database';
 import DashboardNav from '../components/DashboardNav';
 import './DashboardSettings.css';
@@ -17,6 +20,8 @@ export default function DashboardSettings() {
   const [saving, setSaving]           = useState(false);
   const [saved, setSaved]             = useState(false);
   const [saveError, setSaveError]     = useState<string | null>(null);
+  const [creatorPlanLabel, setCreatorPlanLabel] = useState<string | null>(null);
+  const [creatorPaymentLabel, setCreatorPaymentLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/signin', { replace: true });
@@ -24,20 +29,56 @@ export default function DashboardSettings() {
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('auth_user_id', user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setProfile(data as UserProfileRow);
-          const raw = data as unknown as Record<string, unknown>;
-          setDisplayName(typeof raw.display_name === 'string' ? raw.display_name : '');
-          setGithubUrl(typeof raw.github_url === 'string' ? raw.github_url : '');
+
+    async function load() {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('auth_user_id', user!.id)
+        .maybeSingle();
+
+      if (data) {
+        setProfile(data as UserProfileRow);
+        const raw = data as unknown as Record<string, unknown>;
+        setDisplayName(typeof raw.display_name === 'string' ? raw.display_name : '');
+        setGithubUrl(typeof raw.github_url === 'string' ? raw.github_url : '');
+
+        if ((data as UserProfileRow).account_type === 'creator') {
+          const cpId = (data as { creator_profile_id?: string | null }).creator_profile_id;
+          let cp: { tier?: string; subscription_status?: string; approval_status?: string } | null = null;
+
+          if (cpId) {
+            const { data: cpRow } = await supabase
+              .from('creator_profiles')
+              .select('tier, subscription_status, approval_status')
+              .eq('id', cpId)
+              .maybeSingle();
+            cp = cpRow;
+          }
+          if (!cp) {
+            const { data: cpRow } = await supabase
+              .from('creator_profiles')
+              .select('tier, subscription_status, approval_status')
+              .eq('auth_user_id', user!.id)
+              .maybeSingle();
+            cp = cpRow;
+          }
+
+          const tier = (cp?.tier ?? 'free') as CreatorTier;
+          setCreatorPlanLabel(CREATOR_TIER_LABELS[tier] ?? 'Free');
+          setCreatorPaymentLabel(
+            getCreatorPaymentStatusLabel(tier, cp?.subscription_status, cp?.approval_status),
+          );
+        } else {
+          setCreatorPlanLabel(null);
+          setCreatorPaymentLabel(null);
         }
-        setLoading(false);
-      });
+      }
+
+      setLoading(false);
+    }
+
+    void load();
   }, [user]);
 
   async function handleSave(e?: React.FormEvent) {
@@ -215,60 +256,55 @@ export default function DashboardSettings() {
             <div>
               {profile?.account_type === 'buyer' ? (
                 <>
-                  <div className="ds-billing-title">No subscription required</div>
+                  <div className="ds-billing-title">Buyer accounts are free</div>
                   <p className="ds-billing-desc">
-                    Buyers pay per approved MicroBuild. Final scope is confirmed in the Project Agreement
-                    before work begins — no buyer subscription required.
+                    Pay per MicroBuild. Final scope confirmed before work begins in the Project Agreement.
                   </p>
+                  <div className="ds-billing-summary-row">
+                    <span className="ds-billing-summary-label">Current plan</span>
+                    <span className="ds-billing-summary-value">No subscription</span>
+                  </div>
+                  <div className="ds-billing-summary-row">
+                    <span className="ds-billing-summary-label">Payment status</span>
+                    <span className="ds-billing-summary-value">Pay per project — checkout not active yet</span>
+                  </div>
                   <div className="ds-billing-meta">
                     <span className="ds-billing-tag">Pay per MicroBuild</span>
                     <span className="ds-billing-tag">No subscription</span>
-                    <span className="ds-billing-tag">Stripe not connected yet</span>
                   </div>
                 </>
-              ) : (
+              ) : profile?.account_type === 'creator' ? (
                 <>
                   <div className="ds-billing-title">Creator marketplace plans</div>
                   <p className="ds-billing-desc">
-                    Billing is not connected yet. Plans are visible now. Checkout will activate when
-                    Stripe is connected. Professional ($15/mo) and Verified ($25/mo) require admin approval.
+                    Checkout not active yet. Plans are visible now — Stripe will connect in a later phase.
                   </p>
+                  <div className="ds-billing-summary-row">
+                    <span className="ds-billing-summary-label">Current plan</span>
+                    <span className="ds-billing-summary-value">{creatorPlanLabel ?? 'Free'}</span>
+                  </div>
+                  <div className="ds-billing-summary-row">
+                    <span className="ds-billing-summary-label">Payment status</span>
+                    <span className="ds-billing-summary-value">{creatorPaymentLabel ?? 'Not required'}</span>
+                  </div>
                   <div className="ds-billing-meta">
                     <span className="ds-billing-tag">Free: $0/mo</span>
                     <span className="ds-billing-tag">Professional: $15/mo</span>
                     <span className="ds-billing-tag">Verified: $25/mo</span>
                   </div>
                 </>
+              ) : (
+                <>
+                  <div className="ds-billing-title">Billing &amp; Plans</div>
+                  <p className="ds-billing-desc">View pricing and plan options for your account.</p>
+                </>
               )}
             </div>
           </div>
           <div className="ds-billing-actions">
             <Link to="/dashboard/billing" className="ds-billing-action-btn ds-billing-action-btn--primary">
-              View Plans
+              View Billing &amp; Plans
             </Link>
-            {profile?.account_type === 'creator' && (
-              <>
-                <button type="button" className="ds-billing-action-btn" disabled title="Stripe not connected yet">
-                  Manage Billing (coming soon)
-                </button>
-                <Link to="/dashboard/billing" className="ds-billing-action-btn">
-                  Upgrade to Professional
-                </Link>
-                <Link to="/creators/apply" className="ds-billing-action-btn">
-                  Apply for Verified
-                </Link>
-              </>
-            )}
-            {profile?.account_type === 'buyer' && (
-              <>
-                <Link to="/pricing" className="ds-billing-action-btn">
-                  View buyer pricing
-                </Link>
-                <Link to="/request" className="ds-billing-action-btn">
-                  Request a MicroBuild
-                </Link>
-              </>
-            )}
           </div>
         </div>
 

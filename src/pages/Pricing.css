@@ -47,45 +47,82 @@
 .pricing-sub {
   color: var(--text-secondary);
   font-size: 1.05rem;
-  max-width: 520px;
-  margin: 0 auto 1.25rem;
+  max-width: 560px;
+  margin: 0 auto;
 }
 
-.pricing-tabs {
-  display: inline-flex;
-  gap: 0.35rem;
-  padding: 0.25rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
+.pricing-signed-in-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 1.15rem;
+  margin-bottom: 2.5rem;
+  background: rgba(99, 179, 237, 0.08);
+  border: 1px solid rgba(99, 179, 237, 0.25);
+  border-radius: 10px;
 }
 
-.pricing-tab {
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  padding: 0.5rem 1.1rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.pricing-tab:hover {
-  color: var(--text-primary);
-}
-
-.pricing-tab--active {
-  background: var(--accent);
-  color: #000;
-}
-
-.pricing-audience-note {
-  text-align: center;
+.pricing-signed-in-banner p {
+  margin: 0;
   font-size: 0.85rem;
   color: var(--text-secondary);
-  margin: 0 0 1.75rem;
+  line-height: 1.5;
+}
+
+.pricing-section {
+  margin-bottom: 4rem;
+}
+
+.pricing-section--creators {
+  padding-top: 3rem;
+  border-top: 1px solid var(--border);
+}
+
+.pricing-section-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.pricing-section-title {
+  font-size: clamp(1.35rem, 3vw, 1.75rem);
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem;
+}
+
+.pricing-section-lead {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.55;
+}
+
+.pricing-section-footer {
+  text-align: center;
+  margin-top: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pricing-section-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  max-width: 520px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.pricing-section-note--muted {
+  font-size: 0.75rem;
+  opacity: 0.9;
 }
 
 .pricing-price-monthly {

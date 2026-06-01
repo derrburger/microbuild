@@ -113,20 +113,32 @@ interface AppStatus {
 // ─── Status summary card ───────────────────────────────────────────────────────
 
 function SummaryStatusCard({
-  label, value, sub, color,
+  label, value, sub, color, href,
 }: {
   label: string;
   value: string;
   sub: string;
   color: string;
+  href?: string;
 }) {
-  return (
-    <div className="cd-status-card">
+  const inner = (
+    <>
       <div className="cd-status-val" style={{ color }}>{value}</div>
       <div className="cd-status-label">{label}</div>
       <div className="cd-status-sub">{sub}</div>
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link to={href} className="cd-status-card cd-status-card--link">
+        {inner}
+        <span className="cd-status-link-hint">View Plans →</span>
+      </Link>
+    );
+  }
+
+  return <div className="cd-status-card">{inner}</div>;
 }
 
 // ─── Next Best Action card ─────────────────────────────────────────────────────
@@ -518,8 +530,9 @@ function CreatorDashboard({
         <SummaryStatusCard
           label="Creator Tier"
           value={TIER_LABELS[tier] ?? tier}
-          sub="Current creator plan"
+          sub="Current creator plan — tap to view plans"
           color={tierColor}
+          href="/dashboard/billing"
         />
         <SummaryStatusCard
           label="Approval Status"

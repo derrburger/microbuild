@@ -198,8 +198,11 @@ export default function DashboardBilling() {
                 <span className="dbill-tag">Agreement confirms scope</span>
               </div>
               <div className="dbill-buyer-actions">
-                <Link to="/pricing" className="btn btn-primary btn-sm">View buyer pricing</Link>
-                <Link to="/request" className="btn btn-ghost btn-sm">Request a MicroBuild</Link>
+                <Link to="/request" className="btn btn-primary btn-sm">Request a MicroBuild</Link>
+                <Link to="/browse" className="btn btn-ghost btn-sm">Browse Workflows</Link>
+                <Link to="/pricing#get-a-microbuild" className="btn btn-ghost btn-sm">
+                  View public pricing
+                </Link>
               </div>
             </section>
 
@@ -233,12 +236,16 @@ export default function DashboardBilling() {
         {isCreator && (
           <>
             <section className="dbill-section dbill-current-plan">
-              <h2 className="dbill-section-title">Your creator plan</h2>
+              <h2 className="dbill-section-title">Current plan</h2>
               {billingStatus && (
                 <>
                   <div className="dbill-current-headline">{billingStatus.headline}</div>
                   <p className="dbill-section-sub">{billingStatus.message}</p>
-                  <p className="dbill-stripe-inline">{billingStatus.stripeNotice}</p>
+                  <p className="dbill-stripe-inline">
+                    {!isStripeConnected()
+                      ? 'Checkout not active yet — Stripe is not connected. No charges will occur until checkout is live.'
+                      : billingStatus.stripeNotice}
+                  </p>
                 </>
               )}
 
@@ -299,16 +306,16 @@ export default function DashboardBilling() {
                     Manage Billing (coming soon)
                   </button>
                 )}
-                <Link to="/pricing?tab=creators" className="btn btn-ghost btn-sm">
-                  Compare on public pricing →
+                <Link to="/pricing#build-on-microbuild" className="btn btn-ghost btn-sm">
+                  View public pricing →
                 </Link>
               </div>
             </section>
 
             <section className="dbill-section">
-              <h2 className="dbill-section-title">Creator marketplace plans</h2>
+              <h2 className="dbill-section-title">Upgrade path</h2>
               <p className="dbill-section-sub">
-                Upgrade for more workflow publishing and applications. Verified requires admin approval.
+                Compare Free, Professional, and Verified creator plans. Verified requires admin approval.
               </p>
 
               <div className="dbill-plan-grid">
