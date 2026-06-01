@@ -2,19 +2,31 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Marketplace **Pricing + Billing Visibility v1** — buyer/creator pricing split, `/dashboard/billing`, Stripe placeholders (no checkout). Prior: **Deliverables + Handoff v1**. Proposal/payment checkout remains **deferred** (no Stripe). **TEMP DEV RLS remains unsafe** until production policies ship.
+**Status:** Marketplace **Plan Benefits + Feature Gating v1** — entitlements helper, upgrade prompts, frontend gating (requests, workflows, applications, analytics). **Pricing + Billing Visibility v1** on `/dashboard/billing`. Stripe checkout **not active**. **TEMP DEV RLS remains unsafe** until production policies ship.
+
+### Plan Benefits + Feature Gating v1
+
+| Area | Behavior |
+|------|----------|
+| Entitlements | **`src/lib/entitlements.ts`** — single source of truth: `getBuyerPlanEntitlements`, `getCreatorPlanEntitlements`, `canUseFeature`, upgrade messages, limits |
+| Usage | **`src/lib/planUsage.ts`** — active/monthly request counts, applications/month, published workflow counts |
+| UI | **`src/components/UpgradePrompt.tsx`** — locked feature name, current/required plan, View Plans CTA (no payment) |
+| Buyer gating | Request limits, AI overview/monitor tiers, advanced applicant review (Growth+), billing usage panel |
+| Creator gating | Application limits, publish workflow cap, full AI review / analytics / AI monitor (Professional+) |
+| Safety | Existing requests, messaging, agreements, delivery, cancel/archive — **not blocked** for in-flight projects |
+| Security | **Frontend-only v1** — production must add Supabase RLS, Edge Functions, Stripe webhook sync (documented in `entitlements.ts`) |
+| Migration | **Optional** `supabase/migrations/subscription-plan-fields.sql` — adds `user_profiles.buyer_plan`, `subscription_status`, Stripe ids (additive) |
+| Creator plan source | **`creator_profiles.tier`** remains canonical; `user_profiles.buyer_plan` for buyers |
 
 ### Pricing + Billing Visibility v1
 
 | Area | Behavior |
 |------|----------|
-| Config | **`src/lib/pricingPlans.ts`** — centralized buyer project pricing + creator subscription plans |
-| Public pricing | **`/pricing`** — neutral page: **Get a MicroBuild** + **Build on MicroBuild** (no role tabs); signed-in banner → `/dashboard/billing` |
-| Creator plans | Free $0/mo, Professional $15/mo, Verified $25/mo — limits shown as UI labels only (not enforced yet) |
-| Signed-in billing | **`/dashboard/billing`** — role-aware: creator plan status, comparison table, upgrade placeholders; buyer pay-per-build info |
-| Stripe | **`src/lib/billing.ts`** — `STRIPE_STATUS = not_connected`; `startCreatorCheckout` / `openBillingPortal` show “coming soon” — **no fake payments** |
-| Navigation | Profile dropdown **Billing & Plans**; dashboard tier strip **View Plans**; Settings billing actions |
-| Migration | **Not required** — uses existing `creator_profiles.tier`, `subscription_status`, `approval_status` fields |
+| Config | **`src/lib/pricingPlans.ts`** — buyer subscription plans + creator subscription plans |
+| Public pricing | **`/pricing`** — **Buyer Plans** + **Creator Plans**; signed-in → `/dashboard/billing` |
+| Signed-in billing | **`/dashboard/billing`** — current plan, **usage this month**, locked features, upgrade copy; Stripe not connected |
+| Stripe | **`src/lib/billing.ts`** — `STRIPE_STATUS = not_connected` — **no fake payments** |
+| Navigation | Profile dropdown **Billing & Plans**; dashboard plan strips with usage |
 
 ### Deliverables + Handoff v1
 

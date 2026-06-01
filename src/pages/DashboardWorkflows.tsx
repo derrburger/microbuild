@@ -28,7 +28,16 @@ import {
   type WorkflowSortKey,
 } from '../lib/workflowLabels';
 import WorkflowBuyerPreview from '../components/creator/WorkflowBuyerPreview';
+import UpgradePrompt from '../components/UpgradePrompt';
 import DashboardNav from '../components/DashboardNav';
+import {
+  canUseFeature,
+  getRequiredPlanForFeature,
+  resolveCreatorPlanFromProfile,
+  type PlanUsageCounts,
+} from '../lib/entitlements';
+import { fetchCreatorPlanUsage } from '../lib/planUsage';
+import type { CreatorPlanId } from '../lib/pricingPlans';
 import type { CreatorProfileRow, PublishedWorkflowRow, UserProfileRow } from '../types/database';
 import './Dashboard.css';
 import './DashboardWorkflows.css';
@@ -57,12 +66,18 @@ function WorkflowCard({
   creatorProfile,
   creatorDisplayName,
   requestCount,
+  creatorPlanId,
+  usageCounts,
+  publishedCount,
   onDidMutate,
 }: {
   row: PublishedWorkflowRow;
   creatorProfile: CreatorProfileRow | null;
   creatorDisplayName: string;
   requestCount: number;
+  creatorPlanId: CreatorPlanId;
+  usageCounts: PlanUsageCounts;
+  publishedCount: number;
   onDidMutate: () => void;
 }) {
   const actions = getWorkflowCardActions(row);
@@ -81,11 +96,27 @@ function WorkflowCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [publishBlocked, setPublishBlocked] = useState(false);
+
+  const isAlreadyPublished = getWorkflowListFilter(row) === 'published';
+  const canFullAiReview = canUseFeature('creator', creatorPlanId, 'creator_workflow_ai_review_full');
+  const canPublishMore = canUseFeature('creator', creatorPlanId, 'creator_publish_workflow', {
+    ...usageCounts,
+    creatorPublishedWorkflows: isAlreadyPublished ? publishedCount - 1 : publishedCount,
+  });
 
   async function run(
     action: 'ai' | 'submit' | 'publish' | 'hide' | 'archive',
   ) {
     if (!creatorProfile?.id || busy) return;
+    if (action === 'publish' && !isAlreadyPublished && !canPublishMore) {
+      setPublishBlocked(true);
+      return;
+    }
+    if (action === 'ai' && !canFullAiReview) {
+      setNotice({ kind: 'err', text: 'Full workflow AI review requires Professional Creator or above.' });
+      return;
+    }
     if (action === 'hide' && !window.confirm('Hide this workflow from buyer Browse?')) return;
     if (action === 'archive' && !window.confirm('Archive this workflow? It will stay hidden from buyers.')) return;
 
@@ -145,6 +176,18 @@ function WorkflowCard({
 
   return (
     <article className="wf-v2-card">
+      {publishBlocked ?
+        <UpgradePrompt
+          featureKey="creator_publish_workflow"
+          featureLabel="Publish more workflows"
+          currentPlan={creatorPlanId}
+          requiredPlan={getRequiredPlanForFeature('creator', 'creator_publish_workflow') ?? 'professional'}
+          role="creator"
+          unlockSummary="Publish more reusable workflows buyers can request from Browse."
+          onDismiss={() => setPublishBlocked(false)}
+          compact
+        />
+      : null}
       <div className="wf-v2-card-head">
         <h3 className="wf-v2-card-title">{safeStr(row.title, 'Untitled workflow')}</h3>
         <span className="wf-v2-card-date" title="Last updated">
@@ -292,6 +335,8 @@ export default function DashboardWorkflows() {
   const [busy, setBusy] = useState(true);
   const [rows, setRows] = useState<PublishedWorkflowRow[]>([]);
   const [workflowCustomizationCounts, setWorkflowCustomizationCounts] = useState<Record<string, number>>({});
+  const [creatorPlanId, setCreatorPlanId] = useState<CreatorPlanId>('free');
+  const [creatorUsage, setCreatorUsage] = useState<PlanUsageCounts>({});
   const [creatorProfile, setCreatorProfile] = useState<CreatorProfileRow | null>(null);
   const [creatorDisplayName, setCreatorDisplayName] = useState('You');
   const [gateMsg, setGateMsg] = useState<string | null>(null);
@@ -325,6 +370,7 @@ export default function DashboardWorkflows() {
 
     const cp = await resolveCreatorProfileForMarketplace(authUid, prof);
     setCreatorProfile(cp);
+    setCreatorPlanId(resolveCreatorPlanFromProfile(cp, prof));
     setCreatorDisplayName(
       safeStr(cp?.display_name) || safeStr(cp?.full_name) || 'You',
     );
@@ -354,9 +400,12 @@ export default function DashboardWorkflows() {
         }
       }
       setWorkflowCustomizationCounts(counts);
+      const usage = await fetchCreatorPlanUsage(cp.id);
+      setCreatorUsage(usage);
     } else {
       setRows([]);
       setWorkflowCustomizationCounts({});
+      setCreatorUsage({});
     }
   }, [user, navigate]);
 
@@ -562,6 +611,9 @@ export default function DashboardWorkflows() {
                               creatorProfile={creatorProfile}
                               creatorDisplayName={creatorDisplayName}
                               requestCount={workflowCustomizationCounts[w.id] ?? 0}
+                              creatorPlanId={creatorPlanId}
+                              usageCounts={creatorUsage}
+                              publishedCount={stats.published}
                               onDidMutate={() => void reload()}
                             />
                           ))}

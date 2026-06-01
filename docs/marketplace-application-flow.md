@@ -14,14 +14,31 @@
 
 ---
 
+## Plan Benefits + Feature Gating v1
+
+- **Entitlements:** `src/lib/entitlements.ts` — buyer/creator plan limits and `canUseFeature(role, plan, featureKey, usageCounts)`.
+- **Usage:** `src/lib/planUsage.ts` — counts for gating (requests, applications, published workflows).
+- **Upgrade UI:** `src/components/UpgradePrompt.tsx` — shown when a user hits a limit or opens a locked feature; links to `/dashboard/billing` (no checkout).
+- **Buyer plans (summary):**
+  - **Free:** 1 active / 1 monthly request, basic applicant review, limited request summary (not full AI overview), no advanced AI monitor.
+  - **Starter ($19):** 3 active / 5 monthly, workflow customization, full AI Request Overview, basic request management.
+  - **Growth ($49):** 10 active / 20 monthly, advanced AI monitor, priority visibility, full request management, team-ready view.
+  - **Pro:** custom limits — contact required.
+- **Creator plans (summary):**
+  - **Free:** 3 applications/mo, 1 published workflow, basic analytics counts, limited AI review.
+  - **Professional ($15):** 20 applications/mo, 5 workflows, full analytics + AI monitor + full workflow AI review.
+  - **Verified ($25):** 50 applications/mo, 15 workflows, verified badge (after admin), priority visibility.
+- **Gated surfaces:** `/request` submit, `/dashboard/requests`, `/browse` apply, `/dashboard/workflows` publish, `/dashboard/analytics` premium sections.
+- **Never blocked (project safety):** view existing requests/applications; messaging on active projects; agreements; delivery review; cancel/archive/delete when needed; edit drafts; unpublish workflows; finish selected projects.
+- **Security note:** v1 is **frontend/helper gating only**. Before paid launch: Supabase RLS, Edge Functions, Stripe webhooks syncing `buyer_plan` / `creator_profiles.tier` / `subscription_status`.
+- **SQL:** optional `supabase/migrations/subscription-plan-fields.sql` adds `user_profiles.buyer_plan` and Stripe-related columns (`ADD COLUMN IF NOT EXISTS`). Creator tier stays on `creator_profiles.tier`.
+
 ## Pricing + Billing Visibility v1
 
-- **Config:** `src/lib/pricingPlans.ts` — single source for buyer project pricing and creator subscription plans.
-- **Public `/pricing`:** Single neutral page — **Get a MicroBuild** (Starter $99, Growth $299, Pro Custom) and **Build on MicroBuild** (Free / Professional / Verified) on one page — no buyer/creator tabs. Signed-in users see a banner linking to **`/dashboard/billing`**. Role-tailored billing lives on the dashboard, not on public tabs.
-- **Signed-in `/dashboard/billing`:** Creators see current plan, payment/approval/visibility status, upgrade cards, plan comparison table (applications/month, workflows, analytics, AI monitor, verified badge — **display only**, not enforced). Buyers see free account + pay-per-MicroBuild + links to `/pricing` and `/request`. Admins see a small billing overview placeholder.
-- **Stripe:** `src/lib/billing.ts` — `STRIPE_STATUS` is `not_connected`. Buttons call `startCreatorCheckout(planId)` or `openBillingPortal()` and show **Checkout coming soon** / **Stripe not connected yet** — no charges, no secret keys.
-- **Navigation:** Profile dropdown **Billing & Plans** → `/dashboard/billing`; creator dashboard **View Plans** on billing strip; Settings **Billing** card with View Plans / Manage Billing (placeholder) / upgrade links.
-- **SQL migration:** **Not required** for v1 — existing `creator_profiles.tier`, `subscription_status`, and related fields are reused.
+- **Config:** `src/lib/pricingPlans.ts` — marketing copy and comparison tables.
+- **Public `/pricing`:** Buyer + Creator plans; signed-in → `/dashboard/billing`.
+- **Signed-in `/dashboard/billing`:** Current plan, usage, locked features, upgrade reasons; Stripe **not connected**.
+- **Stripe:** `src/lib/billing.ts` — checkout/portal return “coming soon” — no charges.
 
 ---
 
@@ -29,6 +46,7 @@
 
 - **Route:** `/dashboard/analytics` (account dropdown — creators and buyers; admins see platform summary + link to Command Center).
 - **Helpers:** `src/lib/analytics.ts` (metrics), `src/lib/analyticsAI.ts` (rules-based insights).
+- **Plan gating:** Free Creator sees top-line counts only; Professional+ unlocks full section breakdowns and AI Monitor. Free Buyer sees basic request metrics; Growth+ unlocks advanced AI monitor panel (locked preview + upgrade prompt below).
 - **Real metrics (v1):** counts and breakdowns from `request_applications`, `orders`, `published_workflows`, `project_proposals`, `deliverables`, `project_messages`, `buyer_requests`, and creator profile strength (`profileAI.ts`).
 - **Empty states:** sections show **“Not enough data yet”** when no rows exist — never fabricated numbers.
 - **Future placeholders (labelled):** earnings/spend (Stripe), profile views, conversion rate, lead/booking metrics — require payment integration or `analytics_events` tracking (optional migration not added in v1).

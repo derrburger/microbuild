@@ -12,6 +12,9 @@ import {
   creatorEligibleForApplying,
   isBuyerRequestOpenForApplications,
 } from '../../lib/marketplaceEligibility';
+import UpgradePrompt from '../UpgradePrompt';
+import { canUseFeature, type PlanUsageCounts } from '../../lib/entitlements';
+import type { CreatorPlanId } from '../../lib/pricingPlans';
 
 function safe(v: unknown, fb = ''): string {
   return typeof v === 'string' ? v : fb;
@@ -24,6 +27,8 @@ interface Props {
   eligibility: ReturnType<typeof creatorEligibleForApplying>;
   /** Precomputed from single getCreatorRequestApplications call */
   initialAppliedRequestIds?: string[];
+  creatorPlanId?: CreatorPlanId;
+  usageCounts?: PlanUsageCounts;
 }
 
 export default function CreatorBuyerRequestsBrowse({
@@ -32,8 +37,11 @@ export default function CreatorBuyerRequestsBrowse({
   creatorUserProfileId,
   eligibility,
   initialAppliedRequestIds,
+  creatorPlanId = 'free',
+  usageCounts = {},
 }: Props) {
   const eligible = eligibility.ok && !!creatorProfileId;
+  const canApply = canUseFeature('creator', creatorPlanId, 'creator_apply_to_request', usageCounts);
 
   const appliedSeedKey = (initialAppliedRequestIds ?? []).join('|');
 
@@ -50,6 +58,7 @@ export default function CreatorBuyerRequestsBrowse({
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [applyToast, setApplyToast] = useState<string | null>(null);
+  const [applyLimitNotice, setApplyLimitNotice] = useState(false);
 
   const creatorPid = creatorProfileId ?? '';
 
@@ -91,6 +100,28 @@ export default function CreatorBuyerRequestsBrowse({
           {applyToast}
         </div>
       ) : null}
+      {!canApply ?
+        <UpgradePrompt
+          featureKey="creator_apply_to_request"
+          featureLabel="Application limit reached"
+          currentPlan={creatorPlanId}
+          requiredPlan="professional"
+          role="creator"
+          unlockSummary="You can still browse open requests. Upgrade to apply to more."
+          compact
+        />
+      : null}
+      {applyLimitNotice ?
+        <UpgradePrompt
+          featureKey="creator_apply_to_request"
+          featureLabel="Application limit reached"
+          currentPlan={creatorPlanId}
+          requiredPlan="professional"
+          role="creator"
+          onDismiss={() => setApplyLimitNotice(false)}
+          compact
+        />
+      : null}
       <div className="mb-browse-grid">
         {sortedRequests.map((r) => {
           const acceptsApps = isBuyerRequestOpenForApplications(r);
@@ -220,7 +251,7 @@ export default function CreatorBuyerRequestsBrowse({
                 </button>
               )}
 
-              {showApply && canApplyUi && !applied && (
+              {showApply && canApplyUi && canApply && !applied && (
                 <CreatorApplyMiniForm
                   key={`${r.id}-${isYourWorkflow ? 'orig' : 'std'}`}
                   busy={busy}
@@ -238,6 +269,10 @@ export default function CreatorBuyerRequestsBrowse({
                     setFormErr(null);
                   }}
                   onSubmit={async (payload) => {
+                    if (!canUseFeature('creator', creatorPlanId, 'creator_apply_to_request', usageCounts)) {
+                      setApplyLimitNotice(true);
+                      return;
+                    }
                     setBusy(true);
                     setFormErr(null);
 

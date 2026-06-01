@@ -46,6 +46,14 @@ import {
 } from '../../lib/buyerRequestManagement';
 import BuyerRequestsAIOverview from './BuyerRequestsAIOverview';
 import BuyerRequestManageMenu from './BuyerRequestManageMenu';
+import UpgradePrompt from '../UpgradePrompt';
+import {
+  canUseFeature,
+  getBuyerPlanEntitlements,
+  getRequiredPlanForFeature,
+} from '../../lib/entitlements';
+import type { BuyerPlanId } from '../../lib/pricingPlans';
+import type { PlanUsageCounts } from '../../lib/entitlements';
 import './BuyerMyRequestsPanel.css';
 
 const FILTER_OPTIONS: { id: BuyerRequestFilterId; label: string }[] = [
@@ -66,6 +74,8 @@ export type { BuyerRequestSnap };
 
 interface Props {
   buyerProfile: UserProfileRow;
+  buyerPlanId?: BuyerPlanId;
+  usageCounts?: PlanUsageCounts;
   requests: BuyerRequestSnap[];
   ordersByRequestId: Record<string, OrderPipelineRow>;
   deliverablesByOrderId?: Record<string, DeliverablePlaceholder | null | undefined>;
@@ -127,6 +137,8 @@ function dedupeApplicants(apps: BuyerApplicantResolved[]): BuyerApplicantResolve
 
 export default function BuyerMyRequestsPanel({
   buyerProfile,
+  buyerPlanId = 'free',
+  usageCounts = {},
   requests,
   ordersByRequestId,
   deliverablesByOrderId = {},
@@ -155,6 +167,11 @@ export default function BuyerMyRequestsPanel({
     () => computeBuyerRequestsSummary(requests, ordersByRequestId, deliverablesByOrderId),
     [requests, ordersByRequestId, deliverablesByOrderId],
   );
+
+  const buyerEnt = getBuyerPlanEntitlements(buyerPlanId);
+  const showFullAiOverview = buyerEnt.aiRequestOverview === 'full';
+  const showLimitedAiSummary = buyerEnt.aiRequestOverview === 'limited';
+  const canCreateRequest = canUseFeature('buyer', buyerPlanId, 'buyer_create_request', usageCounts);
 
   const aiOverview = useMemo(
     () =>
@@ -283,9 +300,15 @@ export default function BuyerMyRequestsPanel({
             <Link to="/browse" className="btn btn-ghost btn-sm">
               Browse Workflows
             </Link>
-            <Link to="/request" className="btn btn-primary btn-sm">
-              New Request
-            </Link>
+            {canCreateRequest ?
+              <Link to="/request" className="btn btn-primary btn-sm">
+                New Request
+              </Link>
+            : (
+              <Link to="/dashboard/billing" className="btn btn-primary btn-sm">
+                Upgrade to add requests
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -294,7 +317,38 @@ export default function BuyerMyRequestsPanel({
 
   return (
     <div className="bmr-root" id="buyer-my-requests-applicants">
-      <BuyerRequestsAIOverview overview={aiOverview} onInsightAnchor={handleInsightAnchor} />
+      {showFullAiOverview ?
+        <BuyerRequestsAIOverview overview={aiOverview} onInsightAnchor={handleInsightAnchor} />
+      : showLimitedAiSummary ?
+        <section className="bmr-ai-overview bmr-ai-overview--limited" aria-label="Request summary">
+          <header className="bmr-ai-overview-head">
+            <div>
+              <h2 className="bmr-ai-overview-title">Request summary</h2>
+              <p className="bmr-ai-overview-sub">
+                Basic counts on your Free plan. Upgrade to Starter for full AI Request Overview.
+              </p>
+            </div>
+          </header>
+          <div className="bmr-summary-grid">
+            <SummaryCard label="Total" value={summary.total} />
+            <SummaryCard label="Needs action" value={summary.applicantsToReview + summary.deliveryReview} tone="warn" />
+            <SummaryCard label="In progress" value={summary.inProgress} tone="info" />
+          </div>
+          <Link to="/dashboard/billing" className="btn btn-ghost btn-sm">
+            Unlock AI Request Overview →
+          </Link>
+        </section>
+      : (
+        <UpgradePrompt
+          featureKey="buyer_ai_request_overview"
+          featureLabel="AI Request Overview"
+          currentPlan={buyerPlanId}
+          requiredPlan={getRequiredPlanForFeature('buyer', 'buyer_ai_request_overview') ?? 'starter'}
+          role="buyer"
+          unlockSummary="See prioritized insights and next steps across all your requests."
+          compact
+        />
+      )}
 
       <div className="bmr-summary-grid" aria-label="Request summary">
         <SummaryCard label="Total Requests" value={summary.total} />
@@ -347,6 +401,7 @@ export default function BuyerMyRequestsPanel({
               key={r.id}
               request={r}
               buyerProfile={buyerProfile}
+              buyerPlanId={buyerPlanId}
               order={ordersByRequestId[r.id]}
               deliverable={
                 ordersByRequestId[r.id]?.id ? deliverablesByOrderId[ordersByRequestId[r.id]!.id] ?? null : null
@@ -400,6 +455,7 @@ function SummaryCard({
 function RequestCard({
   request: r,
   buyerProfile,
+  buyerPlanId,
   order,
   deliverable,
   creatorLabels,
@@ -418,6 +474,7 @@ function RequestCard({
 }: {
   request: BuyerRequestSnap;
   buyerProfile: UserProfileRow;
+  buyerPlanId: BuyerPlanId;
   order?: OrderPipelineRow;
   deliverable: DeliverablePlaceholder | null | undefined;
   creatorLabels: Record<string, string>;
@@ -443,6 +500,8 @@ function RequestCard({
   const headline = buyerRequestStatusHeadline(r, order, deliverable ?? null);
   const next = computeBuyerRequestNextAction(r, order, deliverable ?? null);
   const monitor = analyzeBuyerRequestMonitor(r, order, deliverable ?? null);
+  const canAdvancedMonitor = canUseFeature('buyer', buyerPlanId, 'buyer_ai_request_monitor_advanced');
+  const canAdvancedApplicantReview = canUseFeature('buyer', buyerPlanId, 'buyer_applicant_review_advanced');
   const cnt = typeof r.applications_count === 'number' ? r.applications_count : applicants.length;
   const hasSelected = Boolean(r.selected_creator_profile_id?.trim());
   const selectedName =
@@ -632,10 +691,25 @@ function RequestCard({
         <div className="bmr-expanded">
           <section>
             <h4 className="bmr-section-title">AI Request Monitor</h4>
-            <div className={`bmr-monitor${monitorClass}`}>
-              <p className="bmr-monitor-insight">{monitor.insight}</p>
-              <p className="bmr-monitor-step">{monitor.recommendedStep}</p>
-            </div>
+            {canAdvancedMonitor ?
+              <div className={`bmr-monitor${monitorClass}`}>
+                <p className="bmr-monitor-insight">{monitor.insight}</p>
+                <p className="bmr-monitor-step">{monitor.recommendedStep}</p>
+              </div>
+            : (
+              <>
+                <p className="bmr-text-block">{getBuyerRequestAiSummary(r)}</p>
+                <UpgradePrompt
+                  featureKey="buyer_ai_request_monitor_advanced"
+                  featureLabel="Advanced AI Request Monitor"
+                  currentPlan={buyerPlanId}
+                  requiredPlan={getRequiredPlanForFeature('buyer', 'buyer_ai_request_monitor_advanced') ?? 'growth'}
+                  role="buyer"
+                  unlockSummary="Get step-by-step recommendations and severity-based alerts for each request."
+                  compact
+                />
+              </>
+            )}
           </section>
 
           <section>
@@ -788,6 +862,7 @@ function RequestCard({
                       onToast={onToast}
                       onReload={onReloadApplicants}
                       selectionLocked={mktLocked}
+                      showAdvancedReview={canAdvancedApplicantReview}
                     />
                   ))
                 )}
@@ -833,6 +908,7 @@ function ApplicantCard({
   onToast,
   onReload,
   selectionLocked,
+  showAdvancedReview,
 }: {
   app: BuyerApplicantResolved;
   buyerProfile: UserProfileRow;
@@ -843,6 +919,7 @@ function ApplicantCard({
   onToast: (t: { type: 'ok' | 'err'; msg: string }) => void;
   onReload: () => Promise<void>;
   selectionLocked: boolean;
+  showAdvancedReview: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmSelect, setConfirmSelect] = useState(false);
@@ -951,7 +1028,11 @@ function ApplicantCard({
             <span className="mb-badge">
               Profile: {typeof strengthScore === 'number' ? `${strengthScore}/100` : 'Not scored'}
             </span>
-            <span className={`${statusPillClassName('info')} mb-badge-fit`}>Fit {insight.fitScore}/100</span>
+            {showAdvancedReview ?
+              <span className={`${statusPillClassName('info')} mb-badge-fit`}>Fit {insight.fitScore}/100</span>
+            : (
+              <span className="mb-badge mb-badge-muted">AI fit score — Growth plan</span>
+            )}
           </div>
 
           <blockquote className="mb-applicant-proposal">
@@ -968,8 +1049,14 @@ function ApplicantCard({
             {app.proposed_price != null ? formatMoney(app.proposed_price) : 'Not specified'}
           </p>
           <p className="subtle" style={{ fontSize: '0.75rem' }}>
-            Submitted {fmtSubmittedAt(app.created_at)} · {insight.recommendedBuyerDecision}
+            Submitted {fmtSubmittedAt(app.created_at)}
+            {showAdvancedReview ? ` · ${insight.recommendedBuyerDecision}` : null}
           </p>
+          {!showAdvancedReview ?
+            <p className="subtle" style={{ fontSize: '0.72rem', marginTop: '0.35rem' }}>
+              <Link to="/dashboard/billing">Upgrade to Growth</Link> for AI fit scoring and review recommendations.
+            </p>
+          : null}
 
           <div className="mb-applicant-actions mb-applicant-actions--primary">
             <CentralMessageLauncher

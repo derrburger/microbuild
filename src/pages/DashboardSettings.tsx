@@ -256,21 +256,22 @@ export default function DashboardSettings() {
             <div>
               {profile?.account_type === 'buyer' ? (
                 <>
-                  <div className="ds-billing-title">Buyer accounts are free</div>
+                  <div className="ds-billing-title">Buyer Plans</div>
                   <p className="ds-billing-desc">
-                    Pay per MicroBuild. Final scope confirmed before work begins in the Project Agreement.
+                    Monthly plans for requesting MicroBuilds and managing projects. Checkout not active yet.
                   </p>
                   <div className="ds-billing-summary-row">
                     <span className="ds-billing-summary-label">Current plan</span>
-                    <span className="ds-billing-summary-value">No subscription</span>
+                    <span className="ds-billing-summary-value">Free Buyer</span>
                   </div>
                   <div className="ds-billing-summary-row">
                     <span className="ds-billing-summary-label">Payment status</span>
-                    <span className="ds-billing-summary-value">Pay per project — checkout not active yet</span>
+                    <span className="ds-billing-summary-value">Not required — checkout coming soon</span>
                   </div>
                   <div className="ds-billing-meta">
-                    <span className="ds-billing-tag">Pay per MicroBuild</span>
-                    <span className="ds-billing-tag">No subscription</span>
+                    <span className="ds-billing-tag">Free $0/mo</span>
+                    <span className="ds-billing-tag">Starter $19/mo</span>
+                    <span className="ds-billing-tag">Growth $49/mo</span>
                   </div>
                 </>
               ) : profile?.account_type === 'creator' ? (
@@ -303,7 +304,7 @@ export default function DashboardSettings() {
           </div>
           <div className="ds-billing-actions">
             <Link to="/dashboard/billing" className="ds-billing-action-btn ds-billing-action-btn--primary">
-              View Billing &amp; Plans
+              {profile?.account_type === 'creator' ? 'View Creator Plans' : profile?.account_type === 'buyer' ? 'View Buyer Plans' : 'Billing & Plans'}
             </Link>
           </div>
         </div>

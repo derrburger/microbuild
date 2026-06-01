@@ -1,20 +1,24 @@
 /**
- * Centralized pricing — buyer project pricing and creator subscription plans.
+ * Centralized pricing — buyer subscription plans and creator subscription plans.
  * Import from here instead of hardcoding prices across pages.
  */
 
 import type { CreatorTier } from '../types';
 
-export type BuyerPlanId = 'starter' | 'growth' | 'pro';
+export type BuyerPlanId = 'free' | 'starter' | 'growth' | 'pro';
 export type CreatorPlanId = CreatorTier;
 
 export interface BuyerPricingPlan {
   id: BuyerPlanId;
   name: string;
-  price: number | 'Custom';
+  shortName: string;
+  priceMonthly: number | 'custom';
+  priceLabel: string;
   description: string;
   features: string[];
   cta: string;
+  /** Safe route when Stripe checkout is not active */
+  ctaPath: string;
   highlighted?: boolean;
 }
 
@@ -44,53 +48,82 @@ export interface CreatorPricingPlan {
 }
 
 export const BUYER_PRICING_NOTE =
-  'Final scope and price are confirmed in the Project Agreement before work begins.';
+  'Monthly buyer plans unlock request and project tools on MicroBuild. Checkout is not active yet — Stripe will connect in a later phase.';
 
 export const CREATOR_PRICING_NOTE =
   'Creator subscriptions are for marketplace access, workflow publishing, analytics, and trust signals. Verified requires admin approval.';
 
 export const buyerPricingPlans: BuyerPricingPlan[] = [
   {
-    id: 'starter',
-    name: 'Starter',
-    price: 99,
-    description: 'One focused MicroBuild to start generating leads or reviews immediately.',
+    id: 'free',
+    name: 'Free Buyer',
+    shortName: 'Free',
+    priceMonthly: 0,
+    priceLabel: '$0/mo',
+    description: 'Browse workflows, submit requests, and manage projects with core marketplace tools.',
     features: [
-      'Single focused MicroBuild',
-      'Delivered in 3–5 days',
-      'One revision / support period',
-      'Branded to your business',
-      'Mobile-optimized',
+      'Browse public workflows',
+      'Submit limited requests',
+      'Review creator applicants',
+      'Basic messaging',
+      'Basic project workspace',
     ],
-    cta: 'Request a MicroBuild',
+    cta: 'Start Free',
+    ctaPath: '/signin',
   },
   {
-    id: 'growth',
-    name: 'Growth',
-    price: 299,
-    description: 'A bundled toolkit for businesses ready to scale lead generation.',
+    id: 'starter',
+    name: 'Starter Buyer',
+    shortName: 'Starter',
+    priceMonthly: 19,
+    priceLabel: '$19/mo',
+    description: 'For businesses actively requesting MicroBuilds and reviewing creators.',
     features: [
-      'Three MicroBuild bundle',
-      'Priority delivery',
-      'Analytics-ready setup',
-      'One revision per build',
-      'Full branding package',
+      'More active requests',
+      'Workflow customization requests',
+      'AI Request Overview',
+      'Applicant review tools',
+      'Project agreements',
+      'Delivery tracking',
     ],
-    cta: 'Request a MicroBuild',
+    cta: 'Choose Starter',
+    ctaPath: '/signin?redirect=/dashboard/billing',
     highlighted: true,
   },
   {
-    id: 'pro',
-    name: 'Pro',
-    price: 'Custom',
-    description: 'Ongoing MicroBuild production for growing local service businesses.',
+    id: 'growth',
+    name: 'Growth Buyer',
+    shortName: 'Growth',
+    priceMonthly: 49,
+    priceLabel: '$49/mo',
+    description: 'For teams running multiple requests with stronger management and visibility.',
     features: [
-      'Ongoing MicroBuild production',
-      'Dedicated creator team',
-      'Custom integrations',
-      'Contact required for scope',
+      'Higher request limits',
+      'Priority request visibility',
+      'Advanced request management',
+      'More active projects',
+      'Better AI monitoring',
+      'Team-ready project tracking',
+    ],
+    cta: 'Choose Growth',
+    ctaPath: '/signin?redirect=/dashboard/billing',
+  },
+  {
+    id: 'pro',
+    name: 'Pro Buyer',
+    shortName: 'Pro',
+    priceMonthly: 'custom',
+    priceLabel: 'Custom',
+    description: 'For higher-volume businesses that need priority support and custom sourcing.',
+    features: [
+      'Higher-volume business support',
+      'Multiple locations or brands',
+      'Priority marketplace support',
+      'Custom workflow sourcing',
+      'Contact required',
     ],
     cta: 'Contact Us',
+    ctaPath: '/request',
   },
 ];
 
@@ -176,23 +209,12 @@ export const creatorPricingPlans: CreatorPricingPlan[] = [
   },
 ];
 
-export function getBuyerPlan(id: BuyerPlanId): BuyerPricingPlan | undefined {
-  return buyerPricingPlans.find((p) => p.id === id);
-}
-
-export function getCreatorPlan(id: CreatorPlanId): CreatorPricingPlan | undefined {
-  return creatorPricingPlans.find((p) => p.id === id);
-}
-
-export function formatBuyerPrice(price: number | 'Custom'): string {
-  if (price === 'Custom') return 'Custom';
-  return `$${price}`;
-}
-
-export function formatCreatorPlanPrice(plan: CreatorPricingPlan): string {
-  if (plan.priceMonthly === 0) return '$0/mo';
-  return `$${plan.priceMonthly}/mo`;
-}
+export const BUYER_PLAN_LABELS: Record<BuyerPlanId, string> = {
+  free: 'Free',
+  starter: 'Starter',
+  growth: 'Growth',
+  pro: 'Pro',
+};
 
 export const CREATOR_TIER_LABELS: Record<CreatorPlanId, string> = {
   free: 'Free',
@@ -205,3 +227,22 @@ export const CREATOR_TIER_COLORS: Record<CreatorPlanId, string> = {
   professional: '#63b3ed',
   verified: '#f9b032',
 };
+
+export function getBuyerPlan(id: BuyerPlanId): BuyerPricingPlan | undefined {
+  return buyerPricingPlans.find((p) => p.id === id);
+}
+
+export function getCreatorPlan(id: CreatorPlanId): CreatorPricingPlan | undefined {
+  return creatorPricingPlans.find((p) => p.id === id);
+}
+
+export function formatCreatorPlanPrice(plan: CreatorPricingPlan): string {
+  if (plan.priceMonthly === 0) return '$0/mo';
+  return `$${plan.priceMonthly}/mo`;
+}
+
+/** @deprecated Legacy export for mockListings — maps buyer subscriptions for any legacy consumers */
+export function legacyPricingTierPrice(plan: BuyerPricingPlan): number | 'Custom' {
+  if (plan.priceMonthly === 'custom') return 'Custom';
+  return plan.priceMonthly;
+}

@@ -12,6 +12,10 @@ import {
   resolveCreatorProfileForMarketplace,
 } from '../lib/marketplace';
 import { creatorEligibleForApplying } from '../lib/marketplaceEligibility';
+import { resolveCreatorPlanFromProfile } from '../lib/entitlements';
+import { fetchCreatorPlanUsage } from '../lib/planUsage';
+import type { CreatorPlanId } from '../lib/pricingPlans';
+import type { PlanUsageCounts } from '../lib/entitlements';
 import type {
   BuyerRequestRow,
   CreatorProfileRow,
@@ -37,6 +41,8 @@ export default function Browse() {
   const [creatorRequestsLoading, setCreatorRequestsLoading] = useState(false);
   const [openRequests, setOpenRequests] = useState<BuyerRequestRow[]>([]);
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
+  const [creatorPlanId, setCreatorPlanId] = useState<CreatorPlanId>('free');
+  const [creatorUsage, setCreatorUsage] = useState<PlanUsageCounts>({});
 
   const [buyerWorkflowsLoading, setBuyerWorkflowsLoading] = useState(false);
   const [workflowLoadError, setWorkflowLoadError] = useState<string | null>(null);
@@ -137,8 +143,15 @@ export default function Browse() {
 
       if (!cancelled) {
         setCreatorProfile(cp);
+        setCreatorPlanId(resolveCreatorPlanFromProfile(cp, profileFromState));
         setOpenRequests(reqs);
         setAppliedIds(appliedArr);
+        if (cp?.id) {
+          const usage = await fetchCreatorPlanUsage(cp.id);
+          if (!cancelled) setCreatorUsage(usage);
+        } else {
+          setCreatorUsage({});
+        }
         setCreatorRequestsLoading(false);
       }
     }
@@ -252,6 +265,8 @@ export default function Browse() {
             creatorUserProfileId={userProfileRow?.id ?? null}
             eligibility={eligibility}
             initialAppliedRequestIds={appliedIds}
+            creatorPlanId={creatorPlanId}
+            usageCounts={creatorUsage}
           />
         ) : isBuyerSide ? (
           <BuyerWorkflowsPublicBrowse

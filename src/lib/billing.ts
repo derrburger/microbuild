@@ -3,10 +3,22 @@
  */
 
 import type { CreatorTier } from '../types';
-import type { CreatorProfileRow } from '../types/database';
+import type { CreatorProfileRow, UserProfileRow } from '../types/database';
 import {
+  getBuyerPlanEntitlements,
+  getCreatorPlanEntitlements,
+  getLockedFeaturesForPlan,
+  getPlanLimitLabel,
+  resolveBuyerPlanFromProfile,
+  resolveCreatorPlanFromProfile,
+  type PlanUsageCounts,
+} from './entitlements';
+import {
+  BUYER_PLAN_LABELS,
   CREATOR_TIER_LABELS,
+  getBuyerPlan,
   getCreatorPlan,
+  type BuyerPlanId,
   type CreatorPlanId,
 } from './pricingPlans';
 import { formatCreatorApprovalStatus } from './statusLabels';
@@ -27,6 +39,20 @@ export function getStripeStatusLabel(): string {
 export type BillingActionResult =
   | { ok: true; redirectUrl?: string }
   | { ok: false; message: string };
+
+/** Future: redirect to Stripe Checkout for buyer subscription. */
+export function startBuyerCheckout(_planId: BuyerPlanId): BillingActionResult {
+  if (_planId === 'free' || _planId === 'pro') {
+    return { ok: false, message: 'This plan does not use checkout here.' };
+  }
+  if (!isStripeConnected()) {
+    return {
+      ok: false,
+      message: 'Checkout coming soon — Stripe is not connected yet.',
+    };
+  }
+  return { ok: false, message: 'Checkout is not configured yet.' };
+}
 
 /** Future: redirect to Stripe Checkout for creator subscription. */
 export function startCreatorCheckout(_planId: CreatorPlanId): BillingActionResult {
@@ -154,4 +180,99 @@ export function getVerificationDisplay(status?: string | null): string {
   if (s === 'verified') return 'Verified';
   if (s === 'pending') return 'Pending review';
   return 'Not verified';
+}
+
+/** Default buyer plan when profile is unavailable. */
+export function getDefaultBuyerPlanId(): BuyerPlanId {
+  return 'free';
+}
+
+/** Resolve buyer plan from user_profiles.buyer_plan (falls back to free). */
+export function resolveBuyerPlanId(profile: UserProfileRow | null | undefined): BuyerPlanId {
+  return resolveBuyerPlanFromProfile(profile);
+}
+
+/** Resolve creator plan from creator_profiles.tier (canonical) or user_profiles.creator_plan. */
+export function resolveCreatorPlanId(
+  creatorProfile: Pick<CreatorProfileRow, 'tier'> | null | undefined,
+  userProfile?: UserProfileRow | null,
+): CreatorPlanId {
+  return resolveCreatorPlanFromProfile(creatorProfile, userProfile);
+}
+
+export type PlanUsageSummary = {
+  buyer?: { active: string; monthly: string; locked: string[] };
+  creator?: {
+    applications: string;
+    workflows: string;
+    locked: string[];
+  };
+};
+
+export function getPlanUsageSummary(
+  role: 'buyer' | 'creator',
+  plan: string,
+  usage: PlanUsageCounts,
+): PlanUsageSummary {
+  if (role === 'buyer') {
+    return {
+      buyer: {
+        active: getPlanLimitLabel(plan, 'buyer_create_request', usage, 'buyer'),
+        monthly: getPlanLimitLabel(plan, 'buyer_create_request', usage, 'buyer'),
+        locked: getLockedFeaturesForPlan('buyer', plan),
+      },
+    };
+  }
+  return {
+    creator: {
+      applications: getPlanLimitLabel(plan, 'creator_apply_to_request', usage, 'creator'),
+      workflows: getPlanLimitLabel(plan, 'creator_publish_workflow', usage, 'creator'),
+      locked: getLockedFeaturesForPlan('creator', plan),
+    },
+  };
+}
+
+export function getBuyerPlanUpgradeReason(planId: BuyerPlanId): string {
+  return getBuyerPlanEntitlements(planId).upgradePitch;
+}
+
+export function getCreatorPlanUpgradeReason(planId: CreatorPlanId): string {
+  return getCreatorPlanEntitlements(planId).upgradePitch;
+}
+
+export function getBuyerPaymentStatusLabel(planId: BuyerPlanId = 'free'): string {
+  if (planId === 'free') return 'Not required';
+  if (!isStripeConnected()) return 'Checkout not active yet';
+  return 'Subscription required';
+}
+
+export type BuyerBillingStatusState = {
+  headline: string;
+  message: string;
+  showUpgradeStarter: boolean;
+  showUpgradeGrowth: boolean;
+  showContactPro: boolean;
+  showManageBilling: boolean;
+  stripeNotice: string;
+};
+
+export function getBuyerBillingStatus(planId: BuyerPlanId = 'free'): BuyerBillingStatusState {
+  const plan = getBuyerPlan(planId);
+  const planName = plan?.shortName ?? BUYER_PLAN_LABELS[planId] ?? 'Free';
+  const stripeNotice = isStripeConnected()
+    ? 'Checkout is available when you upgrade.'
+    : 'Checkout not active yet — Stripe is not connected. Plans are visible now.';
+
+  return {
+    headline: `Current plan: ${planName} Buyer`,
+    message:
+      planId === 'free'
+        ? 'Buyer accounts can request and manage MicroBuilds. Upgrade for more active requests, AI overview, and advanced management.'
+        : 'Your plan is selected. No charges until Stripe checkout is live.',
+    showUpgradeStarter: planId === 'free',
+    showUpgradeGrowth: planId === 'free' || planId === 'starter',
+    showContactPro: planId !== 'pro',
+    showManageBilling: planId !== 'free',
+    stripeNotice,
+  };
 }

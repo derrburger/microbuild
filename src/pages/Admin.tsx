@@ -3581,6 +3581,9 @@ function ProfileQualityCard({ profile }: { profile: DBCreatorProfileRow }) {
           <span className="pq-tier-badge" style={{ color: tColor, borderColor: tColor + '44', background: tColor + '10' }}>
             {profile.tier.charAt(0).toUpperCase() + profile.tier.slice(1)}
           </span>
+          <span className="pq-support-meta subtle" title="Plan / subscription (support)">
+            Sub: {safeText((profile as { subscription_status?: string }).subscription_status, '—')}
+          </span>
           <span className={`pq-vis-status${vis === 'public' ? ' pq-vis-status--public' : ' pq-vis-status--hidden'}`}>
             {vis === 'public' ? '🟢 Public' : '🔴 Hidden'}
           </span>

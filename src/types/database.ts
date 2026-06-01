@@ -168,6 +168,16 @@ export interface UserProfileRow {
   approval_status: string | null;
   // Profile fields (email-account-profile-fields.sql)
   github_url: string | null;
+  // Subscription plan fields (subscription-plan-fields.sql)
+  buyer_plan?: string | null;
+  creator_plan?: string | null;
+  subscription_status?: string | null;
+  payment_status?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  stripe_price_id?: string | null;
+  subscription_current_period_end?: string | null;
+  subscription_cancel_at_period_end?: boolean | null;
   created_at: string;
   updated_at: string;
 }

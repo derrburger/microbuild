@@ -22,6 +22,15 @@ import {
   type InsightSeverity,
 } from '../lib/analyticsAI';
 import { analyzeProfileStrength, getStrengthColor } from '../lib/profileAI';
+import UpgradePrompt from '../components/UpgradePrompt';
+import {
+  canUseFeature,
+  getRequiredPlanForFeature,
+  resolveBuyerPlanFromProfile,
+  resolveCreatorPlanFromProfile,
+} from '../lib/entitlements';
+import { supabase } from '../lib/supabase';
+import type { UserProfileRow } from '../types/database';
 import './DashboardAnalytics.css';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -186,10 +195,16 @@ function CreatorAnalyticsBody({
   data,
   insights,
   insightsLoading,
+  planId,
+  analyticsFull,
+  aiMonitorFull,
 }: {
   data: CreatorAnalyticsOverview;
   insights: AnalyticsInsight[];
   insightsLoading: boolean;
+  planId: string;
+  analyticsFull: boolean;
+  aiMonitorFull: boolean;
 }) {
   const { applications: apps, projects, workflows: wf, messaging, deliverables: del, agreements: agr, profile } = data;
   const strength = profile.strengthScore;
@@ -218,12 +233,29 @@ function CreatorAnalyticsBody({
         </div>
       </div>
 
-      <AIMonitorPanel insights={insights} loading={insightsLoading} />
+      {aiMonitorFull ?
+        <AIMonitorPanel insights={insights} loading={insightsLoading} />
+      : (
+        <div className="upgrade-prompt-preview">
+          <div className="upgrade-prompt-preview-content">
+            <AIMonitorPanel insights={[]} loading={false} />
+          </div>
+          <UpgradePrompt
+            featureKey="creator_ai_monitor_full"
+            featureLabel="AI Monitor"
+            currentPlan={planId}
+            requiredPlan={getRequiredPlanForFeature('creator', 'creator_ai_monitor_full') ?? 'professional'}
+            role="creator"
+            unlockSummary="Personalized next-best actions from your applications, projects, and workflows."
+            compact
+          />
+        </div>
+      )}
 
       <div className="da-section">
         <h2 className="da-section-title">Applications</h2>
         <SectionEmpty meta={apps} />
-        {apps.hasEnoughData && (
+        {apps.hasEnoughData && analyticsFull && (
           <>
             <div className="da-metrics-grid da-metrics-grid--6">
               <Metric label="Submitted" value={fmtNum(apps.totalSubmitted)} highlight />
@@ -239,12 +271,18 @@ function CreatorAnalyticsBody({
             <StatusBreakdown breakdown={apps.statusBreakdown} />
           </>
         )}
+        {apps.hasEnoughData && !analyticsFull && (
+          <p className="da-empty-note">
+            Basic counts only on Free Creator.{' '}
+            <Link to="/dashboard/billing" className="da-link">Upgrade to Professional</Link> for full application analytics.
+          </p>
+        )}
       </div>
 
       <div className="da-section">
         <h2 className="da-section-title">Projects</h2>
         <SectionEmpty meta={projects} />
-        {projects.hasEnoughData && (
+        {projects.hasEnoughData && analyticsFull && (
           <>
             <div className="da-pipeline-grid">
               {[
@@ -271,7 +309,7 @@ function CreatorAnalyticsBody({
       <div className="da-section">
         <h2 className="da-section-title">Workflows</h2>
         <SectionEmpty meta={wf} />
-        {wf.hasEnoughData && (
+        {wf.hasEnoughData && analyticsFull && (
           <>
             <div className="da-metrics-grid da-metrics-grid--6">
               <Metric label="Created" value={fmtNum(wf.totalCreated)} highlight />
@@ -289,7 +327,7 @@ function CreatorAnalyticsBody({
       <div className="da-section">
         <h2 className="da-section-title">Agreements</h2>
         <SectionEmpty meta={agr} />
-        {agr.hasEnoughData && (
+        {agr.hasEnoughData && analyticsFull && (
           <>
             <div className="da-metrics-grid da-metrics-grid--5">
               <Metric label="Drafted" value={fmtNum(agr.drafted)} />
@@ -306,7 +344,7 @@ function CreatorAnalyticsBody({
       <div className="da-section">
         <h2 className="da-section-title">Deliverables</h2>
         <SectionEmpty meta={del} />
-        {del.hasEnoughData && (
+        {del.hasEnoughData && analyticsFull && (
           <>
             <div className="da-metrics-grid da-metrics-grid--4">
               <Metric label="Submitted" value={fmtNum(del.submitted)} highlight />
@@ -322,7 +360,7 @@ function CreatorAnalyticsBody({
       <div className="da-section">
         <h2 className="da-section-title">Messages</h2>
         <SectionEmpty meta={messaging} />
-        {messaging.hasEnoughData && (
+        {messaging.hasEnoughData && analyticsFull && (
           <div className="da-metrics-grid da-metrics-grid--4">
             <Metric label="Threads" value={fmtNum(messaging.totalThreads)} highlight />
             <Metric label="Recent (7d)" value={fmtNum(messaging.recentMessageCount)} />
@@ -332,7 +370,7 @@ function CreatorAnalyticsBody({
         )}
       </div>
 
-      {profile.hasEnoughData && strength != null && data.context.creatorProfile && (
+      {profile.hasEnoughData && strength != null && data.context.creatorProfile && analyticsFull && (
         <div className="da-section">
           <h2 className="da-section-title">Profile</h2>
           <div className="da-metrics-grid da-metrics-grid--4">
@@ -370,10 +408,14 @@ function BuyerAnalyticsBody({
   data,
   insights,
   insightsLoading,
+  planId,
+  aiMonitorFull,
 }: {
   data: BuyerAnalyticsOverview;
   insights: AnalyticsInsight[];
   insightsLoading: boolean;
+  planId: string;
+  aiMonitorFull: boolean;
 }) {
   const { requests: req, projects, deliverables: del, messaging } = data;
 
@@ -397,7 +439,18 @@ function BuyerAnalyticsBody({
         </div>
       </div>
 
-      <AIMonitorPanel insights={insights} loading={insightsLoading} />
+      {aiMonitorFull ?
+        <AIMonitorPanel insights={insights} loading={insightsLoading} />
+      : (
+        <UpgradePrompt
+          featureKey="buyer_ai_request_monitor_advanced"
+          featureLabel="Advanced AI monitoring"
+          currentPlan={planId}
+          requiredPlan={getRequiredPlanForFeature('buyer', 'buyer_ai_request_monitor_advanced') ?? 'growth'}
+          role="buyer"
+          unlockSummary="Cross-request insights and recommended actions from your MicroBuild activity."
+        />
+      )}
 
       <div className="da-section">
         <h2 className="da-section-title">Requests</h2>
@@ -512,6 +565,7 @@ export default function DashboardAnalytics() {
   const [insights, setInsights] = useState<AnalyticsInsight[]>([]);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [accountType, setAccountType] = useState<string>('');
+  const [planId, setPlanId] = useState<string>('free');
 
   const isAdmin = Boolean(user?.email && isAdminEmail(user.email));
 
@@ -530,6 +584,20 @@ export default function DashboardAnalytics() {
     try {
       const ctx = await loadAnalyticsContext(user.id, user.email ?? '', dateRange);
       setAccountType(ctx.accountType);
+
+      const { data: upRaw } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+      const up = (upRaw ?? null) as UserProfileRow | null;
+      if (ctx.accountType === 'creator' && ctx.creatorProfile) {
+        setPlanId(resolveCreatorPlanFromProfile(ctx.creatorProfile, up));
+      } else if (ctx.accountType === 'buyer') {
+        setPlanId(resolveBuyerPlanFromProfile(up));
+      } else {
+        setPlanId('free');
+      }
 
       if (isAdmin) {
         const platform = await getAdminPlatformAnalytics();
@@ -630,11 +698,24 @@ export default function DashboardAnalytics() {
         )}
 
         {isCreator && creatorData && (
-          <CreatorAnalyticsBody data={creatorData} insights={insights} insightsLoading={insightsLoading} />
+          <CreatorAnalyticsBody
+            data={creatorData}
+            insights={insights}
+            insightsLoading={insightsLoading}
+            planId={planId}
+            analyticsFull={canUseFeature('creator', planId, 'creator_analytics_full')}
+            aiMonitorFull={canUseFeature('creator', planId, 'creator_ai_monitor_full')}
+          />
         )}
 
         {!isAdmin && !isCreator && buyerData && (
-          <BuyerAnalyticsBody data={buyerData} insights={insights} insightsLoading={insightsLoading} />
+          <BuyerAnalyticsBody
+            data={buyerData}
+            insights={insights}
+            insightsLoading={insightsLoading}
+            planId={planId}
+            aiMonitorFull={canUseFeature('buyer', planId, 'buyer_ai_request_monitor_advanced')}
+          />
         )}
       </div>
     </div>

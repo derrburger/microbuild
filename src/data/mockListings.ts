@@ -1,5 +1,5 @@
 import type { MicroBuildListing, CaseStudy, PricingTier } from '../types';
-import { buyerPricingPlans } from '../lib/pricingPlans';
+import { buyerPricingPlans, legacyPricingTierPrice } from '../lib/pricingPlans';
 
 export const mockListings: MicroBuildListing[] = [
   {
@@ -179,7 +179,7 @@ export const mockCaseStudies: CaseStudy[] = [
 
 export const pricingTiers: PricingTier[] = buyerPricingPlans.map((plan) => ({
   name: plan.name,
-  price: plan.price,
+  price: legacyPricingTierPrice(plan),
   description: plan.description,
   features: plan.features,
   cta: plan.cta,

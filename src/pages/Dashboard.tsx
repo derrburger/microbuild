@@ -33,9 +33,20 @@ import {
   CREATOR_TIER_COLORS,
 } from '../lib/pricingPlans';
 import {
+  getBuyerPaymentStatusLabel,
+  resolveBuyerPlanId,
   getCreatorPaymentStatusLabel,
   isStripeConnected,
 } from '../lib/billing';
+import {
+  canUseFeature,
+  getBuyerPlanEntitlements,
+  getCreatorPlanEntitlements,
+  getPlanLimitLabel,
+  getPlanDisplayName,
+  type PlanUsageCounts,
+} from '../lib/entitlements';
+import { countBuyerUsageFromRequests, fetchCreatorPlanUsage } from '../lib/planUsage';
 import { getCreatorApplicationsWithBuyerRequests } from '../lib/marketplace';
 import './Dashboard.css';
 
@@ -133,7 +144,7 @@ function SummaryStatusCard({
     return (
       <Link to={href} className="cd-status-card cd-status-card--link">
         {inner}
-        <span className="cd-status-link-hint">View Plans →</span>
+        <span className="cd-status-link-hint">View Creator Plans →</span>
       </Link>
     );
   }
@@ -203,7 +214,7 @@ function NextBestActionCard({
   } else if (safeStr(profile.tier, 'free') === 'free') {
     icon = '⬆️'; title = 'Upgrade your creator plan';
     message = 'Free Creator includes basic marketplace access. View plans to compare Professional and Verified options.';
-    cta = <Link to="/dashboard/billing" className="dash-nba-btn">View Plans →</Link>;
+    cta = <Link to="/dashboard/billing" className="dash-nba-btn">View Creator Plans →</Link>;
   }
 
   return (
@@ -447,6 +458,19 @@ function CreatorDashboard({
   profile: CreatorProfileRow;
   appStatus: AppStatus | null;
 }) {
+  const [creatorUsage, setCreatorUsage] = useState<PlanUsageCounts>({});
+
+  useEffect(() => {
+    if (!profile.id) return;
+    let cancelled = false;
+    void fetchCreatorPlanUsage(profile.id).then((u) => {
+      if (!cancelled) setCreatorUsage(u);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile.id]);
+
   const strength   = analyzeProfileStrength(profile);
   const scoreColor = getStrengthColor(strength.score);
   const tier       = safeStr(profile.tier, 'free') as CreatorTier;
@@ -474,6 +498,11 @@ function CreatorDashboard({
 
   const completedBuilds = safeNum(profile.completed_builds_count, 0);
   const avgRating       = profile.average_rating as number | null;
+  const creatorEnt = getCreatorPlanEntitlements(tier);
+  const appsLimitLabel = getPlanLimitLabel(tier, 'creator_apply_to_request', creatorUsage, 'creator');
+  const wfLimitLabel = getPlanLimitLabel(tier, 'creator_publish_workflow', creatorUsage, 'creator');
+  const nearAppLimit =
+    (creatorUsage.creatorApplicationsThisMonth ?? 0) >= Math.max(0, creatorEnt.applicationsPerMonth - 1);
 
   return (
     <div className="dash-creator">
@@ -514,6 +543,23 @@ function CreatorDashboard({
       <WarningBanner warnings={warnings} />
 
       <CreatorMarketplaceOverview creatorProfileId={profile.id} />
+
+      <div className="cd-billing-strip cd-billing-strip--creator">
+        <div className="cd-billing-strip-body">
+          <div className="cd-billing-strip-title">Plan usage</div>
+          <div className="cd-billing-strip-meta">
+            <span>{appsLimitLabel || 'Applications'}</span>
+            <span>{wfLimitLabel || 'Workflows'}</span>
+            <span>
+              Analytics: {creatorEnt.analytics === 'full' ? 'Full' : 'Basic counts'}
+            </span>
+            <span>AI monitor: {creatorEnt.aiMonitor === 'full' ? 'Full' : creatorEnt.aiMonitor === 'limited' ? 'Limited' : 'Locked'}</span>
+          </div>
+        </div>
+        <Link to="/dashboard/billing" className="btn btn-primary btn-sm">
+          {nearAppLimit ? 'Upgrade plan' : 'View Creator Plans'}
+        </Link>
+      </div>
 
       <div className="cd-market-banner">
         <div>
@@ -579,7 +625,7 @@ function CreatorDashboard({
           </div>
         </div>
         <Link to="/dashboard/billing" className="btn btn-primary btn-sm">
-          View Plans
+          View Creator Plans
         </Link>
       </div>
 
@@ -760,6 +806,8 @@ export function BuyerDashboard({
   userProfile: UserProfileRow;
   mode?: 'overview' | 'requests';
 }) {
+  const buyerPlanId = resolveBuyerPlanId(userProfile);
+  const [usageCounts, setUsageCounts] = useState<PlanUsageCounts>({});
   const [requests,     setRequests]     = useState<BuyerRequest[]>([]);
   const [orders,       setOrders]       = useState<OrderPipelineRow[]>([]);
   const [deliverables, setDeliverables] = useState<Record<string, DeliverablePlaceholder>>({});
@@ -820,6 +868,7 @@ export function BuyerDashboard({
     setCreatorProfileLabels(profileLabels);
 
     setRequests(reqs);
+    setUsageCounts(countBuyerUsageFromRequests(reqs));
 
     if (reqs.length > 0) {
       const ords = await fetchOrdersByRequestIds(reqs.map((r) => r.id));
@@ -850,6 +899,12 @@ export function BuyerDashboard({
   }, [orders]);
 
   const displayName = userProfile.display_name ?? userProfile.email.split('@')[0];
+  const buyerEnt = getBuyerPlanEntitlements(buyerPlanId);
+  const canCreateRequest = canUseFeature('buyer', buyerPlanId, 'buyer_create_request', usageCounts);
+  const requestLimitLabel = getPlanLimitLabel(buyerPlanId, 'buyer_create_request', usageCounts, 'buyer');
+  const nearRequestLimit =
+    buyerEnt.activeRequestsLimit != null &&
+    (usageCounts.buyerActiveRequests ?? 0) >= Math.max(0, buyerEnt.activeRequestsLimit - 1);
 
   // Buyer AI analysis
   const dashAnalysis = !loadingReqs ? analyzeBuyerDashboard(
@@ -877,9 +932,39 @@ export function BuyerDashboard({
               </p>
             </div>
             <div className="dash-buyer-actions">
-              <Link to="/request" className="btn btn-primary btn-sm">New Request</Link>
+              {canCreateRequest ?
+                <Link to="/request" className="btn btn-primary btn-sm">New Request</Link>
+              : (
+                <Link to="/dashboard/billing" className="btn btn-primary btn-sm">
+                  Upgrade for more requests
+                </Link>
+              )}
               <Link to="/dashboard/requests" className="btn btn-ghost btn-sm">My Requests</Link>
             </div>
+          </div>
+          <div className="cd-billing-strip cd-billing-strip--buyer">
+            <div className="cd-billing-strip-body">
+              <div className="cd-billing-strip-title">
+                Current plan: {getPlanDisplayName('buyer', buyerPlanId)} Buyer
+              </div>
+              <div className="cd-billing-strip-meta">
+                <span>Payment: {getBuyerPaymentStatusLabel(buyerPlanId)}</span>
+                <span>{requestLimitLabel || 'Request limits'}</span>
+                <span>
+                  AI monitor:{' '}
+                  {buyerEnt.aiRequestMonitor === 'full'
+                    ? 'Advanced'
+                    : buyerEnt.aiRequestOverview === 'full'
+                      ? 'Overview'
+                      : buyerEnt.aiRequestOverview === 'limited'
+                        ? 'Summary only'
+                        : 'Locked'}
+                </span>
+              </div>
+            </div>
+            <Link to="/dashboard/billing" className="btn btn-primary btn-sm">
+              {nearRequestLimit || !canCreateRequest ? 'Upgrade plan' : 'View Buyer Plans'}
+            </Link>
           </div>
           <BuyerStatusOverview
             requests={requests}
@@ -922,6 +1007,8 @@ export function BuyerDashboard({
           <>
             <BuyerMyRequestsPanel
               buyerProfile={userProfile}
+              buyerPlanId={buyerPlanId}
+              usageCounts={usageCounts}
               requests={requests}
               ordersByRequestId={orderByRequestId}
               deliverablesByOrderId={deliverables}

@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfileRow } from '../hooks/useUserProfileRow';
+import { canUseFeature, getUpgradeMessage } from '../lib/entitlements';
+import { resolveBuyerPlanId } from '../lib/billing';
+import { fetchBuyerPlanUsage } from '../lib/planUsage';
+import UpgradePrompt from '../components/UpgradePrompt';
 import type { BuyerRequest, MicroBuildCategory, MicroBuildListing } from '../types';
 import { mockListings } from '../data/mockListings';
 import { fetchTemplateBySlug } from '../lib/templates';
@@ -256,6 +261,9 @@ function AiPreviewPanel({
 export default function Request() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { profile: userProfile } = useUserProfileRow();
+  const buyerPlanId = resolveBuyerPlanId(userProfile);
+  const [requestLimitBlocked, setRequestLimitBlocked] = useState(false);
   const prefillSlug = searchParams.get('build');
   const workflowIdParam = searchParams.get('workflowId');
 
@@ -391,6 +399,20 @@ export default function Request() {
     e.preventDefault();
     setSubmitting(true);
     setSubmitError(null);
+    setRequestLimitBlocked(false);
+
+    if (user && userProfile) {
+      const usage = await fetchBuyerPlanUsage({
+        email: userProfile.email,
+        authUserId: userProfile.auth_user_id,
+      });
+      if (!canUseFeature('buyer', buyerPlanId, 'buyer_create_request', usage)) {
+        setRequestLimitBlocked(true);
+        setSubmitting(false);
+        setSubmitError(getUpgradeMessage('buyer_create_request', 'starter'));
+        return;
+      }
+    }
 
     const customizationBlock = workflowCtx ? packWorkflowCustomizationNotes(wfCustomize) : '';
     const packedNotes =
@@ -1014,6 +1036,17 @@ export default function Request() {
             {submitError && (
               <div className="form-error-banner">{submitError}</div>
             )}
+            {requestLimitBlocked ?
+              <UpgradePrompt
+                featureKey="buyer_create_request"
+                featureLabel="Create another request"
+                currentPlan={buyerPlanId}
+                requiredPlan="starter"
+                role="buyer"
+                unlockSummary="More active requests and monthly submissions for your business."
+                compact
+              />
+            : null}
 
             <button
               type="submit"
