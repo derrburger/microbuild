@@ -47,8 +47,58 @@
 .pricing-sub {
   color: var(--text-secondary);
   font-size: 1.05rem;
-  max-width: 440px;
-  margin: 0 auto;
+  max-width: 520px;
+  margin: 0 auto 1.25rem;
+}
+
+.pricing-tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.pricing-tab {
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pricing-tab:hover {
+  color: var(--text-primary);
+}
+
+.pricing-tab--active {
+  background: var(--accent);
+  color: #000;
+}
+
+.pricing-audience-note {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0 0 1.75rem;
+}
+
+.pricing-price-monthly {
+  font-size: 2.25rem !important;
+}
+
+.pricing-creator-limits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
 }
 
 .pricing-body {

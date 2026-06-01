@@ -4,6 +4,7 @@
  */
 
 import type { OrderPipelineRow, DeliverablePlaceholder } from './orders';
+import { handoffStatusLabel } from './deliverables';
 
 export const BUYER_JOURNEY_STAGES: readonly string[] = [
   'Request Submitted',
@@ -47,11 +48,5 @@ export function buyerDeliveryStatusLabel(
   order: OrderPipelineRow | null | undefined,
   deliverable: DeliverablePlaceholder | null | undefined,
 ): string {
-  if (!order) return '—';
-  if (order.order_status === 'completed') return 'Completed';
-  if (!deliverable) return order.order_status === 'delivered' ? 'Released — awaiting links' : 'Not submitted yet';
-  if (deliverable.delivery_status === 'approved') return 'Approved for buyer';
-  if (deliverable.delivery_status === 'revision_needed') return 'Revision in progress';
-  if (deliverable.delivery_status === 'submitted') return 'Submitted — internal review';
-  return 'Draft / preparing';
+  return handoffStatusLabel(order, deliverable);
 }

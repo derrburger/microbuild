@@ -5,7 +5,7 @@
 import type { OrderPipelineRow, DeliverablePlaceholder } from './orders';
 import type { ProjectProposalRow } from '../types/database';
 import { getAgreementViewState } from './projectAgreement';
-import { buyerDeliveryStatusLabel } from './buyerProjectTimeline';
+import { handoffStatusLabel, buyerCanReviewDelivery } from './deliverables';
 
 export const WORKSPACE_STATUS_STEPS: readonly { id: string; label: string }[] = [
   { id: 'request', label: 'Request submitted' },
@@ -134,10 +134,10 @@ export function getWorkspaceNextAction(params: {
         tone: 'action',
       };
     }
-    if (order.order_status === 'in_review') {
+    if (order.order_status === 'in_review' && ds === 'submitted') {
       return {
-        title: 'Delivery under review',
-        detail: 'MicroBuild is reviewing your submission. Watch Messages for feedback.',
+        title: 'Waiting for buyer review',
+        detail: 'Your delivery is with the buyer. They can accept or request a revision.',
         tone: 'neutral',
       };
     }
@@ -185,25 +185,32 @@ export function getWorkspaceNextAction(params: {
       tone: 'neutral',
     };
   }
-  if (order.order_status === 'delivered' && deliverable?.delivery_status === 'approved') {
+  if (buyerCanReviewDelivery(deliverable)) {
     return {
-      title: 'Accept delivery or request revision',
-      detail: 'Review the preview and live links. Message your creator if anything needs adjustment.',
+      title: 'Review delivery',
+      detail: 'Open preview and final links in Deliverables & Handoff. Accept when ready or request a revision.',
       tone: 'action',
+    };
+  }
+  if (ds === 'revision_needed') {
+    return {
+      title: 'Waiting for creator update',
+      detail: 'Your revision request was sent. The creator will resubmit when changes are ready.',
+      tone: 'neutral',
     };
   }
   if (order.order_status === 'completed' || deliverable?.delivery_status === 'approved') {
     return {
-      title: 'Review your delivery',
-      detail: 'Your MicroBuild is ready. Open preview or live links below when available.',
+      title: 'Delivery accepted',
+      detail: 'Your MicroBuild delivery was accepted. Save your live link and message your creator if needed.',
       tone: 'success',
     };
   }
   if (deliverable && ds === 'submitted' && order.order_status === 'in_review') {
     return {
-      title: 'Delivery submitted for review',
-      detail: 'MicroBuild is reviewing the creator submission. Preview links appear here once approved for handoff.',
-      tone: 'neutral',
+      title: 'Creator submitted delivery',
+      detail: 'Links are in Deliverables & Handoff. Review and accept when scope matches your agreement.',
+      tone: 'action',
     };
   }
   if (['assigned', 'in_progress', 'in_review'].includes(order.order_status)) {
@@ -224,8 +231,7 @@ export function deliverableBadgeLabel(
   order: OrderPipelineRow,
   deliverable: DeliverablePlaceholder | null,
 ): string {
-  if (!deliverable) return 'Not submitted';
-  return buyerDeliveryStatusLabel(order, deliverable);
+  return handoffStatusLabel(order, deliverable);
 }
 
 export function formatWorkspaceDate(iso: string | undefined | null): string | null {

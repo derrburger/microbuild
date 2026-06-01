@@ -1,0 +1,204 @@
+/**
+ * Centralized pricing — buyer project pricing and creator subscription plans.
+ * Import from here instead of hardcoding prices across pages.
+ */
+
+import type { CreatorTier } from '../types';
+
+export type BuyerPlanId = 'starter' | 'growth' | 'pro';
+export type CreatorPlanId = CreatorTier;
+
+export interface BuyerPricingPlan {
+  id: BuyerPlanId;
+  name: string;
+  price: number | 'Custom';
+  description: string;
+  features: string[];
+  cta: string;
+  highlighted?: boolean;
+}
+
+export interface CreatorPlanLimits {
+  applicationsPerMonth: number;
+  publishedWorkflows: number;
+  analyticsAccess: boolean;
+  aiMonitor: boolean;
+  verifiedBadge: boolean;
+  buyerTrustSignals: string;
+  profileLevel: string;
+}
+
+export interface CreatorPricingPlan {
+  id: CreatorPlanId;
+  name: string;
+  shortName: string;
+  priceMonthly: number;
+  priceLabel: string;
+  description: string;
+  features: string[];
+  limits: CreatorPlanLimits;
+  cta: string;
+  badgeColor: string;
+  highlighted?: boolean;
+  requiresAdminApproval?: boolean;
+}
+
+export const BUYER_PRICING_NOTE =
+  'Project scope and final price are confirmed in the Project Agreement before work begins.';
+
+export const buyerPricingPlans: BuyerPricingPlan[] = [
+  {
+    id: 'starter',
+    name: 'Starter',
+    price: 99,
+    description: 'One focused MicroBuild to start generating leads or reviews immediately.',
+    features: [
+      'Single focused MicroBuild',
+      'Delivered in 3–5 days',
+      'One revision / support period',
+      'Branded to your business',
+      'Mobile-optimized',
+    ],
+    cta: 'Request a MicroBuild',
+  },
+  {
+    id: 'growth',
+    name: 'Growth',
+    price: 299,
+    description: 'A bundled toolkit for businesses ready to scale lead generation.',
+    features: [
+      'Three MicroBuild bundle',
+      'Priority delivery',
+      'Analytics-ready setup',
+      'One revision per build',
+      'Full branding package',
+    ],
+    cta: 'Request a MicroBuild',
+    highlighted: true,
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    price: 'Custom',
+    description: 'Ongoing MicroBuild production for growing local service businesses.',
+    features: [
+      'Ongoing MicroBuild production',
+      'Dedicated creator team',
+      'Custom integrations',
+      'Contact required for scope',
+    ],
+    cta: 'Contact Us',
+  },
+];
+
+export const creatorPricingPlans: CreatorPricingPlan[] = [
+  {
+    id: 'free',
+    name: 'Free Creator',
+    shortName: 'Free',
+    priceMonthly: 0,
+    priceLabel: '$0/mo',
+    description: 'Get started on the marketplace with a basic creator profile.',
+    features: [
+      'Basic creator profile',
+      'Limited applications',
+      '1 published workflow',
+      'Basic messaging',
+    ],
+    limits: {
+      applicationsPerMonth: 3,
+      publishedWorkflows: 1,
+      analyticsAccess: false,
+      aiMonitor: false,
+      verifiedBadge: false,
+      buyerTrustSignals: 'Basic profile',
+      profileLevel: 'Basic profile',
+    },
+    cta: 'Apply as Creator',
+    badgeColor: '#8a94a6',
+  },
+  {
+    id: 'professional',
+    name: 'Professional Creator',
+    shortName: 'Professional',
+    priceMonthly: 15,
+    priceLabel: '$15/mo',
+    description: 'Upgrade for more workflow publishing, applications, and marketplace readiness.',
+    features: [
+      'More applications per month',
+      'More published workflows',
+      'Analytics and AI monitor',
+      'Better marketplace readiness',
+      'Stronger workflow publishing',
+    ],
+    limits: {
+      applicationsPerMonth: 20,
+      publishedWorkflows: 5,
+      analyticsAccess: true,
+      aiMonitor: true,
+      verifiedBadge: false,
+      buyerTrustSignals: 'Stronger workflow publishing',
+      profileLevel: 'Enhanced profile',
+    },
+    cta: 'Upgrade to Professional',
+    badgeColor: '#63b3ed',
+    highlighted: true,
+  },
+  {
+    id: 'verified',
+    name: 'Verified Creator',
+    shortName: 'Verified',
+    priceMonthly: 25,
+    priceLabel: '$25/mo',
+    description: 'Highest trust signals — verified badge requires admin approval.',
+    features: [
+      'Verified badge after admin approval',
+      'Stronger buyer trust signals',
+      'More workflows and applications',
+      'Priority visibility',
+      'Priority buyer trust placement',
+    ],
+    limits: {
+      applicationsPerMonth: 50,
+      publishedWorkflows: 15,
+      analyticsAccess: true,
+      aiMonitor: true,
+      verifiedBadge: true,
+      buyerTrustSignals: 'Priority buyer trust placement',
+      profileLevel: 'Verified profile',
+    },
+    cta: 'Apply for Verified',
+    badgeColor: '#f9b032',
+    requiresAdminApproval: true,
+  },
+];
+
+export function getBuyerPlan(id: BuyerPlanId): BuyerPricingPlan | undefined {
+  return buyerPricingPlans.find((p) => p.id === id);
+}
+
+export function getCreatorPlan(id: CreatorPlanId): CreatorPricingPlan | undefined {
+  return creatorPricingPlans.find((p) => p.id === id);
+}
+
+export function formatBuyerPrice(price: number | 'Custom'): string {
+  if (price === 'Custom') return 'Custom';
+  return `$${price}`;
+}
+
+export function formatCreatorPlanPrice(plan: CreatorPricingPlan): string {
+  if (plan.priceMonthly === 0) return '$0/mo';
+  return `$${plan.priceMonthly}/mo`;
+}
+
+export const CREATOR_TIER_LABELS: Record<CreatorPlanId, string> = {
+  free: 'Free',
+  professional: 'Professional',
+  verified: 'Verified',
+};
+
+export const CREATOR_TIER_COLORS: Record<CreatorPlanId, string> = {
+  free: '#8a94a6',
+  professional: '#63b3ed',
+  verified: '#f9b032',
+};

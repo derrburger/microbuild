@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import {
   adminReviewDeliverable,
-  DELIVERY_STATUS_LABELS,
   ORDER_STATUS_LABELS,
 } from '../../lib/orders';
+import {
+  getHandoffDisplayStatus,
+  HANDOFF_STATUS_LABELS,
+  handoffStatusLabel,
+  buyerReviewStatusLabel,
+  formatHandoffDate,
+  displayNotes,
+} from '../../lib/deliverables';
 import type { DeliverablePlaceholder, OrderPipelineRow } from '../../lib/orders';
-
-function safeText(v: unknown, fb = '—'): string {
-  if (typeof v === 'string' && v.trim()) return v;
-  if (v == null) return fb;
-  return String(v);
-}
 
 export default function AdminDeliverablesSection({
   orders,
@@ -55,16 +57,22 @@ export default function AdminDeliverablesSection({
   }, [orders]);
 
   const rows = useMemo(() => {
-    return orders.map((o) => ({ order: o, del: deliverables[o.id] ?? null })).filter(({ del }) => del != null);
+    return orders.map((o) => ({ order: o, del: deliverables[o.id] ?? null }));
   }, [orders, deliverables]);
 
   const displayRows = useMemo(() => {
-    const pending = rows.filter(({ del }) => {
-      const st = safeText(del?.delivery_status, '').toLowerCase();
-      return st === 'submitted' || st === 'in_review' || st === 'revision_needed' || st === 'draft';
+    const withDel = rows.filter(({ del }) => del != null) as Array<{
+      order: OrderPipelineRow;
+      del: DeliverablePlaceholder;
+    }>;
+    const pending = withDel.filter(({ order, del }) => {
+      const hs = getHandoffDisplayStatus(order, del);
+      return hs === 'delivery_submitted' || hs === 'revision_requested' || hs === 'preview_submitted';
     });
-    return pending.length > 0 ? pending : rows;
+    return pending.length > 0 ? pending : withDel;
   }, [rows]);
+
+  const emptyCount = rows.filter(({ del }) => !del).length;
 
   async function runReview(
     order: OrderPipelineRow,
@@ -103,86 +111,96 @@ export default function AdminDeliverablesSection({
   return (
     <section className="admin-section" id="section-deliverables">
       <div className="admin-section-header">
-        <h2>Deliverables Review</h2>
-        <span className="admin-count">{rows.length}</span>
+        <h2>Deliverables Oversight</h2>
+        <span className="admin-count">{rows.filter(({ del }) => del).length}</span>
       </div>
       <p className="admin-section-intro">
-        Review creator submissions. Buyer acceptance UI is a placeholder — admin can approve, request revision, or mark
-        delivery milestones.
+        Monitor creator submissions and buyer handoff. Buyers accept or request revision on the project workspace —
+        admin action is optional oversight only.
       </p>
 
       {loading ?
         <div className="admin-state-row admin-loading">Loading deliverables…</div>
       : rows.length === 0 ?
-        <div className="admin-state-row admin-empty">No deliverable rows yet — creators submit from project workspace.</div>
+        <div className="admin-state-row admin-empty">No delivery submitted yet.</div>
       : (
-        <div className="deliv-review-list">
-          {displayRows.map(({ order, del }) => {
-            if (!del) return null;
-            const creatorId = del.creator_profile_id ?? del.creator_id ?? order.creator_id;
-            const busy = busyId === order.id;
-            return (
-              <article key={order.id} className="deliv-review-card">
-                <div className="deliv-review-head">
-                  <h3>{order.project_title ?? `Project ${order.id.slice(0, 8)}`}</h3>
-                  <span className="deliv-review-status">
-                    {DELIVERY_STATUS_LABELS[del.delivery_status ?? ''] ?? del.delivery_status ?? '—'}
-                  </span>
-                </div>
-                <dl className="deliv-review-dl">
-                  <DelivDlRow label="Buyer / request" value={bizByOrderId[order.id] ?? '—'} />
-                  <DelivDlRow
-                    label="Creator"
-                    value={creatorId ? creatorNameById[creatorId] ?? `${creatorId.slice(0, 8)}…` : 'Unassigned'}
-                  />
-                  <DelivDlRow
-                    label="Project status"
-                    value={ORDER_STATUS_LABELS[order.order_status] ?? order.order_status}
-                  />
-                  <DelivUrlRow label="Preview URL" url={del.preview_url} />
-                  <DelivUrlRow label="Delivery URL" url={del.live_url} />
-                  <DelivDlRow label="Buyer acceptance" value="Placeholder — not enforced" />
-                </dl>
-                {del.revision_note?.trim() ?
-                  <blockquote className="deliv-review-revision">{del.revision_note}</blockquote>
-                : null}
-                <label className="deliv-review-fb">
-                  <span className="subtle">Revision note (admin)</span>
-                  <textarea
-                    rows={2}
-                    value={revisionByOrder[order.id] ?? ''}
-                    onChange={(e) =>
-                      setRevisionByOrder((prev) => ({ ...prev, [order.id]: e.target.value }))
-                    }
-                    placeholder="Optional feedback for creator…"
-                  />
-                </label>
-                <div className="deliv-review-actions">
-                  <button type="button" className="wf-action-btn" disabled={busy} onClick={() => void runReview(order, del, 'request_revision')}>
-                    {busy ? '…' : 'Request revision'}
-                  </button>
-                  <button type="button" className="wf-action-btn wf-action-btn--primary" disabled={busy} onClick={() => void runReview(order, del, 'approve_deliverable')}>
-                    Approve deliverable
-                  </button>
-                  <button type="button" className="wf-action-btn" disabled={busy} onClick={() => void runReview(order, del, 'mark_delivered')}>
-                    Mark delivered
-                  </button>
-                  <button type="button" className="wf-action-btn wf-action-btn--accent" disabled={busy} onClick={() => void runReview(order, del, 'mark_completed')}>
-                    Mark completed
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+        <>
+          {emptyCount > 0 ?
+            <p className="admin-section-intro subtle">{emptyCount} project(s) with no delivery row yet.</p>
+          : null}
+          <div className="deliv-review-list">
+            {displayRows.map(({ order, del }) => {
+              if (!del) return null;
+              const creatorId = del.creator_profile_id ?? del.creator_id ?? order.creator_id;
+              const busy = busyId === order.id;
+              const hs = getHandoffDisplayStatus(order, del);
+              return (
+                <article key={order.id} className="deliv-review-card">
+                  <div className="deliv-review-head">
+                    <h3>{order.project_title ?? `Project ${order.id.slice(0, 8)}`}</h3>
+                    <span className="deliv-review-status">{HANDOFF_STATUS_LABELS[hs]}</span>
+                  </div>
+                  <dl className="deliv-review-dl">
+                    <DelivDlRow label="Buyer / request" value={bizByOrderId[order.id] ?? '—'} />
+                    <DelivDlRow
+                      label="Creator"
+                      value={creatorId ? creatorNameById[creatorId] ?? `${creatorId.slice(0, 8)}…` : 'Unassigned'}
+                    />
+                    <DelivDlRow
+                      label="Project status"
+                      value={ORDER_STATUS_LABELS[order.order_status] ?? order.order_status}
+                    />
+                    <DelivDlRow label="Handoff status" value={handoffStatusLabel(order, del)} />
+                    <DelivDlRow label="Buyer review" value={buyerReviewStatusLabel(order, del)} />
+                    <DelivUrlRow label="Preview URL" url={del.preview_url} />
+                    <DelivUrlRow label="Delivery URL" url={del.live_url} />
+                    <DelivDlRow label="Submitted" value={formatHandoffDate(del.submitted_at)} />
+                    <DelivDlRow label="Last updated" value={formatHandoffDate(del.updated_at)} />
+                    <DelivDlRow label="Delivery notes" value={displayNotes(del.notes)} wide />
+                  </dl>
+                  {del.revision_note?.trim() ?
+                    <blockquote className="deliv-review-revision">{del.revision_note}</blockquote>
+                  : null}
+                  <div className="deliv-review-actions deliv-review-actions--top">
+                    <Link className="wf-action-btn" to={`/dashboard/projects/${order.id}#deliverables`}>
+                      Open project workspace
+                    </Link>
+                  </div>
+                  <label className="deliv-review-fb">
+                    <span className="subtle">Admin revision note (optional override)</span>
+                    <textarea
+                      rows={2}
+                      value={revisionByOrder[order.id] ?? ''}
+                      onChange={(e) =>
+                        setRevisionByOrder((prev) => ({ ...prev, [order.id]: e.target.value }))
+                      }
+                      placeholder="Optional feedback if admin must intervene…"
+                    />
+                  </label>
+                  <div className="deliv-review-actions">
+                    <button type="button" className="wf-action-btn" disabled={busy} onClick={() => void runReview(order, del, 'request_revision')}>
+                      {busy ? '…' : 'Request revision (admin)'}
+                    </button>
+                    <button type="button" className="wf-action-btn wf-action-btn--primary" disabled={busy} onClick={() => void runReview(order, del, 'approve_deliverable')}>
+                      Approve deliverable (admin)
+                    </button>
+                    <button type="button" className="wf-action-btn" disabled={busy} onClick={() => void runReview(order, del, 'mark_completed')}>
+                      Mark completed
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </>
       )}
     </section>
   );
 }
 
-function DelivDlRow({ label, value }: { label: string; value: string }) {
+function DelivDlRow({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
   return (
-    <div>
+    <div className={wide ? 'deliv-review-dl-wide' : undefined}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>

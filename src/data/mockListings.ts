@@ -1,4 +1,5 @@
 import type { MicroBuildListing, CaseStudy, PricingTier } from '../types';
+import { buyerPricingPlans } from '../lib/pricingPlans';
 
 export const mockListings: MicroBuildListing[] = [
   {
@@ -176,49 +177,11 @@ export const mockCaseStudies: CaseStudy[] = [
   },
 ];
 
-export const pricingTiers: PricingTier[] = [
-  {
-    name: 'Starter',
-    price: 99,
-    description: 'One focused MicroBuild to start generating leads or reviews immediately.',
-    features: [
-      'Single MicroBuild (your choice)',
-      'Branded to your business',
-      'Mobile-optimized',
-      'Lead capture included',
-      'Delivered in 3–5 days',
-      '30 days of support',
-    ],
-    cta: 'Request a MicroBuild',
-  },
-  {
-    name: 'Growth',
-    price: 299,
-    description: 'A complete revenue toolkit — quote funnel, trust page, and review booster.',
-    features: [
-      'Three MicroBuilds (bundle)',
-      'Priority delivery (2–3 days)',
-      'Full branding package',
-      'Integrates with your booking tool',
-      'Analytics-ready setup',
-      '60 days of support',
-      'One revision per build',
-    ],
-    cta: 'Get the Growth Bundle',
-    highlighted: true,
-  },
-  {
-    name: 'Pro',
-    price: 'Custom',
-    description: 'Ongoing MicroBuild production for growing local service businesses.',
-    features: [
-      'Unlimited MicroBuild requests',
-      'Dedicated creator team',
-      'Custom integrations (CRM, booking, SMS)',
-      'Monthly strategy call',
-      'Priority support',
-      'White-label option available',
-    ],
-    cta: 'Contact Us',
-  },
-];
+export const pricingTiers: PricingTier[] = buyerPricingPlans.map((plan) => ({
+  name: plan.name,
+  price: plan.price,
+  description: plan.description,
+  features: plan.features,
+  cta: plan.cta,
+  highlighted: plan.highlighted,
+}));

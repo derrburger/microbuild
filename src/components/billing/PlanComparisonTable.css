@@ -1,0 +1,74 @@
+.plan-comparison-wrap {
+  margin-top: 1.5rem;
+}
+
+.plan-comparison-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0 0 0.35rem;
+}
+
+.plan-comparison-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.plan-comparison-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.plan-comparison-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.plan-comparison-table th,
+.plan-comparison-table td {
+  padding: 0.65rem 0.85rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.plan-comparison-table thead th {
+  font-weight: 700;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.plan-comparison-table tbody th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.plan-comparison-table tbody td {
+  color: var(--text-secondary);
+}
+
+.plan-comparison-table tr:last-child th,
+.plan-comparison-table tr:last-child td {
+  border-bottom: none;
+}
+
+.plan-comparison-col--current {
+  background: rgba(0, 212, 120, 0.06);
+}
+
+.plan-comparison-current-tag {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-top: 0.2rem;
+}

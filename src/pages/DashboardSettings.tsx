@@ -217,31 +217,58 @@ export default function DashboardSettings() {
                 <>
                   <div className="ds-billing-title">No subscription required</div>
                   <p className="ds-billing-desc">
-                    Buyers pay per approved MicroBuild, after scope and pricing are confirmed.
-                    No upfront cost, no subscription. Payment will be set up through Stripe when
-                    your build is approved and ready to start.
+                    Buyers pay per approved MicroBuild. Final scope is confirmed in the Project Agreement
+                    before work begins — no buyer subscription required.
                   </p>
                   <div className="ds-billing-meta">
+                    <span className="ds-billing-tag">Pay per MicroBuild</span>
                     <span className="ds-billing-tag">No subscription</span>
-                    <span className="ds-billing-tag">Pay per build — after approval</span>
-                    <span className="ds-billing-tag">Stripe integration coming soon</span>
+                    <span className="ds-billing-tag">Stripe not connected yet</span>
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="ds-billing-title">Billing is not active yet</div>
+                  <div className="ds-billing-title">Creator marketplace plans</div>
                   <p className="ds-billing-desc">
-                    Professional and Verified creators will only pay after admin approval,
-                    when Stripe is fully connected. No payment is required right now.
+                    Billing is not connected yet. Plans are visible now. Checkout will activate when
+                    Stripe is connected. Professional ($15/mo) and Verified ($25/mo) require admin approval.
                   </p>
                   <div className="ds-billing-meta">
-                    <span className="ds-billing-tag">Free tier: No charge</span>
-                    <span className="ds-billing-tag">Professional: $15/mo — after Stripe</span>
-                    <span className="ds-billing-tag">Verified: $25/mo — after Stripe</span>
+                    <span className="ds-billing-tag">Free: $0/mo</span>
+                    <span className="ds-billing-tag">Professional: $15/mo</span>
+                    <span className="ds-billing-tag">Verified: $25/mo</span>
                   </div>
                 </>
               )}
             </div>
+          </div>
+          <div className="ds-billing-actions">
+            <Link to="/dashboard/billing" className="ds-billing-action-btn ds-billing-action-btn--primary">
+              View Plans
+            </Link>
+            {profile?.account_type === 'creator' && (
+              <>
+                <button type="button" className="ds-billing-action-btn" disabled title="Stripe not connected yet">
+                  Manage Billing (coming soon)
+                </button>
+                <Link to="/dashboard/billing" className="ds-billing-action-btn">
+                  Upgrade to Professional
+                </Link>
+                <Link to="/creators/apply" className="ds-billing-action-btn">
+                  Apply for Verified
+                </Link>
+              </>
+            )}
+            {profile?.account_type === 'buyer' && (
+              <>
+                <Link to="/pricing" className="ds-billing-action-btn">
+                  View buyer pricing
+                </Link>
+                <Link to="/request" className="ds-billing-action-btn">
+                  Request a MicroBuild
+                </Link>
+              </>
+            )}
           </div>
         </div>
 

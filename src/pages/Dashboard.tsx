@@ -17,6 +17,7 @@ import {
 } from '../lib/orders';
 import type { OrderPipelineRow, DeliverablePlaceholder } from '../lib/orders';
 import type { UserProfileRow, CreatorProfileRow } from '../types/database';
+import type { CreatorTier } from '../types';
 import CreatorProjectsPanel from '../components/creator/CreatorProjectsPanel';
 import AppPageHeader from '../components/AppPageHeader';
 import BuyerMyRequestsPanel from '../components/buyer/BuyerMyRequestsPanel';
@@ -27,6 +28,14 @@ import {
   formatCreatorApprovalStatus,
   normalizeStatusKey,
 } from '../lib/statusLabels';
+import {
+  CREATOR_TIER_LABELS,
+  CREATOR_TIER_COLORS,
+} from '../lib/pricingPlans';
+import {
+  getCreatorPaymentStatusLabel,
+  isStripeConnected,
+} from '../lib/billing';
 import { getCreatorApplicationsWithBuyerRequests } from '../lib/marketplace';
 import './Dashboard.css';
 
@@ -36,14 +45,10 @@ function safeStr(v: unknown, fb = ''): string { return typeof v === 'string' ? v
 function safeNum(v: unknown, fb = 0): number { const n = Number(v); return isFinite(n) ? n : fb; }
 function safeArr<T>(v: unknown): T[] { return Array.isArray(v) ? (v as T[]) : []; }
 
-// ─── Shared color maps ─────────────────────────────────────────────────────────
+// ─── Shared color maps (from centralized pricing) ─────────────────────────────
 
-const TIER_LABELS: Record<string, string> = {
-  free: 'Free', professional: 'Professional', verified: 'Verified ✓',
-};
-const TIER_COLORS: Record<string, string> = {
-  free: '#8a94a6', professional: '#63b3ed', verified: '#f9b032',
-};
+const TIER_LABELS = CREATOR_TIER_LABELS;
+const TIER_COLORS = CREATOR_TIER_COLORS;
 
 // ─── Dashboard helper logic ────────────────────────────────────────────────────
 
@@ -183,6 +188,10 @@ function NextBestActionCard({
     icon = '📝'; title = 'A few items would strengthen your profile';
     message = `Top improvement: ${strength.improvements[0]?.toLowerCase() ?? 'add portfolio links'}.`;
     cta = <Link to="/dashboard/profile" className="dash-nba-btn">Edit Profile →</Link>;
+  } else if (safeStr(profile.tier, 'free') === 'free') {
+    icon = '⬆️'; title = 'Upgrade your creator plan';
+    message = 'Free Creator includes basic marketplace access. View plans to compare Professional and Verified options.';
+    cta = <Link to="/dashboard/billing" className="dash-nba-btn">View Plans →</Link>;
   }
 
   return (
@@ -428,7 +437,7 @@ function CreatorDashboard({
 }) {
   const strength   = analyzeProfileStrength(profile);
   const scoreColor = getStrengthColor(strength.score);
-  const tier       = safeStr(profile.tier, 'free');
+  const tier       = safeStr(profile.tier, 'free') as CreatorTier;
   const approval   = safeStr(profile.approval_status, 'draft');
   const visibility = safeStr(profile.public_profile_status, 'hidden');
   const verif      = safeStr(profile.verification_status, 'unverified');
@@ -439,10 +448,17 @@ function CreatorDashboard({
   const visLabel = visibility === 'public' ? '🟢 Public' : visibility === 'paused' ? '⏸ Paused' : '🔴 Hidden';
   const visColor = visibility === 'public' ? '#00d478' : visibility === 'paused' ? '#f9b032' : '#8a94a6';
 
-  const paymentLabel =
-    tier === 'free' ? 'Not required' :
-    appSt === 'approved_pending_payment' ? 'Setup coming soon' :
-    approval === 'active' ? 'Active (Stripe pending)' : 'Not yet set up';
+  const paymentLabel = getCreatorPaymentStatusLabel(
+    tier,
+    profile.subscription_status,
+    approval,
+    appSt ?? undefined,
+  );
+  const paymentSub = tier !== 'free' && !isStripeConnected()
+    ? 'Stripe not connected yet'
+    : tier === 'free'
+      ? 'No subscription required'
+      : 'Managed on Billing & Plans';
 
   const completedBuilds = safeNum(profile.completed_builds_count, 0);
   const avgRating       = profile.average_rating as number | null;
@@ -532,9 +548,26 @@ function CreatorDashboard({
         <SummaryStatusCard
           label="Payment Status"
           value={paymentLabel}
-          sub="Stripe not connected yet"
+          sub={paymentSub}
           color="#8a94a6"
         />
+      </div>
+
+      <div className="cd-billing-strip">
+        <div className="cd-billing-strip-body">
+          <div className="cd-billing-strip-title">
+            Current plan: {TIER_LABELS[tier] ?? tier}
+          </div>
+          <div className="cd-billing-strip-meta">
+            <span>Payment: {paymentLabel}</span>
+            <span>Approval: {formatCreatorApprovalStatus(approval).label}</span>
+            <span>Visibility: {visLabel.replace(/^[^\s]+\s/, '')}</span>
+            <span>Profile: {strength.score}/100</span>
+          </div>
+        </div>
+        <Link to="/dashboard/billing" className="btn btn-primary btn-sm">
+          View Plans
+        </Link>
       </div>
 
       {/* ── Main two-column section ───────────────────────────────── */}

@@ -10,7 +10,18 @@
 
 **Status labels:** `src/lib/statusLabels.ts` + `StatusBadge` map DB values (e.g. `buyer_selected`, `submitted_for_review`, `approved_pending_payment`) to plain English with consistent pill colors (green = active/selected, amber = pending/review, red = rejected, blue/neutral = info).
 
-**Deferred (unchanged):** Stripe, GitHub OAuth, external AI APIs, full proposal/payment/agreement UI on main admin paths.
+**Deferred (unchanged):** Stripe checkout (plans visible; billing placeholders only), GitHub OAuth, external AI APIs, full proposal/payment/agreement UI on main admin paths.
+
+---
+
+## Pricing + Billing Visibility v1
+
+- **Config:** `src/lib/pricingPlans.ts` — single source for buyer project pricing and creator subscription plans.
+- **Public `/pricing`:** Tabs **For Buyers** (default when logged out) and **For Creators**. Buyer tab: Starter $99, Growth $299, Pro Custom — CTA **Request a MicroBuild**. Creator tab: Free / Professional / Verified with monthly prices — CTA **Apply as Creator** or **Sign in to upgrade** / **View Plans** when signed in. Note: scope confirmed in Project Agreement; no payment on this page.
+- **Signed-in `/dashboard/billing`:** Creators see current plan, payment/approval/visibility status, upgrade cards, plan comparison table (applications/month, workflows, analytics, AI monitor, verified badge — **display only**, not enforced). Buyers see free account + pay-per-MicroBuild + links to `/pricing` and `/request`. Admins see a small billing overview placeholder.
+- **Stripe:** `src/lib/billing.ts` — `STRIPE_STATUS` is `not_connected`. Buttons call `startCreatorCheckout(planId)` or `openBillingPortal()` and show **Checkout coming soon** / **Stripe not connected yet** — no charges, no secret keys.
+- **Navigation:** Profile dropdown **Billing & Plans** → `/dashboard/billing`; creator dashboard **View Plans** on billing strip; Settings **Billing** card with View Plans / Manage Billing (placeholder) / upgrade links.
+- **SQL migration:** **Not required** for v1 — existing `creator_profiles.tier`, `subscription_status`, and related fields are reused.
 
 ---
 
@@ -275,18 +286,37 @@ Legacy admin assignment retains `selection_method = 'admin_assigned'`.
 
 ---
 
+## Deliverables + Handoff v1
+
+| Topic | Detail |
+|-------|--------|
+| **Route** | `/dashboard/projects/:orderId` — **Deliverables & Handoff** panel |
+| **Creator flow** | Submit preview → submit final delivery → update links/notes → respond to revision with “what changed” |
+| **Buyer flow** | See preview/final links + notes → **Review delivery** → **Accept delivery** (marks approved + order completed) or **Request revision** (saves `revision_note`, status revision requested) |
+| **Status badges** | Not submitted · Preview submitted · Delivery submitted · Revision requested · Approved · Completed |
+| **AI Delivery Monitor** | `src/lib/deliveryAI.ts` — rules-based only: agreement not confirmed, nothing submitted, preview without final, buyer review pending, revision action, missing notes, invalid-looking links |
+| **Helpers** | `src/lib/deliverables.ts` — CRUD actions, handoff checklists, order sync (`in_progress` / `in_review` / `completed`) |
+| **Messages** | Message creator/buyer about delivery → `/messages?orderId=…&buyerRequestId=…` |
+| **Admin** | `/admin#section-deliverables` — oversight (revision requested, approved, project link, buyer/creator names); not required for every delivery |
+| **Payment** | **Not active** — no Stripe |
+| **Migration** | **Not required** for v1 if `deliverables` table exists; optional `deliverables-revision-note.sql` for `revision_note` column |
+
+**Manual tests:** (1) creator opens project → (2) submit preview → (3) buyer sees preview → (4) creator submits final → (5) buyer requests revision → (6) creator sees note → (7) creator updates → (8) buyer accepts → (9) completed state → (10) admin sees status.
+
+---
+
 ## Project workspace (polished v3)
 
 | Topic | Detail |
 |-------|--------|
 | **Route** | `/dashboard/projects/:orderId` |
-| **Who** | Assigned creator (full tooling) or buyer who owns the linked request (overview, agreement, deliverables read-only, messages) |
+| **Who** | Assigned creator (full tooling) or buyer who owns the linked request (overview, agreement, deliverables, messages) |
 | **Header** | Title, MicroBuild type, buyer + creator names, status badges, message + delivery shortcuts |
 | **Timeline** | Request submitted → Creator selected → Agreement confirmed → Build in progress → Delivery submitted → Completed |
 | **Agreement** | **Project Agreement** panel is the primary scope path — generate draft, buyer/creator confirm, request changes, copy agreement. Reuses `project_proposals`; payment stays **unpaid** |
-| **Deliverables** | Creator submits preview + delivery URLs; buyer sees approved links when policy allows; revision notes surface in deliverables card |
+| **Deliverables** | **Deliverables & Handoff v1** — see section above; buyer accept/revision on workspace; AI Delivery Monitor |
 | **Checklist & brief** | Creator brief (build packet) + grouped build checklist remain lightweight MVP tools — no external AI on the page |
-| **Deferred** | Stripe checkout, payment holding, admin-first proposal UX, external AI APIs |
+| **Deferred** | Stripe checkout, payment holding, admin-first proposal UX, external AI APIs, file uploads |
 
 ---
 
@@ -320,9 +350,10 @@ Manual pass with three test accounts (buyer, creator, admin). No Stripe, GitHub 
 | 4 | **My Requests v2** — summary counts, filters, request card, applicant count matches `request_applications` | — | — |
 | 5 | Expand details; applicant cards; **Message creator** → `/messages?buyerRequestId&creatorProfileId`; **AI Request Monitor** shows rules-based insight | — | — |
 | 6 | **Select creator** (confirm); **selected creator** card; applicants behind history toggle | **Selected** badge; project in **Projects** | Pipeline shows buyer-selected project |
-| 7 | Project timeline + status; **Message creator** prefers `orderId` when assigned | **Project workspace** opens; **Message buyer** → Messages | Deliverables tab when submitted |
-| 8 | Track journey / delivery status | Submit deliverable (preview + delivery URLs) | Review / approve / revision |
-| 9 | Approve delivery when offered | Revision note surfaces if migration applied | — |
+| 7 | Project timeline + status; **Message creator** prefers `orderId` when assigned | **Project workspace** opens; **Message buyer** → Messages | Deliverables oversight tab |
+| 8 | **Review delivery** → accept or request revision | Submit preview / final delivery; respond to revision | Monitor handoff status |
+| 9 | Accept delivery when scope matches | Resubmit after revision note | Optional admin override |
+| 10 | Project shows **Completed** / **Approved** | AI Delivery Monitor highlights next action | See buyer/creator + project link |
 | 10 | Central **Messages** — one thread per buyer×creator pair (order anchor after selection) | Same | Inbox empty by design |
 
 **Status labels:** `src/lib/statusLabels.ts` — buyers see **Applied** on new applicants; creators see **Waiting for buyer** on `submitted`; admins see plain English on marketplace application cards.

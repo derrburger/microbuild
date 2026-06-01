@@ -2,7 +2,35 @@
 
 A marketplace for focused, affordable web tools built for local service businesses â€” quote funnels, booking pages, review boosters, trust pages, and package selectors. Businesses request a build, a vetted creator delivers it in days.
 
-**Status:** Marketplace **Buyer Browse Workflows v1** — professional `/browse` storefront for AI-reviewed creator workflows with search, filters, detail panel, and Request/Customize. Prior: **Real Analytics + AI Monitor v1**. Proposal/payment remains **deferred** (no Stripe). **TEMP DEV RLS remains unsafe** until production policies ship.
+**Status:** Marketplace **Pricing + Billing Visibility v1** — buyer/creator pricing split, `/dashboard/billing`, Stripe placeholders (no checkout). Prior: **Deliverables + Handoff v1**. Proposal/payment checkout remains **deferred** (no Stripe). **TEMP DEV RLS remains unsafe** until production policies ship.
+
+### Pricing + Billing Visibility v1
+
+| Area | Behavior |
+|------|----------|
+| Config | **`src/lib/pricingPlans.ts`** — centralized buyer project pricing + creator subscription plans |
+| Public pricing | **`/pricing`** — tabs: **For Buyers** (default) / **For Creators**; buyer Starter $99, Growth $299, Pro Custom |
+| Creator plans | Free $0/mo, Professional $15/mo, Verified $25/mo — limits shown as UI labels only (not enforced yet) |
+| Signed-in billing | **`/dashboard/billing`** — role-aware: creator plan status, comparison table, upgrade placeholders; buyer pay-per-build info |
+| Stripe | **`src/lib/billing.ts`** — `STRIPE_STATUS = not_connected`; `startCreatorCheckout` / `openBillingPortal` show “coming soon” — **no fake payments** |
+| Navigation | Profile dropdown **Billing & Plans**; dashboard tier strip **View Plans**; Settings billing actions |
+| Migration | **Not required** — uses existing `creator_profiles.tier`, `subscription_status`, `approval_status` fields |
+
+### Deliverables + Handoff v1
+
+| Area | Behavior |
+|------|----------|
+| Route | **`/dashboard/projects/:orderId`** — **Deliverables & Handoff** panel on project workspace |
+| Creator | Submit preview, submit final delivery, update delivery, respond to revision (preview URL, final URL, notes, what changed) |
+| Buyer | Review delivery links and notes; **Accept Delivery** or **Request Revision** with note — no admin gate required |
+| Status badges | Not submitted · Preview submitted · Delivery submitted · Revision requested · Approved · Completed — never raw DB labels |
+| AI Monitor | **`src/lib/deliveryAI.ts`** — rules-based insights (agreement gaps, missing links/notes, review pending, revision action) |
+| Helpers | **`src/lib/deliverables.ts`** — handoff status, buyer/creator actions, order status sync (`in_review`, `in_progress`, `completed`) |
+| Checklists | Buyer handoff checklist + creator handoff checklist (derived from agreement + deliverable state) |
+| Messages | **Message creator/buyer about delivery** → central **`/messages?orderId=…`** |
+| Admin | **`/admin#section-deliverables`** — oversight only; buyers own accept/revision on workspace |
+| Payments | **Not active** — no Stripe, no escrow |
+| Migration | **Not required** if `deliverables` + `revision_note` already exist — optional `deliverables-revision-note.sql` |
 
 ### Real Analytics + AI Monitor v1
 

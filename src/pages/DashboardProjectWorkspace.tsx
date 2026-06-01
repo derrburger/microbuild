@@ -6,11 +6,8 @@ import {
   fetchOrderById,
   fetchBuildPacketForOrder,
   fetchDeliverableByOrderId,
-  submitCreatorDeliverable,
-  updateOrderStatus,
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
-  DELIVERY_STATUS_LABELS,
   type OrderPipelineRow,
   type BuildPacketWorkspaceRow,
   type DeliverablePlaceholder,
@@ -18,6 +15,7 @@ import {
 import type { BuyerRequestRow, ProjectProposalRow, UserProfileRow } from '../types/database';
 import { fetchProposalByOrderId } from '../lib/proposals';
 import ProjectAgreementPanel from '../components/ProjectAgreementPanel';
+import DeliverablesHandoffPanel from '../components/DeliverablesHandoffPanel';
 import { getAgreementViewState } from '../lib/projectAgreement';
 import { verifyBuyerOwnsRequest } from '../lib/marketplace';
 import { buildMessagesHref } from '../lib/messages';
@@ -153,13 +151,6 @@ export default function DashboardProjectWorkspace() {
     null,
   );
 
-  const [previewUrl, setPreviewUrl] = useState('');
-  const [deliveryUrl, setDeliveryUrl] = useState('');
-  const [githubUrl, setGithubUrl] = useState('');
-  const [notes, setNotes] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [submitMsg, setSubmitMsg] = useState<'idle' | 'ok' | 'err'>('idle');
-
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
 
   const [proposal, setProposal] = useState<ProjectProposalRow | null>(null);
@@ -281,13 +272,6 @@ export default function DashboardProjectWorkspace() {
     setPacket(bp);
     setDeliverable(deliv);
 
-    if (deliv) {
-      setPreviewUrl(deliv.preview_url ?? '');
-      setDeliveryUrl(deliv.live_url ?? '');
-      setGithubUrl(deliv.github_url ?? '');
-      setNotes(deliv.notes ?? '');
-    }
-
     if (o.request_id) {
       const { data: br } = await supabase
         .from('buyer_requests')
@@ -314,34 +298,6 @@ export default function DashboardProjectWorkspace() {
     reload();
   }, [reload]);
 
-  async function handleSubmit() {
-    if (!order || workspaceRole !== 'creator' || !userProfile?.creator_profile_id) return;
-    setSubmitting(true);
-    setSubmitMsg('idle');
-    const ok = await submitCreatorDeliverable({
-      orderId: order.id,
-      creatorProfileId: userProfile.creator_profile_id,
-      previewUrl,
-      deliveryUrl,
-      githubUrl,
-      notes,
-    });
-    if (ok) {
-      const d = await fetchDeliverableByOrderId(order.id);
-      setDeliverable(d);
-      if (order.order_status === 'assigned' || order.order_status === 'in_progress') {
-        await updateOrderStatus(order.id, 'in_review');
-        setOrder((prev) => (prev ? { ...prev, order_status: 'in_review' } : prev));
-      }
-      setSubmitMsg('ok');
-      setTimeout(() => setSubmitMsg('idle'), 4000);
-    } else {
-      setSubmitMsg('err');
-      setTimeout(() => setSubmitMsg('idle'), 6000);
-    }
-    setSubmitting(false);
-  }
-
   async function handleCopy(text: string) {
     const ok = await copyTextToClipboard(text);
     setCopyMsg(ok ? 'Copied' : 'Copy failed — try again');
@@ -361,7 +317,7 @@ export default function DashboardProjectWorkspace() {
   const buyerUpdateCopy = order ? buildBuyerUpdateCopy(order, packet) : '';
   const revisionTemplate = buildRevisionRequestCopy(revisionHint || '[Your revision notes from MicroBuild]');
   const completionCopy = order ? buildCompletionMessageCopy(order) : '';
-  const feedbackCopy = buildCreatorFeedbackCopy(revisionHint, notes);
+  const feedbackCopy = buildCreatorFeedbackCopy(revisionHint, deliverable?.notes ?? '');
   const deliverySummaryCopy = order
     ? buildDeliverySummaryCopy(order, deliverable, buyer?.business_name ?? '')
     : '';
@@ -396,11 +352,6 @@ export default function DashboardProjectWorkspace() {
     : creatorAssignee?.display_name ?? creatorAssignee?.full_name ?? 'Assigned creator';
 
   const proposedPrice = moneyDisplay(proposal?.proposed_price ?? null);
-
-  const buyerCanSeeDeliveryLinks =
-    order &&
-    (order.order_status === 'delivered' || order.order_status === 'completed') &&
-    deliverable?.delivery_status === 'approved';
 
   const activityItems = order
     ? buildWorkspaceActivityItems({
@@ -504,10 +455,10 @@ export default function DashboardProjectWorkspace() {
                     </a>
                   )
                 : null}
-                {!isCreatorWorkspace && buyerCanSeeDeliveryLinks ?
+                {!isCreatorWorkspace && deliverable ?
                   (
                     <a className="btn btn-ghost btn-sm" href="#deliverables">
-                      View delivery
+                      Review delivery
                     </a>
                   )
                 : null}
@@ -568,187 +519,22 @@ export default function DashboardProjectWorkspace() {
                 )
               : null}
 
-              <section className="dpw-card dpw-card--submit" id="deliverables">
-                <h2 className="dpw-card-title">Deliverables</h2>
-                {!deliverable && !isCreatorWorkspace ?
-                  (
-                    <div className="dpw-empty-state">
-                      <p>No deliverable submitted yet.</p>
-                      <p className="dpw-muted">Waiting for creator delivery.</p>
-                    </div>
-                  )
-                : !deliverable && isCreatorWorkspace ?
-                  (
-                    <>
-                      <div className="dpw-empty-state">
-                        <p>No deliverable submitted yet.</p>
-                        <p className="dpw-muted">Submit preview and delivery URLs when your build is ready.</p>
-                      </div>
-                      <div className="dpw-form-grid" style={{ marginTop: '1rem' }}>
-                        <label className="dpw-field">
-                          <span>Preview URL</span>
-                          <input
-                            type="url"
-                            value={previewUrl}
-                            onChange={(e) => setPreviewUrl(e.target.value)}
-                            placeholder="https://…"
-                            autoComplete="off"
-                          />
-                        </label>
-                        <label className="dpw-field">
-                          <span>Delivery URL</span>
-                          <input
-                            type="url"
-                            value={deliveryUrl}
-                            onChange={(e) => setDeliveryUrl(e.target.value)}
-                            placeholder="https://…"
-                            autoComplete="off"
-                          />
-                        </label>
-                        <label className="dpw-field">
-                          <span>GitHub URL (optional)</span>
-                          <input
-                            type="url"
-                            value={githubUrl}
-                            onChange={(e) => setGithubUrl(e.target.value)}
-                            placeholder="https://github.com/…"
-                            autoComplete="off"
-                          />
-                        </label>
-                        <label className="dpw-field dpw-field--full">
-                          <span>Notes to MicroBuild / buyer-facing context</span>
-                          <textarea
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            rows={4}
-                            placeholder="What changed, test credentials, etc."
-                          />
-                        </label>
-                      </div>
-                      <div className="dpw-submit-row">
-                        <button type="button" className="btn btn-primary" disabled={submitting} onClick={handleSubmit}>
-                          {submitting ? 'Saving…' : 'Submit preview / delivery'}
-                        </button>
-                        {submitMsg === 'ok' && <span className="dpw-feedback dpw-feedback--ok">Saved — submitted for review.</span>}
-                        {submitMsg === 'err' && (
-                          <span className="dpw-feedback dpw-feedback--err">Save failed — check the browser console.</span>
-                        )}
-                      </div>
-                    </>
-                  )
-                : (
-                  <>
-                    <div className="dpw-deliverable-status-row">
-                      <span>
-                        Status:{' '}
-                        <strong>
-                          {deliverable
-                            ? DELIVERY_STATUS_LABELS[deliverable.delivery_status] ?? deliverable.delivery_status
-                            : 'Not submitted'}
-                        </strong>
-                      </span>
-                      {deliverable?.submitted_at ?
-                        <span className="dpw-muted">Submitted {fmtDate(deliverable.submitted_at)}</span>
-                      : null}
-                    </div>
-                    {revisionHint ?
-                      <div className="dpw-revision-note">{revisionHint}</div>
-                    : null}
-                    <div className="dpw-deliverable-grid">
-                      <div className="dpw-deliverable-field">
-                        <span>Preview URL</span>
-                        {isCreatorWorkspace || (buyerCanSeeDeliveryLinks && deliverable?.preview_url?.trim()) ?
-                          deliverable?.preview_url?.trim() ?
-                            (
-                              <a href={deliverable.preview_url} target="_blank" rel="noopener noreferrer">
-                                {deliverable.preview_url}
-                              </a>
-                            )
-                          : <p className="dpw-muted">Not provided yet</p>
-                        : <p className="dpw-muted">Available after internal approval</p>}
-                      </div>
-                      <div className="dpw-deliverable-field">
-                        <span>Delivery URL</span>
-                        {isCreatorWorkspace || (buyerCanSeeDeliveryLinks && deliverable?.live_url?.trim()) ?
-                          deliverable?.live_url?.trim() ?
-                            (
-                              <a href={deliverable.live_url} target="_blank" rel="noopener noreferrer">
-                                {deliverable.live_url}
-                              </a>
-                            )
-                          : <p className="dpw-muted">Not provided yet</p>
-                        : <p className="dpw-muted">Available after internal approval</p>}
-                      </div>
-                    </div>
-                    {isCreatorWorkspace ?
-                      (
-                        <>
-                          <div className="dpw-form-grid" style={{ marginTop: '0.75rem' }}>
-                            <label className="dpw-field">
-                              <span>Preview URL</span>
-                              <input
-                                type="url"
-                                value={previewUrl}
-                                onChange={(e) => setPreviewUrl(e.target.value)}
-                                placeholder="https://…"
-                                autoComplete="off"
-                              />
-                            </label>
-                            <label className="dpw-field">
-                              <span>Delivery URL</span>
-                              <input
-                                type="url"
-                                value={deliveryUrl}
-                                onChange={(e) => setDeliveryUrl(e.target.value)}
-                                placeholder="https://…"
-                                autoComplete="off"
-                              />
-                            </label>
-                            <label className="dpw-field">
-                              <span>GitHub URL (optional)</span>
-                              <input
-                                type="url"
-                                value={githubUrl}
-                                onChange={(e) => setGithubUrl(e.target.value)}
-                                placeholder="https://github.com/…"
-                                autoComplete="off"
-                              />
-                            </label>
-                            <label className="dpw-field dpw-field--full">
-                              <span>Notes to MicroBuild / buyer-facing context</span>
-                              <textarea
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                                rows={4}
-                                placeholder="What changed, test credentials, etc."
-                              />
-                            </label>
-                          </div>
-                          <div className="dpw-submit-row">
-                            <button type="button" className="btn btn-primary" disabled={submitting} onClick={handleSubmit}>
-                              {submitting ? 'Saving…' : 'Update deliverable'}
-                            </button>
-                            {submitMsg === 'ok' && (
-                              <span className="dpw-feedback dpw-feedback--ok">Saved — submitted for review.</span>
-                            )}
-                            {submitMsg === 'err' && (
-                              <span className="dpw-feedback dpw-feedback--err">Save failed — check the browser console.</span>
-                            )}
-                          </div>
-                        </>
-                      )
-                    : deliverable?.delivery_status === 'approved' && buyerCanSeeDeliveryLinks ?
-                      (
-                        <p className="dpw-muted">
-                          Review your delivery links above. Message your creator if you need adjustments.
-                        </p>
-                      )
-                    : (
-                      <p className="dpw-muted">Waiting for creator delivery or internal review.</p>
-                    )}
-                  </>
-                )}
-              </section>
+              {workspaceRole && userProfile ?
+                (
+                  <DeliverablesHandoffPanel
+                    role={workspaceRole}
+                    order={order}
+                    deliverable={deliverable}
+                    proposal={proposal}
+                    hasBuildPacket={Boolean(packet)}
+                    creatorProfileId={
+                      workspaceRole === 'creator' ? userProfile.creator_profile_id ?? null : order.creator_id
+                    }
+                    onDeliverableUpdated={setDeliverable}
+                    onOrderUpdated={(patch) => setOrder((prev) => (prev ? { ...prev, ...patch } : prev))}
+                  />
+                )
+              : null}
             </div>
 
             <div className="dpw-col dpw-col--sidebar">

@@ -139,6 +139,9 @@ export default function Navbar() {
                     </button>
                     {userMenuOpen && (
                       <div className="navbar-dropdown">
+                        <Link to="/dashboard/billing" className="navbar-dropdown-item" onClick={close}>
+                          Billing &amp; Plans
+                        </Link>
                         {!isAdmin && (
                           <Link to="/dashboard/profile" className="navbar-dropdown-item" onClick={close}>
                             Profile

@@ -17,6 +17,7 @@ import Dashboard from './pages/Dashboard';
 import DashboardProfile from './pages/DashboardProfile';
 import DashboardAnalytics from './pages/DashboardAnalytics';
 import DashboardSettings from './pages/DashboardSettings';
+import DashboardBilling from './pages/DashboardBilling';
 import DashboardBrowse from './pages/DashboardBrowse';
 import DashboardApplications from './pages/DashboardApplications';
 import DashboardWorkflows from './pages/DashboardWorkflows';
@@ -64,6 +65,7 @@ export default function App() {
               <Route path="profile" element={<DashboardProfile />} />
               <Route path="analytics" element={<DashboardAnalytics />} />
               <Route path="settings" element={<DashboardSettings />} />
+              <Route path="billing" element={<DashboardBilling />} />
               <Route path="applications" element={<DashboardApplications />} />
               <Route path="projects" element={<DashboardProjects />} />
               <Route path="requests" element={<DashboardBuyerRequests />} />
